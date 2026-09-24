@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Employees</h1>
+{% if perms.organization.change_employee %}<a href="{% url 'organization:employee-create' %}">Add employee</a>{% endif %}
+<ul>{% for employee in employees %}<li><a href="{% url 'organization:employee-detail' employee.pk %}">{{ employee }}</a> ({{ employee.department }}, {{ employee.job_role }})</li>{% empty %}<li>No employees available.</li>{% endfor %}</ul>
+{% endblock %}

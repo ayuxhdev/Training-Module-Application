@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ employee }}</h1>
+<p>Department: {{ employee.department }}</p><p>Job role: {{ employee.job_role }}</p><p>Status: {% if employee.is_active %}Active{% else %}Inactive{% endif %}</p>
+{% if perms.organization.change_employee %}<p><a href="{% url 'organization:employee-update' employee.pk %}">Edit</a></p>{% if employee.is_active %}<form method="post" action="{% url 'organization:employee-deactivate' employee.pk %}">{% csrf_token %}<label>Reason <input name="reason" required></label><button type="submit">Deactivate</button></form>{% endif %}{% endif %}
+{% endblock %}

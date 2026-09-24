@@ -1,0 +1,2 @@
+{% extends "base.html" %}
+{% block content %}<h1>{{ title }}</h1><a href="{% url create_url %}">Add</a><ul>{% for item in items %}<li>{{ item }} {% if item.is_active %}Active{% else %}Inactive{% endif %}</li>{% empty %}<li>None available.</li>{% endfor %}</ul>{% endblock %}
