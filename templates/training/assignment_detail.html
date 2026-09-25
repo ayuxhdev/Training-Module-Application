@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ assignment.training_version }}</h1>
+<p>Employee: {{ assignment.employee }}</p>
+<p>Status: {{ assignment.get_status_display }}</p>
+<p>Source: {{ assignment.get_source_display }}</p>
+<p>Due: {{ assignment.due_at|default:"Not set" }}</p>
+<p>Department snapshot: {{ assignment.department_at_assignment }}</p>
+<p>Job role snapshot: {{ assignment.job_role_at_assignment }}</p>
+<a href="{% url 'training:assignment-list' %}">Back to assignments</a>
+{% endblock %}

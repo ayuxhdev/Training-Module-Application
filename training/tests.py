@@ -10,6 +10,7 @@ from django.db import IntegrityError, models, transaction
 from django.test import Client, TestCase
 
 from config.model_test_utils import CurriculumTestCase
+from organization.models import Employee
 from .models import Lesson, LessonProgress, Module, RoleTrainingRequirement, Training, TrainingAssignment, TrainingVersion, VideoWatchSession
 
 
@@ -397,6 +398,103 @@ class AssignmentTests(CurriculumTestCase):
         self.assignment.cancelled_at = None
         with self.assertRaises(ValidationError):
             self.assignment.save()
+
+
+class AssignmentViewTests(CurriculumTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.admin = get_user_model().objects.create_user(username="assignment-admin", password="password")
+        cls.coordinator = get_user_model().objects.create_user(username="assignment-coordinator", password="password")
+        cls.manager_user = get_user_model().objects.create_user(username="assignment-manager", password="password")
+        cls.other_user = get_user_model().objects.create_user(username="assignment-other", password="password")
+        cls.employee_user.set_password("password")
+        cls.employee_user.save(update_fields=["password"])
+        Group.objects.get(name="Administrator").user_set.add(cls.admin)
+        Group.objects.get(name="Training Coordinator").user_set.add(cls.coordinator)
+        Group.objects.get(name="Manager").user_set.add(cls.manager_user)
+        Group.objects.get(name="Employee").user_set.add(cls.employee_user)
+        cls.manager = Employee.objects.create(employee_code="GN-010", display_name="Manager",
+            department=cls.department, job_role=cls.role, date_joined=cls.now.date(), user=cls.manager_user)
+        cls.report = Employee.objects.create(employee_code="GN-011", display_name="Report",
+            department=cls.department, job_role=cls.role, date_joined=cls.now.date(), reporting_manager=cls.manager)
+        cls.other = Employee.objects.create(employee_code="GN-012", display_name="Other",
+            department=cls.department, job_role=cls.role, date_joined=cls.now.date(), user=cls.other_user)
+        cls.employee.reporting_manager = cls.manager
+        cls.employee.save()
+
+    def client_for(self, user):
+        client = Client()
+        self.assertTrue(client.login(username=user.username, password="password"))
+        return client
+
+    def test_administrator_and_coordinator_can_create_manual_assignments(self):
+        for user, code in ((self.admin, "GN-ADMIN"), (self.coordinator, "GN-COORD")):
+            employee = Employee.objects.create(employee_code=code, display_name=code,
+                department=self.department, job_role=self.role, date_joined=self.now.date())
+            response = self.client_for(user).post("/assignments/new/", {
+                "employee": employee.pk, "training_version": self.version.pk, "due_date": "2026-12-31",
+            })
+            self.assertEqual(response.status_code, 302)
+            assignment = TrainingAssignment.objects.get(employee=employee, training_version=self.version)
+            self.assertEqual(assignment.source, TrainingAssignment.Source.MANUAL)
+            self.assertEqual(assignment.department_at_assignment_id, self.department.pk)
+            self.assertEqual(assignment.job_role_at_assignment_id, self.role.pk)
+
+    def test_employee_and_manager_assignment_scopes_are_enforced(self):
+        employee_client = self.client_for(self.employee_user)
+        response = employee_client.get("/assignments/")
+        self.assertContains(response, str(self.employee))
+        self.assertNotContains(response, str(self.report))
+        self.assertEqual(employee_client.get(f"/assignments/{self.report.pk}/").status_code, 404)
+
+        manager_client = self.client_for(self.manager_user)
+        self.assertContains(manager_client.get("/assignments/"), str(self.employee))
+        outside = TrainingAssignment.objects.create(employee=self.other, training_version=self.version,
+            department_at_assignment=self.other.department, job_role_at_assignment=self.other.job_role,
+            assigned_by=self.coordinator)
+        self.assertEqual(manager_client.get(f"/assignments/{outside.pk}/").status_code, 404)
+
+    def test_duplicate_and_inactive_manual_submissions_are_form_errors(self):
+        client = self.client_for(self.coordinator)
+        duplicate = client.post("/assignments/new/", {
+            "employee": self.employee.pk, "training_version": self.version.pk, "due_date": "2026-12-31",
+        })
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertContains(duplicate, "already has an assignment")
+
+        self.other.is_active = False
+        self.other.deactivation_reason = "Left company"
+        self.other.save()
+        inactive = client.post("/assignments/new/", {
+            "employee": self.other.pk, "training_version": self.version.pk, "due_date": "2026-12-31",
+        })
+        self.assertEqual(inactive.status_code, 200)
+        self.assertContains(inactive, "Inactive employees")
+
+    def test_role_assignment_creates_missing_skips_inactive_and_preserves_origin(self):
+        inactive = Employee.objects.create(employee_code="GN-013", display_name="Inactive",
+            department=self.department, job_role=self.role, date_joined=self.now.date())
+        inactive.is_active = False
+        inactive.deactivation_reason = "Left company"
+        inactive.save()
+        requirement = RoleTrainingRequirement.objects.create(job_role=self.role, training_version=self.version,
+            created_by=self.coordinator, due_in_days=14)
+        response = self.client_for(self.coordinator).post("/assignments/role/new/", {"role_requirement": requirement.pk})
+        self.assertEqual(response.status_code, 302)
+        created = TrainingAssignment.objects.get(employee=self.report, training_version=self.version)
+        self.assertEqual(created.source, TrainingAssignment.Source.ROLE)
+        self.assertEqual(created.role_requirement_id, requirement.pk)
+        self.assertFalse(TrainingAssignment.objects.filter(employee=inactive, training_version=self.version).exists())
+        self.assertEqual(TrainingAssignment.objects.filter(training_version=self.version).count(), 4)
+
+    def test_invalid_submission_returns_form_response_not_server_error(self):
+        response = self.client_for(self.coordinator).post("/assignments/new/", {
+            "employee": self.employee.pk, "training_version": self.new_version().pk, "due_date": "not-a-date",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Assignments require a published training version")
+        self.assertContains(response, "Enter a valid date")
 
 
 class ProgressTests(CurriculumTestCase):

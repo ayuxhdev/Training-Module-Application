@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Training assignments</h1>
+{% if perms.training.add_trainingassignment %}<a href="{% url 'training:assignment-create' %}">Manual assignment</a> <a href="{% url 'training:role-assignment-create' %}">Assign by job role</a>{% endif %}
+{% for message in messages %}<p>{{ message }}</p>{% endfor %}
+<ul>{% for assignment in assignments %}<li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.employee }} - {{ assignment.training_version }}</a> ({{ assignment.get_status_display }})</li>{% empty %}<li>No assignments found.</li>{% endfor %}</ul>
+{% endblock %}

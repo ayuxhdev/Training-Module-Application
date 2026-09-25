@@ -1,17 +1,122 @@
+from datetime import timedelta
+
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import IntegrityError, transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
-from django.views.generic import CreateView, DetailView, ListView, UpdateView
+from django.views.generic import CreateView, DetailView, FormView, ListView, UpdateView
 
-from .forms import LessonForm, ModuleForm, TrainingForm, TrainingVersionForm
-from .models import Lesson, Module, Training, TrainingVersion
+from organization.models import Employee
+from organization.views import employee_scope
+
+from .forms import (LessonForm, ModuleForm, RoleTrainingAssignmentForm, TrainingAssignmentForm,
+					TrainingForm, TrainingVersionForm)
+from .models import Lesson, Module, RoleTrainingRequirement, Training, TrainingAssignment, TrainingVersion
 
 
 class ContentPermissionMixin(LoginRequiredMixin, PermissionRequiredMixin):
 	raise_exception = True
+
+
+ASSIGNMENT_MANAGE_PERMISSION = "training.add_trainingassignment"
+
+
+def can_manage_assignments(user):
+	return user.is_superuser or user.has_perm(ASSIGNMENT_MANAGE_PERMISSION)
+
+
+class AssignmentAccessMixin(LoginRequiredMixin):
+	raise_exception = True
+
+	def dispatch(self, request, *args, **kwargs):
+		if not (can_manage_assignments(request.user) or request.user.groups.filter(name__in=["Manager", "Employee"]).exists()):
+			raise PermissionDenied
+		return super().dispatch(request, *args, **kwargs)
+
+
+def assignment_scope(user):
+	if can_manage_assignments(user):
+		return Employee.objects.all()
+	return employee_scope(user)
+
+
+class TrainingAssignmentListView(AssignmentAccessMixin, ListView):
+	model = TrainingAssignment
+	template_name = "training/assignment_list.html"
+	context_object_name = "assignments"
+
+	def get_queryset(self):
+		return TrainingAssignment.objects.select_related(
+			"employee", "training_version__training", "department_at_assignment", "job_role_at_assignment"
+		).filter(employee__in=assignment_scope(self.request.user)).order_by("due_at", "pk")
+
+
+class TrainingAssignmentDetailView(AssignmentAccessMixin, DetailView):
+	model = TrainingAssignment
+	template_name = "training/assignment_detail.html"
+	context_object_name = "assignment"
+
+	def get_queryset(self):
+		return TrainingAssignment.objects.select_related(
+			"employee", "training_version__training", "department_at_assignment", "job_role_at_assignment",
+			"role_requirement", "assigned_by"
+		).filter(employee__in=assignment_scope(self.request.user))
+
+
+class TrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+	permission_required = ASSIGNMENT_MANAGE_PERMISSION
+	raise_exception = True
+	form_class = TrainingAssignmentForm
+	template_name = "training/assignment_form.html"
+
+	def form_valid(self, form):
+		try:
+			self.object = form.save(assigned_by=self.request.user)
+		except (ValidationError, IntegrityError) as exc:
+			form.add_error(None, "This assignment could not be created: " + str(exc))
+			return self.form_invalid(form)
+		return redirect("training:assignment-detail", pk=self.object.pk)
+
+
+class RoleTrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMixin, FormView):
+	permission_required = ASSIGNMENT_MANAGE_PERMISSION
+	raise_exception = True
+	form_class = RoleTrainingAssignmentForm
+	template_name = "training/role_assignment_form.html"
+
+	def form_valid(self, form):
+		requirement = form.cleaned_data["role_requirement"]
+		matching_employees = Employee.objects.filter(job_role=requirement.job_role)
+		employees = matching_employees.filter(is_active=True).select_related("department", "job_role")
+		existing_ids = set(TrainingAssignment.objects.filter(
+			employee__in=matching_employees, training_version=requirement.training_version
+		).values_list("employee_id", flat=True))
+		created = 0
+		for employee in employees:
+			if employee.pk in existing_ids:
+				continue
+			try:
+				with transaction.atomic():
+					TrainingAssignment.objects.create(
+						employee=employee,
+						training_version=requirement.training_version,
+						source=TrainingAssignment.Source.ROLE,
+						role_requirement=requirement,
+						department_at_assignment=employee.department,
+						job_role_at_assignment=employee.job_role,
+						assigned_by=self.request.user,
+						due_at=timezone.now() + timedelta(days=requirement.due_in_days),
+					)
+				created += 1
+			except IntegrityError:
+				existing_ids.add(employee.pk)
+		skipped = matching_employees.count() - created
+		messages.success(self.request, f"Created {created} assignment(s); skipped {skipped} existing or inactive employee(s).")
+		return redirect("training:assignment-list")
 
 
 class TrainingListView(ContentPermissionMixin, ListView):
