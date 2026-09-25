@@ -1,6 +1,8 @@
+import json
 from datetime import timedelta
 from decimal import Decimal
 from importlib import import_module
+from unittest.mock import patch
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
@@ -495,6 +497,253 @@ class AssignmentViewTests(CurriculumTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Assignments require a published training version")
         self.assertContains(response, "Enter a valid date")
+
+
+class PlaybackViewTests(CurriculumTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.employee_user.set_password("password")
+        cls.employee_user.save(update_fields=["password"])
+
+    def setUp(self):
+        self.client = Client()
+        self.assertTrue(self.client.login(username="employee", password="password"))
+
+    def url(self, suffix="progress"):
+        return f"/assignments/{self.assignment.pk}/lessons/{self.video_lesson.pk}/{suffix}/"
+
+    def post_json(self, url, payload):
+        return self.client.post(url, data=json.dumps(payload), content_type="application/json")
+
+    def start(self, position=0):
+        return self.post_json(self.url("sessions/start"), {"position": position})
+
+    def test_resume_position_and_session_start_end_persist(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            response = self.start(10)
+        self.assertEqual(response.status_code, 201)
+        session_id = response.json()["session_id"]
+        progress = LessonProgress.objects.get(assignment=self.assignment, lesson=self.video_lesson)
+        self.assertEqual(progress.last_position_seconds, 10)
+
+        self.assertEqual(self.client.get(self.url()).json()["resume_position"], 10.0)
+        end_time = start_time + timedelta(seconds=10)
+        with patch("training.views.timezone.now", return_value=end_time):
+            response = self.post_json(self.url(f"sessions/{session_id}/end"), {
+                "position": 20, "completed_normally": True,
+            })
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        session = VideoWatchSession.objects.get(pk=session_id)
+        self.assertIsNotNone(session.ended_at)
+        self.assertEqual(session.ending_position_seconds, 20)
+        self.assertTrue(session.completed_normally)
+        self.assertEqual(session.active_watch_seconds, 10)
+
+    def test_employee_cannot_update_another_employees_assignment(self):
+        other_user = get_user_model().objects.create_user(username="playback-other", password="password")
+        other = Employee.objects.create(employee_code="GN-PLAYBACK", display_name="Other",
+            department=self.department, job_role=self.role, date_joined=self.now.date(), user=other_user)
+        other_assignment = TrainingAssignment.objects.create(employee=other, training_version=self.version,
+            department_at_assignment=self.department, job_role_at_assignment=self.role, assigned_by=self.user)
+        response = self.post_json(
+            f"/assignments/{other_assignment.pk}/lessons/{self.video_lesson.pk}/sessions/start/", {"position": 0}
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_lesson_from_another_version_is_rejected(self):
+        version = self.new_version()
+        module = Module.objects.create(training_version=version, title="Other", position=1)
+        lesson = Lesson.objects.create(module=module, title="Other video", position=1, content_type="VIDEO",
+            video_file="training/videos/other.mp4", video_duration_seconds=100, video_checksum="b" * 64)
+        response = self.post_json(
+            f"/assignments/{self.assignment.pk}/lessons/{lesson.pk}/sessions/start/", {"position": 0}
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_cancelled_assignment_rejects_progress(self):
+        self.assignment.status = TrainingAssignment.Status.CANCELLED
+        self.assignment.cancelled_at = self.now + timedelta(seconds=1)
+        self.assignment.cancellation_reason = "Cancelled for test"
+        self.assignment.save()
+        response = self.start()
+        self.assertEqual(response.status_code, 409)
+
+    def test_invalid_positions_return_controlled_errors(self):
+        for payload in ({"position": -1}, {"position": 101}, {"position": "bad"}):
+            with self.subTest(payload=payload):
+                response = self.start(payload["position"])
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("error", response.json())
+        response = self.client.post(self.url("sessions/start"), data="not-json", content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_malformed_session_ids_are_rejected_before_orm_lookup(self):
+        session_id = self.start().json()["session_id"]
+        for invalid_id in ([], {}, None, True, False, "bad", str(session_id), -1, 0):
+            with self.subTest(session_id=invalid_id):
+                response = self.post_json(self.url(), {"session_id": invalid_id, "position": 0})
+                self.assertEqual(response.status_code, 400)
+        response = self.post_json(self.url(), {"session_id": session_id + 1000, "position": 0})
+        self.assertEqual(response.status_code, 404)
+
+    def test_forward_seek_does_not_count_skipped_time(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=1)):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 99})
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual(response.json()["watched_seconds"], 0.0)
+        self.assertFalse(response.json()["completed"])
+
+    def test_repeated_tolerance_cannot_manufacture_completion(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+            for position in range(2, 92, 2):
+                response = self.post_json(self.url(), {"session_id": session_id, "position": position})
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertLessEqual(response.json()["watched_seconds"], 2.0)
+        self.assertFalse(response.json()["completed"])
+
+    def test_new_sessions_cannot_reissue_tolerance_without_elapsed_time(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            for index in range(5):
+                session_id = self.start(index * 2).json()["session_id"]
+                response = self.post_json(self.url(), {
+                    "session_id": session_id, "position": (index + 1) * 2,
+                })
+                self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertLessEqual(response.json()["watched_seconds"], 2.0)
+        self.assertFalse(response.json()["completed"])
+
+    def test_overlapping_sessions_use_their_own_positions(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            first_id = self.start(50).json()["session_id"]
+            second_id = self.start(0).json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=2)):
+            second_response = self.post_json(self.url(), {"session_id": second_id, "position": 52})
+            first_response = self.post_json(self.url(), {"session_id": first_id, "position": 52})
+        self.assertEqual(second_response.status_code, 200, second_response.content.decode())
+        self.assertEqual(second_response.json()["watched_seconds"], 0.0)
+        self.assertEqual(first_response.status_code, 200, first_response.content.decode())
+        self.assertEqual(first_response.json()["watched_ranges"], [[50.0, 52.0]])
+        self.assertEqual(VideoWatchSession.objects.get(pk=second_id).active_watch_seconds, 0)
+        self.assertEqual(VideoWatchSession.objects.get(pk=first_id).active_watch_seconds, 2)
+
+    def test_interleaved_sessions_merge_coverage_without_losing_updates(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            first_id = self.start(0).json()["session_id"]
+            second_id = self.start(20).json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=10)):
+            first_response = self.post_json(self.url(), {"session_id": first_id, "position": 10})
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=20)):
+            second_response = self.post_json(self.url(), {"session_id": second_id, "position": 30})
+        self.assertEqual(first_response.status_code, 200, first_response.content.decode())
+        self.assertEqual(second_response.status_code, 200, second_response.content.decode())
+        self.assertEqual(second_response.json()["watched_ranges"], [[0.0, 10.0], [20.0, 30.0]])
+
+    def test_backward_seek_replay_counts_active_time_without_new_coverage(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=10)):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 10})
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=11)):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 0})
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=21)):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 10})
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual(response.json()["resume_position"], 10.0)
+        self.assertEqual(response.json()["watched_seconds"], 10.0)
+        self.assertEqual(VideoWatchSession.objects.get(pk=session_id).active_watch_seconds, 20)
+
+    def test_idle_session_has_no_active_watch_time_or_lesson_completion(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(hours=1)):
+            response = self.post_json(self.url(f"sessions/{session_id}/end"), {
+                "position": 0, "completed_normally": True,
+            })
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual(response.json()["watched_seconds"], 0.0)
+        self.assertFalse(response.json()["completed"])
+        session = VideoWatchSession.objects.get(pk=session_id)
+        self.assertEqual(session.active_watch_seconds, 0)
+        self.assertTrue(session.completed_normally)
+
+    def test_completed_normally_requires_boolean_and_is_not_lesson_completion(self):
+        session_id = self.start().json()["session_id"]
+        response = self.post_json(self.url(f"sessions/{session_id}/end"), {
+            "position": 0, "completed_normally": "true",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIsNone(VideoWatchSession.objects.get(pk=session_id).ended_at)
+        response = self.post_json(self.url(f"sessions/{session_id}/end"), {
+            "position": 0, "completed_normally": True,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["completed"])
+
+    def test_overlapping_ranges_merge_and_replay_does_not_inflate_progress(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start(5).json()["session_id"]
+        progress = LessonProgress.objects.get(assignment=self.assignment, lesson=self.video_lesson)
+        progress.watched_ranges = [[0, 10], [20, 30]]
+        progress.save()
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=30)):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 25})
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual(response.json()["watched_ranges"], [[0.0, 30.0]])
+        self.assertEqual(response.json()["watched_seconds"], 30.0)
+
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=31)):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 30})
+        self.assertEqual(response.json()["watched_seconds"], 30.0)
+
+    def test_separate_legitimate_ranges_accumulate(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=10)):
+            self.post_json(self.url(), {"session_id": session_id, "position": 10})
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=11)):
+            self.post_json(self.url(), {"session_id": session_id, "position": 20})
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=21)):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 30})
+        self.assertEqual(response.json()["watched_ranges"], [[0.0, 10.0], [20.0, 30.0]])
+        self.assertEqual(response.json()["watched_seconds"], 20.0)
+
+    def test_minimum_watch_completion_and_completion_persistence(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=90)):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 90})
+        self.assertTrue(response.json()["completed"])
+        completed_at = LessonProgress.objects.get(pk=response.json()["progress_id"]).completed_at
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=91)):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 20})
+        progress = LessonProgress.objects.get(pk=response.json()["progress_id"])
+        self.assertTrue(response.json()["completed"])
+        self.assertEqual(progress.completed_at, completed_at)
+
+    def test_seeking_near_end_does_not_complete_lesson(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=1)):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 99})
+        self.assertFalse(response.json()["completed"])
 
 
 class ProgressTests(CurriculumTestCase):

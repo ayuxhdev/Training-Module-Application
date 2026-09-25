@@ -17,8 +17,11 @@ from .views import (
     TrainingAssignmentCreateView,
     TrainingAssignmentDetailView,
     TrainingAssignmentListView,
+    end_video_session,
     publish_version,
     retire_version,
+    start_video_session,
+    video_progress,
 )
 
 app_name = "training"
@@ -28,6 +31,9 @@ urlpatterns = [
     path("assignments/new/", TrainingAssignmentCreateView.as_view(), name="assignment-create"),
     path("assignments/role/new/", RoleTrainingAssignmentCreateView.as_view(), name="role-assignment-create"),
     path("assignments/<int:pk>/", TrainingAssignmentDetailView.as_view(), name="assignment-detail"),
+    path("assignments/<int:assignment_pk>/lessons/<int:lesson_pk>/progress/", video_progress, name="video-progress"),
+    path("assignments/<int:assignment_pk>/lessons/<int:lesson_pk>/sessions/start/", start_video_session, name="video-session-start"),
+    path("assignments/<int:assignment_pk>/lessons/<int:lesson_pk>/sessions/<int:session_pk>/end/", end_video_session, name="video-session-end"),
     path("trainings/", TrainingListView.as_view(), name="training-list"),
     path("trainings/new/", TrainingCreateView.as_view(), name="training-create"),
     path("trainings/<int:pk>/", TrainingDetailView.as_view(), name="training-detail"),

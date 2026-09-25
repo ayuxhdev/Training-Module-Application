@@ -1,13 +1,17 @@
+import json
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView, DetailView, FormView, ListView, UpdateView
 
 from organization.models import Employee
@@ -15,7 +19,8 @@ from organization.views import employee_scope
 
 from .forms import (LessonForm, ModuleForm, RoleTrainingAssignmentForm, TrainingAssignmentForm,
 					TrainingForm, TrainingVersionForm)
-from .models import Lesson, Module, RoleTrainingRequirement, Training, TrainingAssignment, TrainingVersion
+from .models import (Lesson, LessonProgress, Module, RoleTrainingRequirement, Training, TrainingAssignment,
+					 TrainingVersion, VideoWatchSession)
 
 
 class ContentPermissionMixin(LoginRequiredMixin, PermissionRequiredMixin):
@@ -42,6 +47,285 @@ def assignment_scope(user):
 	if can_manage_assignments(user):
 		return Employee.objects.all()
 	return employee_scope(user)
+
+
+VIDEO_HEARTBEAT_TOLERANCE = Decimal("2.0")
+
+
+def _json_body(request):
+	try:
+		body = json.loads(request.body or "{}")
+	except (TypeError, ValueError):
+		raise ValidationError("Request body must be valid JSON.")
+	if not isinstance(body, dict):
+		raise ValidationError("Request body must be a JSON object.")
+	return body
+
+
+def _position(value, field_name="position"):
+	if isinstance(value, bool) or value is None:
+		raise ValidationError(f"{field_name} must be a number.")
+	try:
+		position = Decimal(str(value))
+	except (InvalidOperation, ValueError):
+		raise ValidationError(f"{field_name} must be a number.")
+	if not position.is_finite():
+		raise ValidationError(f"{field_name} must be finite.")
+	return position
+
+
+def _merge_ranges(ranges, new_interval=None):
+	intervals = [(Decimal(str(start)), Decimal(str(end))) for start, end in ranges]
+	if new_interval:
+		intervals.append(tuple(Decimal(str(value)) for value in new_interval))
+	intervals.sort(key=lambda interval: interval[0])
+	merged = []
+	for start, end in intervals:
+		if not merged or start > merged[-1][1]:
+			merged.append([start, end])
+		else:
+			merged[-1][1] = max(merged[-1][1], end)
+	return [[float(start), float(end)] for start, end in merged]
+
+
+def _playback_context(request, assignment_pk, lesson_pk):
+	assignment = get_object_or_404(
+		TrainingAssignment.objects.select_related("employee", "training_version"),
+		pk=assignment_pk,
+		employee__user=request.user,
+	)
+	if not assignment.employee.is_active:
+		raise PermissionDenied("Inactive employees cannot access video progress.")
+	if assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
+		return None, None, JsonResponse({"error": "This assignment does not accept progress."}, status=409)
+	lesson = get_object_or_404(
+		Lesson.objects.select_related("module"),
+		pk=lesson_pk,
+		module__training_version_id=assignment.training_version_id,
+	)
+	if lesson.content_type != Lesson.ContentType.VIDEO:
+		return None, None, JsonResponse({"error": "Video progress requires a video lesson."}, status=400)
+	return assignment, lesson, None
+
+
+def _lock_playback_assignment(assignment):
+	# Match TrainingAssignment.save() lock order before serializing progress writes.
+	employee = Employee.objects.select_for_update().get(pk=assignment.employee_id)
+	TrainingVersion.objects.select_for_update().get(pk=assignment.training_version_id)
+	assignment = TrainingAssignment.objects.select_for_update().get(pk=assignment.pk)
+	if not employee.is_active:
+		raise PermissionDenied("Inactive employees cannot access video progress.")
+	return assignment
+
+
+def _progress_response(progress, session=None):
+	return {
+		"progress_id": progress.pk,
+		"resume_position": float(progress.last_position_seconds),
+		"watched_ranges": progress.watched_ranges,
+		"watched_seconds": float(progress.watched_seconds),
+		"progress_percent": float(progress.progress_percent),
+		"completed": progress.completed_at is not None,
+		"completed_at": progress.completed_at.isoformat() if progress.completed_at else None,
+		"session_id": session.pk if session else None,
+	}
+
+
+def _apply_observed_position(progress, session, position, now):
+	duration = Decimal(str(progress.lesson.video_duration_seconds))
+	if position < 0 or position > duration:
+		raise ValidationError("Position must be within the video duration.")
+	previous_position = Decimal(str(session.ending_position_seconds if session.ending_position_seconds is not None
+		else session.starting_position_seconds))
+	elapsed = max(Decimal("0"), Decimal(str((now - session.updated_at).total_seconds())))
+	session_elapsed = max(Decimal("0"), Decimal(str((now - session.started_at).total_seconds())))
+	# Accepted movement spends the session's one-time jitter allowance, including replay.
+	remaining_budget = max(Decimal("0"), session_elapsed + VIDEO_HEARTBEAT_TOLERANCE - session.active_watch_seconds)
+	interval = None
+	advance = position - previous_position
+	if 0 < advance <= elapsed + VIDEO_HEARTBEAT_TOLERANCE and advance <= remaining_budget:
+		candidate = _merge_ranges(progress.watched_ranges, (previous_position, position))
+		candidate_seconds = sum((Decimal(str(end)) - Decimal(str(start)) for start, end in candidate), Decimal("0"))
+		lesson_elapsed = max(Decimal("0"), Decimal(str((now - progress.started_at).total_seconds())))
+		new_unique_seconds = candidate_seconds - progress.watched_seconds
+		remaining_unique_budget = max(
+			Decimal("0"), lesson_elapsed + VIDEO_HEARTBEAT_TOLERANCE - progress.watched_seconds
+		)
+		if new_unique_seconds <= remaining_unique_budget:
+			interval = (previous_position, position)
+			session.active_watch_seconds += advance
+	progress.watched_ranges = _merge_ranges(progress.watched_ranges, interval)
+	progress.last_position_seconds = position
+	progress.last_accessed_at = now
+	# While open, this is the session's last observed position; on end, it is final.
+	session.ending_position_seconds = position
+	if progress.completed_at is None and progress.progress_percent >= progress.lesson.minimum_watch_percent:
+		progress.completed_at = now
+
+
+@login_required
+def video_progress(request, assignment_pk, lesson_pk):
+	assignment, lesson, error = _playback_context(request, assignment_pk, lesson_pk)
+	if error:
+		return error
+	if request.method == "GET":
+		progress = LessonProgress.objects.filter(assignment=assignment, lesson=lesson).first()
+		if progress is None:
+			return JsonResponse({
+				"resume_position": 0.0,
+				"watched_ranges": [],
+				"watched_seconds": 0.0,
+				"progress_percent": 0.0,
+				"completed": False,
+				"completed_at": None,
+				"session_id": None,
+			})
+		return JsonResponse(_progress_response(progress))
+	if request.method != "POST":
+		return JsonResponse({"error": "Only GET and POST are supported."}, status=405)
+	try:
+		body = _json_body(request)
+		session_id = body.get("session_id")
+		if type(session_id) is not int or session_id <= 0:
+			raise ValidationError("session_id must be a positive integer.")
+		position = _position(body.get("position"))
+		with transaction.atomic():
+			assignment = _lock_playback_assignment(assignment)
+			if assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
+				return JsonResponse({"error": "This assignment does not accept progress."}, status=409)
+			progress = LessonProgress.objects.select_for_update().filter(
+				assignment=assignment, lesson=lesson).first()
+			session = get_object_or_404(
+				VideoWatchSession.objects.select_for_update(),
+				pk=session_id,
+				assignment=assignment,
+				lesson=lesson,
+				ended_at__isnull=True,
+			)
+			if progress is None:
+				now = timezone.now()
+				progress = LessonProgress(
+					assignment=assignment,
+					lesson=lesson,
+					started_at=now,
+					last_accessed_at=now,
+					last_position_seconds=session.starting_position_seconds,
+				)
+			else:
+				now = timezone.now()
+			_apply_observed_position(progress, session, position, now)
+			progress.save()
+			session.save()
+			if assignment.status == TrainingAssignment.Status.ASSIGNED:
+				assignment.status = TrainingAssignment.Status.IN_PROGRESS
+				assignment.started_at = now
+				assignment.save()
+		return JsonResponse(_progress_response(progress, session))
+	except (ValidationError, IntegrityError, ValueError) as exc:
+		return JsonResponse({"error": str(exc)}, status=400)
+
+
+@require_http_methods(["POST"])
+@login_required
+def start_video_session(request, assignment_pk, lesson_pk):
+	assignment, lesson, error = _playback_context(request, assignment_pk, lesson_pk)
+	if error:
+		return error
+	try:
+		body = _json_body(request)
+		requested_position = body.get("position")
+		with transaction.atomic():
+			assignment = _lock_playback_assignment(assignment)
+			if assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
+				return JsonResponse({"error": "This assignment does not accept progress."}, status=409)
+			progress = LessonProgress.objects.select_for_update().filter(
+				assignment=assignment, lesson=lesson).first()
+			if requested_position is None:
+				requested_position = progress.last_position_seconds if progress else 0
+			position = _position(requested_position, "position")
+			duration = Decimal(str(lesson.video_duration_seconds))
+			if position < 0 or position > duration:
+				raise ValidationError("Position must be within the video duration.")
+			now = timezone.now()
+			session = VideoWatchSession(
+				assignment=assignment,
+				lesson=lesson,
+				started_at=now,
+				starting_position_seconds=position,
+				ending_position_seconds=position,
+				session_identifier=str(body.get("session_identifier", "")),
+				device_identifier=str(body.get("device_identifier", "")),
+			)
+			session.save()
+			if progress is None:
+				progress = LessonProgress(
+					assignment=assignment,
+					lesson=lesson,
+					started_at=now,
+					last_accessed_at=now,
+					last_position_seconds=position,
+				)
+			else:
+				progress.last_position_seconds = position
+				progress.last_accessed_at = now
+			progress.save()
+			if assignment.status == TrainingAssignment.Status.ASSIGNED:
+				assignment.status = TrainingAssignment.Status.IN_PROGRESS
+				assignment.started_at = now
+				assignment.save()
+		return JsonResponse(_progress_response(progress, session), status=201)
+	except (ValidationError, IntegrityError, ValueError) as exc:
+		return JsonResponse({"error": str(exc)}, status=400)
+
+
+@require_http_methods(["POST"])
+@login_required
+def end_video_session(request, assignment_pk, lesson_pk, session_pk):
+	assignment, lesson, error = _playback_context(request, assignment_pk, lesson_pk)
+	if error:
+		return error
+	try:
+		body = _json_body(request)
+		position = _position(body.get("position"))
+		completed_normally = body.get("completed_normally", False)
+		if not isinstance(completed_normally, bool):
+			raise ValidationError("completed_normally must be a boolean.")
+		with transaction.atomic():
+			assignment = _lock_playback_assignment(assignment)
+			if assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
+				return JsonResponse({"error": "This assignment does not accept progress."}, status=409)
+			progress = LessonProgress.objects.select_for_update().filter(
+				assignment=assignment, lesson=lesson).first()
+			session = get_object_or_404(
+				VideoWatchSession.objects.select_for_update(),
+				pk=session_pk,
+				assignment=assignment,
+				lesson=lesson,
+				ended_at__isnull=True,
+			)
+			if progress is None:
+				now = timezone.now()
+				progress = LessonProgress(
+					assignment=assignment,
+					lesson=lesson,
+					started_at=now,
+					last_accessed_at=now,
+					last_position_seconds=session.starting_position_seconds,
+				)
+			else:
+				now = timezone.now()
+			_apply_observed_position(progress, session, position, now)
+			progress.save()
+			session.ended_at = now
+			session.ending_position_seconds = position
+			session.completed_normally = completed_normally
+			session.active_watch_seconds = min(
+				session.active_watch_seconds, Decimal(str((now - session.started_at).total_seconds()))
+			)
+			session.save()
+		return JsonResponse(_progress_response(progress, session))
+	except (ValidationError, IntegrityError, ValueError) as exc:
+		return JsonResponse({"error": str(exc)}, status=400)
 
 
 class TrainingAssignmentListView(AssignmentAccessMixin, ListView):
