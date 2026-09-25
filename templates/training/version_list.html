@@ -1,0 +1,2 @@
+{% extends "base.html" %}
+{% block content %}<h1>{{ training.catalog_title }} versions</h1><ul>{% for version in versions %}<li><a href="{% url 'training:version-detail' version.pk %}">{{ version }}</a> ({{ version.get_status_display }})</li>{% empty %}<li>No versions found.</li>{% endfor %}</ul>{% endblock %}

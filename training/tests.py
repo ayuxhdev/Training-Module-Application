@@ -1,11 +1,16 @@
 from datetime import timedelta
 from decimal import Decimal
+from importlib import import_module
 
+from django.apps import apps
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
+from django.test import Client, TestCase
 
 from config.model_test_utils import CurriculumTestCase
-from .models import Lesson, LessonProgress, Module, RoleTrainingRequirement, TrainingAssignment, VideoWatchSession
+from .models import Lesson, LessonProgress, Module, RoleTrainingRequirement, Training, TrainingAssignment, TrainingVersion, VideoWatchSession
 
 
 class CurriculumTests(CurriculumTestCase):
@@ -55,6 +60,286 @@ class CurriculumTests(CurriculumTestCase):
             Lesson.objects.filter(pk=self.text_lesson.pk).update(body="Changed")
         with self.assertRaises(ValidationError):
             Lesson.objects.bulk_update([self.text_lesson], ["body"])
+
+
+class ContentPermissionTests(TestCase):
+    def test_only_content_roles_receive_management_permissions(self):
+        coordinator = Group.objects.get(name="Training Coordinator")
+        self.assertTrue(coordinator.permissions.filter(codename="change_training").exists())
+        self.assertTrue(coordinator.permissions.filter(codename="change_lesson").exists())
+        for name in ("Manager", "Trainer", "Supervisor", "Employee"):
+            with self.subTest(group=name):
+                self.assertFalse(Group.objects.get(name=name).permissions.filter(
+                    content_type__app_label="training"
+                ).exists())
+
+    def test_permission_migration_preserves_existing_grants_and_memberships(self):
+        migration = import_module("accounts.migrations.0002_training_content_permissions")
+        unrelated = Permission.objects.get(content_type__app_label="auth", codename="view_group")
+        for name in ("Administrator", "Training Coordinator"):
+            group = Group.objects.get(name=name)
+            member = get_user_model().objects.create_user(username=f"existing-{name}")
+            group.permissions.add(unrelated)
+            group.user_set.add(member)
+        migration.grant_content_permissions(apps, None)
+        migration.grant_content_permissions(apps, None)
+        for name in ("Administrator", "Training Coordinator"):
+            group = Group.objects.get(name=name)
+            self.assertTrue(group.permissions.filter(pk=unrelated.pk).exists())
+            self.assertTrue(group.user_set.filter(username=f"existing-{name}").exists())
+            for model in migration.CONTENT_MODELS:
+                for action in migration.CONTENT_ACTIONS:
+                    self.assertTrue(group.permissions.filter(
+                        content_type__app_label="training", codename=f"{action}_{model}"
+                    ).exists())
+            self.assertEqual(Group.objects.filter(name=name).count(), 1)
+        for name in ("Manager", "Trainer", "Supervisor", "Employee"):
+            self.assertFalse(Group.objects.get(name=name).permissions.filter(
+                content_type__app_label="training",
+            ).exists())
+
+    def test_permission_migration_reverse_preserves_groups_grants_and_memberships(self):
+        migration = import_module("accounts.migrations.0002_training_content_permissions")
+        group = Group.objects.get(name="Training Coordinator")
+        member = get_user_model().objects.create_user(username="content-member")
+        unrelated = Permission.objects.get(content_type__app_label="auth", codename="view_group")
+        group.permissions.add(unrelated)
+        group.user_set.add(member)
+        migration.Migration.operations[0].reverse_code(apps, None)
+        self.assertTrue(Group.objects.filter(pk=group.pk).exists())
+        self.assertTrue(group.user_set.filter(pk=member.pk).exists())
+        self.assertTrue(group.permissions.filter(pk=unrelated.pk).exists())
+        self.assertTrue(group.permissions.filter(codename="change_lesson").exists())
+
+
+class ContentManagementViewTests(CurriculumTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.coordinator = get_user_model().objects.create_user(username="content-coordinator", password="password")
+        Group.objects.get(name="Training Coordinator").user_set.add(cls.coordinator)
+        cls.manager = get_user_model().objects.create_user(username="content-manager", password="password")
+        Group.objects.get(name="Manager").user_set.add(cls.manager)
+
+    def client_for(self, user):
+        client = Client()
+        self.assertTrue(client.login(username=user.username, password="password"))
+        return client
+
+    def test_non_content_role_is_denied_by_backend(self):
+        response = self.client_for(self.manager).get("/trainings/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_published_version_is_not_in_edit_queryset(self):
+        response = self.client_for(self.coordinator).get(f"/versions/{self.version.pk}/edit/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_duplicate_version_number_is_a_form_error(self):
+        other_training = Training.objects.create(code="OTHER", catalog_title="Other", created_by=self.user)
+        response = self.client_for(self.coordinator).post(
+            f"/trainings/{self.training.pk}/versions/new/",
+            {"version_number": self.version.version_number, "title": "Duplicate version",
+             "training": other_training.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already has that version number")
+        self.assertEqual(response.context["form"]["version_number"].value(), str(self.version.version_number))
+        self.assertFalse(TrainingVersion.objects.filter(title="Duplicate version").exists())
+
+    def test_version_create_uses_url_training_not_posted_training(self):
+        other_training = Training.objects.create(code="OTHER", catalog_title="Other", created_by=self.user)
+        response = self.client_for(self.coordinator).post(
+            f"/trainings/{self.training.pk}/versions/new/",
+            {"version_number": 2, "title": "New version", "training": other_training.pk},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(TrainingVersion.objects.get(title="New version").training_id, self.training.pk)
+
+    def test_module_create_validates_with_draft_parent(self):
+        version = self.new_version()
+        response = self.client_for(self.coordinator).post(
+            f"/versions/{version.pk}/modules/new/",
+            {"title": "New module", "position": 1, "training_version": self.version.pk},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Module.objects.get(title="New module").training_version_id, version.pk)
+        self.assertEqual(self.client_for(self.coordinator).post(
+            f"/versions/{self.version.pk}/modules/new/", {"title": "Rejected", "position": 3}
+        ).status_code, 404)
+
+    def test_duplicate_module_position_on_create_is_a_form_error(self):
+        version = self.new_version()
+        Module.objects.create(training_version=version, title="Existing module", position=1)
+        response = self.client_for(self.coordinator).post(
+            f"/versions/{version.pk}/modules/new/",
+            {"title": "Duplicate module", "position": 1, "training_version": self.version.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already has a module at that position")
+        self.assertEqual(response.context["form"]["position"].value(), "1")
+        self.assertFalse(Module.objects.filter(title="Duplicate module").exists())
+
+    def test_duplicate_module_position_on_edit_is_a_form_error(self):
+        version = self.new_version()
+        Module.objects.create(training_version=version, title="First module", position=1)
+        module = Module.objects.create(training_version=version, title="Second module", position=2)
+        response = self.client_for(self.coordinator).post(
+            f"/modules/{module.pk}/edit/",
+            {"title": "Changed module", "position": 1, "training_version": self.version.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already has a module at that position")
+        module.refresh_from_db()
+        self.assertEqual((module.title, module.position, module.training_version_id),
+                         ("Second module", 2, version.pk))
+
+    def test_lesson_create_validates_with_draft_parent(self):
+        version = self.new_version()
+        module = Module.objects.create(training_version=version, title="New module", position=1)
+        response = self.client_for(self.coordinator).post(
+            f"/modules/{module.pk}/lessons/new/",
+            {"title": "New lesson", "position": 1, "content_type": "TEXT",
+             "body": "Read this", "minimum_watch_percent": "90", "module": self.module.pk},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Lesson.objects.get(title="New lesson").module_id, module.pk)
+        self.assertEqual(self.client_for(self.coordinator).post(
+            f"/modules/{self.module.pk}/lessons/new/",
+            {"title": "Rejected", "position": 3, "content_type": "TEXT", "body": "Read this"},
+        ).status_code, 404)
+
+    def test_duplicate_lesson_position_on_create_is_a_form_error(self):
+        version = self.new_version()
+        module = Module.objects.create(training_version=version, title="Draft module", position=1)
+        Lesson.objects.create(module=module, title="First lesson", position=1,
+                              content_type="TEXT", body="First")
+        response = self.client_for(self.coordinator).post(
+            f"/modules/{module.pk}/lessons/new/",
+            {"title": "Duplicate lesson", "position": 1, "content_type": "TEXT",
+             "body": "Second", "minimum_watch_percent": "90", "module": self.module.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already has a lesson at that position")
+        self.assertEqual(response.context["form"]["position"].value(), "1")
+        self.assertFalse(Lesson.objects.filter(title="Duplicate lesson").exists())
+
+    def test_duplicate_lesson_position_on_edit_is_a_form_error(self):
+        version = self.new_version()
+        module = Module.objects.create(training_version=version, title="Draft module", position=1)
+        Lesson.objects.create(module=module, title="First lesson", position=1,
+                              content_type="TEXT", body="First")
+        lesson = Lesson.objects.create(module=module, title="Second lesson", position=2,
+                                       content_type="TEXT", body="Second")
+        response = self.client_for(self.coordinator).post(
+            f"/lessons/{lesson.pk}/edit/",
+            {"title": "Changed lesson", "position": 1, "content_type": "TEXT",
+             "body": "Changed", "minimum_watch_percent": "90", "module": self.module.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already has a lesson at that position")
+        lesson.refresh_from_db()
+        self.assertEqual((lesson.title, lesson.position, lesson.body, lesson.module_id),
+                         ("Second lesson", 2, "Second", module.pk))
+
+    def test_positions_can_repeat_under_different_draft_parents(self):
+        first_version = self.new_version()
+        second_version = TrainingVersion.objects.create(training=self.training, version_number=3,
+                                                        title="Safety v3", created_by=self.user)
+        client = self.client_for(self.coordinator)
+        for version in (first_version, second_version):
+            response = client.post(f"/versions/{version.pk}/modules/new/",
+                                   {"title": f"Module {version.pk}", "position": 1})
+            self.assertEqual(response.status_code, 302)
+            module = Module.objects.get(training_version=version, position=1)
+            response = client.post(f"/modules/{module.pk}/lessons/new/", {
+                "title": f"Lesson {module.pk}", "position": 1, "content_type": "TEXT",
+                "body": "Read this", "minimum_watch_percent": "90",
+            })
+            self.assertEqual(response.status_code, 302)
+            self.assertTrue(Lesson.objects.filter(module=module, position=1).exists())
+
+    def test_draft_module_edit_uses_its_own_version(self):
+        version = self.new_version()
+        module = Module.objects.create(training_version=version, title="Original module", position=1)
+        client = self.client_for(self.coordinator)
+        self.assertEqual(client.get(f"/modules/{module.pk}/edit/").status_code, 200)
+        response = client.post(f"/modules/{module.pk}/edit/", {
+            "title": "Updated module", "position": 1, "training_version": self.version.pk,
+        })
+        self.assertEqual(response.status_code, 302)
+        module.refresh_from_db()
+        self.assertEqual(module.title, "Updated module")
+        self.assertEqual(module.training_version_id, version.pk)
+
+    def test_draft_lesson_edit_uses_its_own_module_and_version(self):
+        version = self.new_version()
+        module = Module.objects.create(training_version=version, title="Draft module", position=1)
+        lesson = Lesson.objects.create(module=module, title="Original lesson", position=1,
+                                       content_type="TEXT", body="Original body")
+        client = self.client_for(self.coordinator)
+        self.assertEqual(client.get(f"/lessons/{lesson.pk}/edit/").status_code, 200)
+        response = client.post(f"/lessons/{lesson.pk}/edit/", {
+            "title": "Updated lesson", "position": 1, "content_type": "TEXT",
+            "body": "Updated body", "minimum_watch_percent": "90", "module": self.module.pk,
+        })
+        self.assertEqual(response.status_code, 302)
+        lesson.refresh_from_db()
+        self.assertEqual(lesson.title, "Updated lesson")
+        self.assertEqual(lesson.body, "Updated body")
+        self.assertEqual(lesson.module_id, module.pk)
+
+    def test_published_and_retired_content_cannot_be_edited_by_url(self):
+        client = self.client_for(self.coordinator)
+        for status in ("PUBLISHED", "RETIRED"):
+            if status == "RETIRED":
+                self.version.status = status
+                self.version.save()
+            for path, data in (
+                (f"/modules/{self.module.pk}/edit/", {"title": "Changed", "position": 1}),
+                (f"/lessons/{self.text_lesson.pk}/edit/", {
+                    "title": "Changed", "position": 1, "content_type": "TEXT",
+                    "body": "Changed", "minimum_watch_percent": "90",
+                }),
+            ):
+                with self.subTest(status=status, path=path):
+                    self.assertEqual(client.get(path).status_code, 404)
+                    self.assertEqual(client.post(path, data).status_code, 404)
+        self.module.refresh_from_db()
+        self.text_lesson.refresh_from_db()
+        self.assertEqual(self.module.title, "Introduction")
+        self.assertEqual(self.text_lesson.body, "Safety instructions")
+
+    def test_failed_publication_renders_persisted_draft_state(self):
+        version = self.new_version()
+        response = self.client_for(self.coordinator).post(f"/versions/{version.pk}/publish/")
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "Status: Draft", status_code=400)
+        self.assertContains(response, "final assessment", status_code=400)
+        self.assertContains(response, "Publish", status_code=400)
+        self.assertNotContains(response, "Retire", status_code=400)
+        version.refresh_from_db()
+        self.assertEqual(version.status, "DRAFT")
+
+    def test_draft_ordering_and_lesson_types_are_managed(self):
+        version = self.new_version()
+        second = Module.objects.create(training_version=version, title="Second", position=2)
+        first = Module.objects.create(training_version=version, title="First", position=1)
+        Lesson.objects.create(module=second, title="Text", position=1, content_type="TEXT", body="Read this")
+        Lesson.objects.create(module=first, title="Video", position=1, content_type="VIDEO",
+                              video_file="training/videos/lesson.mp4", video_duration_seconds=30,
+                              video_checksum="a" * 64)
+        self.assertEqual(list(version.modules.values_list("title", flat=True)), ["First", "Second"])
+        self.assertEqual(list(first.lessons.values_list("title", flat=True)), ["Video"])
+        self.assertEqual(list(second.lessons.values_list("title", flat=True)), ["Text"])
+
+    def test_invalid_lesson_content_is_rejected(self):
+        version = self.new_version()
+        module = Module.objects.create(training_version=version, title="Module", position=1)
+        with self.assertRaises(ValidationError):
+            Lesson.objects.create(module=module, title="Empty text", position=1, content_type="TEXT")
+        with self.assertRaises(ValidationError):
+            Lesson.objects.create(module=module, title="Incomplete video", position=2, content_type="VIDEO",
+                                  video_duration_seconds=30, video_checksum="a" * 64)
 
 
 class AssignmentTests(CurriculumTestCase):

@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ training.catalog_title }}</h1><p>{{ training.description }}</p>
+{% if perms.training.change_training %}<a href="{% url 'training:training-update' training.pk %}">Edit</a>{% endif %}
+<h2>Versions</h2><a href="{% url 'training:version-list' training.pk %}">View versions</a>{% if perms.training.add_trainingversion %} <a href="{% url 'training:version-create' training.pk %}">Add version</a>{% endif %}
+{% endblock %}

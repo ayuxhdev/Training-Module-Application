@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Training</h1>
+{% if perms.training.add_training %}<a href="{% url 'training:training-create' %}">Add training</a>{% endif %}
+<ul>{% for training in trainings %}<li><a href="{% url 'training:training-detail' training.pk %}">{{ training.code }} - {{ training.catalog_title }}</a></li>{% empty %}<li>No training found.</li>{% endfor %}</ul>
+{% endblock %}
