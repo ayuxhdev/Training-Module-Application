@@ -1,0 +1,2 @@
+{% extends "base.html" %}
+{% block content %}<h1>Question bank</h1><a href="{% url 'assessments:question-create' %}">Add question</a><ul>{% for question in questions %}<li><a href="{% url 'assessments:question-detail' question.pk %}">{{ question.code }} - {{ question.topic }}</a> {% if not question.is_active %}(inactive){% endif %}</li>{% empty %}<li>No questions available.</li>{% endfor %}</ul>{% endblock %}

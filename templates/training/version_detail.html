@@ -4,6 +4,7 @@
 {% if errors %}<p>{{ errors }}</p>{% endif %}
 {% if version.status == 'DRAFT' and perms.training.change_trainingversion %}<a href="{% url 'training:version-update' version.pk %}">Edit draft</a><form method="post" action="{% url 'training:version-publish' version.pk %}" style="display:inline">{% csrf_token %}<button type="submit">Publish</button></form>{% endif %}
 {% if version.status == 'PUBLISHED' and perms.training.change_trainingversion %}<form method="post" action="{% url 'training:version-retire' version.pk %}">{% csrf_token %}<button type="submit">Retire</button></form>{% endif %}
+{% if perms.assessments.view_assessment %}<p><a href="{% url 'assessments:assessment-list' version.pk %}">Manage assessments</a></p>{% endif %}
 {% if version.status == 'DRAFT' %}<a href="{% url 'training:module-create' version.pk %}">Add module</a>{% endif %}
 {% for module in version.modules.all %}<section><h2>{{ module.position }}. {{ module.title }}</h2><p>{{ module.description }}</p>{% if version.status == 'DRAFT' %}<a href="{% url 'training:module-update' module.pk %}">Edit module</a> <a href="{% url 'training:lesson-create' module.pk %}">Add lesson</a>{% endif %}<ol>{% for lesson in module.lessons.all %}<li>{{ lesson.position }}. {{ lesson.title }} ({{ lesson.get_content_type_display }}){% if version.status == 'DRAFT' %} <a href="{% url 'training:lesson-update' lesson.pk %}">Edit</a>{% endif %}</li>{% endfor %}</ol></section>{% endfor %}
 {% endblock %}

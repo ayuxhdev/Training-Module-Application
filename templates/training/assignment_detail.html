@@ -8,4 +8,11 @@
 <p>Department snapshot: {{ assignment.department_at_assignment }}</p>
 <p>Job role snapshot: {{ assignment.job_role_at_assignment }}</p>
 <a href="{% url 'training:assignment-list' %}">Back to assignments</a>
+{% if assignment.employee.user == user and assignment.employee.is_active and assignment.status != 'COMPLETED' and assignment.status != 'CANCELLED' %}
+<h2>Assessments</h2>
+{% for assessment in assignment.training_version.assessments.all %}
+	<p>{{ assessment.title }} ({{ assessment.get_kind_display }})
+	<form method="post" action="{% url 'assessments:attempt-start' assignment.pk assessment.pk %}">{% csrf_token %}<button type="submit">Start assessment</button></form></p>
+{% endfor %}
+{% endif %}
 {% endblock %}

@@ -1,0 +1,2 @@
+{% extends "base.html" %}
+{% block content %}<h1>{{ version }} assessments</h1>{% if version.status == 'DRAFT' %}<a href="{% url 'assessments:assessment-create' version.pk %}">Add assessment</a>{% endif %}<ul>{% for assessment in assessments %}<li><a href="{% url 'assessments:assessment-detail' assessment.pk %}">{{ assessment.get_kind_display }}: {{ assessment.title }}</a> ({{ assessment.questions.count }} questions)</li>{% empty %}<li>No assessments.</li>{% endfor %}</ul>{% endblock %}
