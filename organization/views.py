@@ -6,6 +6,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
+from audit.mixins import AuditedFormMixin
+from audit.services import audit_snapshot, record_event
 from .forms import DepartmentForm, EmployeeDeactivateForm, EmployeeForm, JobRoleForm, may_manage_linked_user
 from .models import Department, Employee, JobRole
 
@@ -60,7 +62,7 @@ class EmployeeDetailView(LoginRequiredMixin, DetailView):
 			pk__in=employee_scope(self.request.user).values("pk"))
 
 
-class ManageEmployeeMixin(LoginRequiredMixin):
+class ManageEmployeeMixin(AuditedFormMixin, LoginRequiredMixin):
 	permission_required = MANAGE_EMPLOYEES
 
 	def dispatch(self, request, *args, **kwargs):
@@ -106,9 +108,17 @@ def deactivate_employee(request, pk):
 			{"employee": employee, "form": form},
 			status=400,
 		)
+	before = audit_snapshot(employee)
 	employee.is_active = False
 	employee.deactivation_reason = form.cleaned_data["reason"]
 	employee.save()
+	record_event(
+		request.user,
+		"organization.employee.deactivated",
+		employee,
+		before=before,
+		after=audit_snapshot(employee),
+	)
 	return redirect("organization:employee-detail", pk=employee.pk)
 
 

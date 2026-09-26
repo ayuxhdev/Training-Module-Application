@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Audit history</h1>
+<form method="get">
+  {{ filter_form.non_field_errors }}
+  <p>{{ filter_form.actor.label_tag }} {{ filter_form.actor }} {{ filter_form.actor.errors }}</p>
+  <p>{{ filter_form.action.label_tag }} {{ filter_form.action }} {{ filter_form.action.errors }}</p>
+  <p>{{ filter_form.start_date.label_tag }} {{ filter_form.start_date }} {{ filter_form.start_date.errors }}</p>
+  <p>{{ filter_form.end_date.label_tag }} {{ filter_form.end_date }} {{ filter_form.end_date.errors }}</p>
+  <p>{{ filter_form.target_type.label_tag }} {{ filter_form.target_type }} {{ filter_form.target_type.errors }}</p>
+  <button type="submit">Filter</button>
+</form>
+<table>
+  <thead><tr><th>When</th><th>Performed By</th><th>Action</th><th>Target</th><th>Before</th><th>After</th><th>Reason</th></tr></thead>
+  <tbody>
+  {% for entry in audit_logs %}
+    <tr>
+      <td>{{ entry.occurred_at|date:"Y-m-d H:i:s" }}</td>
+      <td>{{ entry.actor_label_snapshot }}</td>
+      <td>{{ entry.action }}</td>
+      <td>{{ entry.entity_type }} #{{ entry.entity_id }}</td>
+      <td><pre>{{ entry.before_data }}</pre></td>
+      <td><pre>{{ entry.after_data }}</pre></td>
+      <td>{{ entry.reason }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="7">No audit events found.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

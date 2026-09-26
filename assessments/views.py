@@ -12,6 +12,8 @@ from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
+from audit.mixins import AuditedFormMixin
+from audit.services import audit_snapshot, record_event
 from organization.models import Employee
 from training.models import Lesson, LessonProgress, Module, TrainingAssignment, TrainingVersion
 
@@ -33,7 +35,7 @@ from .models import (
 )
 
 
-class AssessmentPermissionMixin(LoginRequiredMixin, PermissionRequiredMixin):
+class AssessmentPermissionMixin(AuditedFormMixin, LoginRequiredMixin, PermissionRequiredMixin):
 	raise_exception = True
 
 
@@ -61,11 +63,17 @@ class QuestionCreateView(AssessmentPermissionMixin, CreateView):
 		with transaction.atomic():
 			form.instance.created_by = self.request.user
 			response = super().form_valid(form)
-			QuestionRevision.objects.create(
+			revision = QuestionRevision.objects.create(
 				question=self.object,
 				revision_number=1,
 				prompt="Draft question",
 				created_by=self.request.user,
+			)
+			record_event(
+				self.request.user,
+				"assessments.questionrevision.created",
+				revision,
+				after=audit_snapshot(revision),
 			)
 		return response
 
@@ -103,6 +111,12 @@ def create_question_revision(request, pk):
 				revision.revision_number = number
 				revision.created_by = request.user
 				revision.save()
+				record_event(
+					request.user,
+					"assessments.questionrevision.created",
+					revision,
+					after=audit_snapshot(revision),
+				)
 			return redirect("assessments:revision-detail", pk=revision.pk)
 	else:
 		form = QuestionRevisionForm()
@@ -117,9 +131,17 @@ def edit_question_revision(request, pk):
 		form = QuestionRevisionForm(request.POST, instance=revision)
 		options = QuestionOptionFormSet(request.POST, instance=revision)
 		if form.is_valid() and options.is_valid():
+			before = audit_snapshot(revision)
 			with transaction.atomic():
 				form.save()
 				options.save()
+				record_event(
+					request.user,
+					"assessments.questionrevision.updated",
+					revision,
+					before=before,
+					after={**audit_snapshot(revision), "content_updated": True},
+				)
 			return redirect("assessments:revision-detail", pk=revision.pk)
 	else:
 		form = QuestionRevisionForm(instance=revision)
@@ -142,6 +164,7 @@ def freeze_question_revision(request, pk):
 	if request.method != "POST":
 		raise Http404
 	revision = get_object_or_404(QuestionRevision, pk=pk, status=QuestionRevision.Status.DRAFT)
+	before = audit_snapshot(revision)
 	revision.status = QuestionRevision.Status.FROZEN
 	revision.frozen_at = timezone.now()
 	try:
@@ -149,6 +172,13 @@ def freeze_question_revision(request, pk):
 	except ValidationError as exc:
 		revision.refresh_from_db()
 		return render(request, "assessments/revision_detail.html", {"revision": revision, "errors": exc}, status=400)
+	record_event(
+		request.user,
+		"assessments.questionrevision.frozen",
+		revision,
+		before=before,
+		after=audit_snapshot(revision),
+	)
 	return redirect("assessments:revision-detail", pk=revision.pk)
 
 
@@ -301,7 +331,7 @@ def _attempt_total(assessment):
 
 
 @transaction.atomic
-def _try_complete_assignment(assignment):
+def _try_complete_assignment(assignment, actor=None):
 	from certifications.services import issue_completed_assignment_certificate
 
 	assignment = TrainingAssignment.objects.select_for_update().get(pk=assignment.pk)
@@ -310,6 +340,7 @@ def _try_complete_assignment(assignment):
 		return
 	if assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
 		return
+	previous_status = assignment.status
 	assignment.status = TrainingAssignment.Status.COMPLETED
 	assignment.completed_at = timezone.now()
 	try:
@@ -317,7 +348,14 @@ def _try_complete_assignment(assignment):
 	except ValidationError:
 		assignment.refresh_from_db()
 	if assignment.status == TrainingAssignment.Status.COMPLETED:
-		issue_completed_assignment_certificate(assignment.pk)
+		record_event(
+			actor,
+			"training.trainingassignment.completed",
+			assignment,
+			before={"status": previous_status},
+			after={"status": assignment.status, "completed_at": assignment.completed_at.isoformat()},
+		)
+		issue_completed_assignment_certificate(assignment.pk, actor=actor)
 
 
 @login_required
@@ -358,6 +396,17 @@ def start_attempt(request, assignment_pk, assessment_pk):
 				deadline_at=started + timedelta(minutes=assessment.time_limit_minutes) if assessment.time_limit_minutes else None,
 				maximum_points=maximum,
 				pass_percentage_snapshot=assessment.pass_percentage,
+			)
+			record_event(
+				request.user,
+				"assessments.attempt.started",
+				attempt,
+				after={
+					"assignment_id": assignment.pk,
+					"assessment_id": assessment.pk,
+					"attempt_number": attempt.attempt_number,
+					"status": attempt.status,
+				},
 			)
 			if assignment.status == TrainingAssignment.Status.ASSIGNED:
 				assignment.status = TrainingAssignment.Status.IN_PROGRESS
@@ -484,8 +533,23 @@ def submit_attempt(request, pk):
 				and score * 100 >= attempt.maximum_points * attempt.pass_percentage_snapshot
 			)
 			attempt.save()
+			record_event(
+				request.user,
+				"assessments.attempt.submitted" if attempt.status == AssessmentAttempt.Status.SUBMITTED else "assessments.attempt.expired",
+				attempt,
+				before={"status": AssessmentAttempt.Status.IN_PROGRESS},
+				after={
+					"assignment_id": assignment.pk,
+					"assessment_id": attempt.assessment_id,
+					"attempt_number": attempt.attempt_number,
+					"status": attempt.status,
+					"score_points": str(attempt.score_points),
+					"maximum_points": str(attempt.maximum_points),
+					"passed": attempt.passed,
+				},
+			)
 			if attempt.passed:
-				_try_complete_assignment(assignment)
+				_try_complete_assignment(assignment, actor=request.user)
 		return redirect("assessments:attempt-detail", pk=attempt.pk)
 	except (ValidationError, IntegrityError, InvalidOperation, ValueError) as exc:
 		return JsonResponse({"error": str(exc)}, status=400)

@@ -11,6 +11,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.test import Client, TestCase
 
+from audit.models import AuditLog
 from config.model_test_utils import CurriculumTestCase
 from organization.models import Employee
 from .models import Lesson, LessonProgress, Module, RoleTrainingRequirement, Training, TrainingAssignment, TrainingVersion, VideoWatchSession
@@ -728,14 +729,19 @@ class PlaybackViewTests(CurriculumTestCase):
         with patch("training.views.timezone.now", return_value=start_time):
             session_id = self.start().json()["session_id"]
         with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=90)):
-            response = self.post_json(self.url(), {"session_id": session_id, "position": 90})
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.post_json(self.url(), {"session_id": session_id, "position": 90})
         self.assertTrue(response.json()["completed"])
         completed_at = LessonProgress.objects.get(pk=response.json()["progress_id"]).completed_at
         with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=91)):
-            response = self.post_json(self.url(), {"session_id": session_id, "position": 20})
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.post_json(self.url(), {"session_id": session_id, "position": 20})
         progress = LessonProgress.objects.get(pk=response.json()["progress_id"])
         self.assertTrue(response.json()["completed"])
         self.assertEqual(progress.completed_at, completed_at)
+        self.assertEqual(AuditLog.objects.filter(
+            action="training.lessonprogress.completed", entity_id=str(progress.pk),
+        ).count(), 1)
 
     def test_seeking_near_end_does_not_complete_lesson(self):
         start_time = self.now + timedelta(minutes=1)

@@ -14,6 +14,8 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView, DetailView, FormView, ListView, UpdateView
 
+from audit.mixins import AuditedFormMixin
+from audit.services import audit_snapshot, record_event
 from organization.models import Employee
 from organization.views import employee_scope
 
@@ -23,7 +25,7 @@ from .models import (Lesson, LessonProgress, Module, RoleTrainingRequirement, Tr
 					 TrainingVersion, VideoWatchSession)
 
 
-class ContentPermissionMixin(LoginRequiredMixin, PermissionRequiredMixin):
+class ContentPermissionMixin(AuditedFormMixin, LoginRequiredMixin, PermissionRequiredMixin):
 	raise_exception = True
 
 
@@ -195,6 +197,7 @@ def video_progress(request, assignment_pk, lesson_pk):
 				return JsonResponse({"error": "This assignment does not accept progress."}, status=409)
 			progress = LessonProgress.objects.select_for_update().filter(
 				assignment=assignment, lesson=lesson).first()
+			was_completed = bool(progress and progress.completed_at)
 			session = get_object_or_404(
 				VideoWatchSession.objects.select_for_update(),
 				pk=session_id,
@@ -216,6 +219,17 @@ def video_progress(request, assignment_pk, lesson_pk):
 			_apply_observed_position(progress, session, position, now)
 			progress.save()
 			session.save()
+			if not was_completed and progress.completed_at:
+				record_event(
+					request.user,
+					"training.lessonprogress.completed",
+					progress,
+					after={
+						"assignment_id": assignment.pk,
+						"lesson_id": lesson.pk,
+						"completed_at": progress.completed_at.isoformat(),
+					},
+				)
 			if assignment.status == TrainingAssignment.Status.ASSIGNED:
 				assignment.status = TrainingAssignment.Status.IN_PROGRESS
 				assignment.started_at = now
@@ -296,6 +310,7 @@ def end_video_session(request, assignment_pk, lesson_pk, session_pk):
 				return JsonResponse({"error": "This assignment does not accept progress."}, status=409)
 			progress = LessonProgress.objects.select_for_update().filter(
 				assignment=assignment, lesson=lesson).first()
+			was_completed = bool(progress and progress.completed_at)
 			session = get_object_or_404(
 				VideoWatchSession.objects.select_for_update(),
 				pk=session_pk,
@@ -323,6 +338,17 @@ def end_video_session(request, assignment_pk, lesson_pk, session_pk):
 				session.active_watch_seconds, Decimal(str((now - session.started_at).total_seconds()))
 			)
 			session.save()
+			if not was_completed and progress.completed_at:
+				record_event(
+					request.user,
+					"training.lessonprogress.completed",
+					progress,
+					after={
+						"assignment_id": assignment.pk,
+						"lesson_id": lesson.pk,
+						"completed_at": progress.completed_at.isoformat(),
+					},
+				)
 		return JsonResponse(_progress_response(progress, session))
 	except (ValidationError, IntegrityError, ValueError) as exc:
 		return JsonResponse({"error": str(exc)}, status=400)
@@ -351,7 +377,7 @@ class TrainingAssignmentDetailView(AssignmentAccessMixin, DetailView):
 		).filter(employee__in=assignment_scope(self.request.user))
 
 
-class TrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+class TrainingAssignmentCreateView(AuditedFormMixin, LoginRequiredMixin, PermissionRequiredMixin, CreateView):
 	permission_required = ASSIGNMENT_MANAGE_PERMISSION
 	raise_exception = True
 	form_class = TrainingAssignmentForm
@@ -363,6 +389,12 @@ class TrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMixin, 
 		except (ValidationError, IntegrityError) as exc:
 			form.add_error(None, "This assignment could not be created: " + str(exc))
 			return self.form_invalid(form)
+		record_event(
+			self.request.user,
+			"training.trainingassignment.created",
+			self.object,
+			after=audit_snapshot(self.object),
+		)
 		return redirect("training:assignment-detail", pk=self.object.pk)
 
 
@@ -380,11 +412,11 @@ class RoleTrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMix
 			employee__in=matching_employees, training_version=requirement.training_version
 		).values_list("employee_id", flat=True))
 		created = 0
-		for employee in employees:
-			if employee.pk in existing_ids:
-				continue
-			try:
-				with transaction.atomic():
+		with transaction.atomic():
+			for employee in employees:
+				if employee.pk in existing_ids:
+					continue
+				try:
 					TrainingAssignment.objects.create(
 						employee=employee,
 						training_version=requirement.training_version,
@@ -395,10 +427,22 @@ class RoleTrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMix
 						assigned_by=self.request.user,
 						due_at=timezone.now() + timedelta(days=requirement.due_in_days),
 					)
-				created += 1
-			except IntegrityError:
-				existing_ids.add(employee.pk)
-		skipped = matching_employees.count() - created
+					created += 1
+				except IntegrityError:
+					existing_ids.add(employee.pk)
+			skipped = matching_employees.count() - created
+			if created:
+				record_event(
+					self.request.user,
+					"training.role_assignment.batch_created",
+					requirement,
+					after={
+						"job_role_id": requirement.job_role_id,
+						"training_version_id": requirement.training_version_id,
+						"created_count": created,
+						"skipped_count": skipped,
+					},
+				)
 		messages.success(self.request, f"Created {created} assignment(s); skipped {skipped} existing or inactive employee(s).")
 		return redirect("training:assignment-list")
 
@@ -575,6 +619,7 @@ def publish_version(request, pk):
 	if request.method != "POST":
 		raise Http404
 	version = get_object_or_404(TrainingVersion, pk=pk, status=TrainingVersion.Status.DRAFT)
+	before = audit_snapshot(version)
 	version.status = TrainingVersion.Status.PUBLISHED
 	version.published_at = timezone.now()
 	version.published_by = request.user
@@ -583,6 +628,13 @@ def publish_version(request, pk):
 	except ValidationError as exc:
 		version.refresh_from_db()
 		return render(request, "training/version_detail.html", {"version": version, "errors": exc}, status=400)
+	record_event(
+		request.user,
+		"training.trainingversion.published",
+		version,
+		before=before,
+		after=audit_snapshot(version),
+	)
 	return redirect("training:version-detail", pk=version.pk)
 
 
@@ -592,6 +644,14 @@ def retire_version(request, pk):
 	if request.method != "POST":
 		raise Http404
 	version = get_object_or_404(TrainingVersion, pk=pk, status=TrainingVersion.Status.PUBLISHED)
+	before = audit_snapshot(version)
 	version.status = TrainingVersion.Status.RETIRED
 	version.save()
+	record_event(
+		request.user,
+		"training.trainingversion.retired",
+		version,
+		before=before,
+		after=audit_snapshot(version),
+	)
 	return redirect("training:version-detail", pk=version.pk)
