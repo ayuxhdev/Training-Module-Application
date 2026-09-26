@@ -3,7 +3,6 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.db import IntegrityError, transaction
 from django.test import Client, TestCase
-from django.utils import timezone
 
 from assessments.models import Assessment, AssessmentQuestion, Question
 from certifications.models import Certificate
@@ -14,7 +13,6 @@ from training.models import (
     Lesson,
     Module,
     RoleTrainingRequirement,
-    Training,
     TrainingAssignment,
     TrainingVersion,
 )

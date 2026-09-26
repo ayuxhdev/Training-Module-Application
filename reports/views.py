@@ -7,13 +7,13 @@ from django.utils import timezone
 from certifications.models import Certificate
 from organization.models import Department, Employee
 from training.models import TrainingAssignment
+from training.views import assignment_scope
 
 from .forms import AssignmentReportFilterForm
 from .queries import (
 	assignment_metrics,
 	assignment_queryset_for_user,
 	dashboard_role,
-	employee_queryset_for_user,
 	incomplete_employee_rows,
 	overdue_assignments,
 	overdue_condition,
@@ -52,7 +52,7 @@ def dashboard(request):
 			"recent_attempts": recent_attempts(assignments, failures_only=True),
 		})
 	elif role == "manager":
-		employees = employee_queryset_for_user(request.user)
+		employees = assignment_scope(request.user)
 		context.update({
 			"employees_in_scope": employees.filter(is_active=True).count(),
 			"incomplete_employees": incomplete_employee_rows(employees, now),

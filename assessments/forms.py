@@ -1,7 +1,7 @@
 from django import forms
 from django.forms import inlineformset_factory
 
-from training.models import Module, TrainingVersion
+from training.models import Module
 
 from .models import Assessment, AssessmentQuestion, Question, QuestionOption, QuestionRevision
 

@@ -8,14 +8,14 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse, reverse_lazy
+from django.urls import reverse
 from django.utils import timezone
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
 from audit.mixins import AuditedFormMixin
 from audit.services import audit_snapshot, record_event
 from organization.models import Employee
-from training.models import Lesson, LessonProgress, Module, TrainingAssignment, TrainingVersion
+from training.models import Lesson, LessonProgress, TrainingAssignment, TrainingVersion
 
 from .forms import (
 	AssessmentForm,

@@ -21,7 +21,7 @@ from organization.views import employee_scope
 
 from .forms import (LessonForm, ModuleForm, RoleTrainingAssignmentForm, TrainingAssignmentForm,
 					TrainingForm, TrainingVersionForm)
-from .models import (Lesson, LessonProgress, Module, RoleTrainingRequirement, Training, TrainingAssignment,
+from .models import (Lesson, LessonProgress, Module, Training, TrainingAssignment,
 					 TrainingVersion, VideoWatchSession)
 
 

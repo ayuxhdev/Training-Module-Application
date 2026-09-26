@@ -25,10 +25,6 @@ def assignment_queryset_for_user(user):
 	return TrainingAssignment.objects.filter(employee__in=assignment_scope(user))
 
 
-def employee_queryset_for_user(user):
-	return assignment_scope(user)
-
-
 def overdue_condition(as_of=None, prefix=""):
 	return Q(**{
 		f"{prefix}status__in": OPEN_STATUSES,

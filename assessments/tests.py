@@ -9,12 +9,12 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, models, transaction
-from django.test import Client, TestCase, TransactionTestCase
+from django.test import Client, TransactionTestCase
 from django.utils import timezone
 
 from config.model_test_utils import CurriculumTestCase
 from organization.models import Employee
-from training.models import LessonProgress, Module, TrainingAssignment, TrainingVersion
+from training.models import LessonProgress, Module, TrainingAssignment
 from .models import Assessment, AssessmentAttempt, AssessmentQuestion, AttemptAnswer, Question, QuestionOption, QuestionRevision
 
 

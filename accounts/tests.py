@@ -46,5 +46,3 @@ class RoleBootstrapTests(TestCase):
 		self.assertTrue(group.user_set.filter(pk=member.pk).exists())
 		self.assertTrue(group.permissions.filter(pk=unrelated.pk).exists())
 		self.assertTrue(group.permissions.filter(codename="view_employee").exists())
-
-# Create your tests here.
