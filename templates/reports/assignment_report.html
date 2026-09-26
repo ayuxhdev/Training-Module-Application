@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Assignment report</h1>
+<form method="get">
+  {{ filter_form.non_field_errors }}
+  <p>{{ filter_form.status.label_tag }} {{ filter_form.status }} {{ filter_form.status.errors }}</p>
+  <p>{{ filter_form.department.label_tag }} {{ filter_form.department }} {{ filter_form.department.errors }}</p>
+  <p>{{ filter_form.job_role.label_tag }} {{ filter_form.job_role }} {{ filter_form.job_role.errors }}</p>
+  <p>{{ filter_form.training.label_tag }} {{ filter_form.training }} {{ filter_form.training.errors }}</p>
+  <p>{{ filter_form.training_version.label_tag }} {{ filter_form.training_version }} {{ filter_form.training_version.errors }}</p>
+  <p>{{ filter_form.overdue_only }} {{ filter_form.overdue_only.label_tag }} {{ filter_form.overdue_only.errors }}</p>
+  <button type="submit">Filter</button>
+</form>
+<table>
+  <thead><tr><th>Employee</th><th>Department</th><th>Job role</th><th>Training</th><th>Version</th><th>Assigned</th><th>Due</th><th>Status</th><th>Overdue</th><th>Completed</th><th>Certificate</th></tr></thead>
+  <tbody>
+  {% for assignment in assignments %}
+    <tr>
+      <td>{{ assignment.employee.display_name }}</td>
+      <td>{{ assignment.department_at_assignment.name }}</td>
+      <td>{{ assignment.job_role_at_assignment.name }}</td>
+      <td>{{ assignment.training_version.training.catalog_title }}</td>
+      <td>{{ assignment.training_version.title }} v{{ assignment.training_version.version_number }}</td>
+      <td>{{ assignment.assigned_at|date:"Y-m-d" }}</td>
+      <td>{{ assignment.due_at|date:"Y-m-d"|default:"Not set" }}</td>
+      <td>{{ assignment.get_status_display }}</td>
+      <td>{% if assignment.is_overdue %}Yes{% else %}No{% endif %}</td>
+      <td>{{ assignment.completed_at|date:"Y-m-d"|default:"-" }}</td>
+      <td>{% if assignment.certificate %}{% if assignment.certificate.revoked_at %}Revoked{% else %}Issued{% endif %}{% else %}Not issued{% endif %}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="11">No assignments match these filters.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

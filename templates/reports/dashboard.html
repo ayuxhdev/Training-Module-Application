@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+{% if role == "unavailable" %}
+  <h1>Dashboard</h1>
+  <p>No dashboard is available for this account.</p>
+{% elif role == "company" %}
+  <h1>Company dashboard</h1>
+  <p>Active employees: {{ active_employee_count }}</p>
+  <p>Departments: {{ department_count }}</p>
+  <p>Published trainings: {{ published_training_count }}</p>
+  <p>Total assignments: {{ metrics.total }}</p>
+  <p>Assigned: {{ metrics.assigned }}</p>
+  <p>In progress: {{ metrics.in_progress }}</p>
+  <p>Completed: {{ metrics.completed }}</p>
+  <p>Overdue: {{ metrics.overdue }}</p>
+  <p>Completion: {{ metrics.completion_percent }}% of non-cancelled assignments</p>
+  <p>Certificates issued: {{ certificates_issued }}</p>
+  <a href="{% url 'reports:assignment-report' %}">Assignment report</a>
+  <h2>Recent assessment failures</h2>
+  <ul>
+  {% for attempt in recent_attempts %}
+    <li>{{ attempt.assignment.employee }} - {{ attempt.assessment.title }} - {{ attempt.score_points }}/{{ attempt.maximum_points }} - {{ attempt.submitted_at|date:"Y-m-d H:i" }}</li>
+  {% empty %}
+    <li>No recent failures.</li>
+  {% endfor %}
+  </ul>
+{% elif role == "manager" %}
+  <h1>Manager dashboard</h1>
+  <p>Employees in reporting scope: {{ employees_in_scope }}</p>
+  <p>Total assignments: {{ metrics.total }}</p>
+  <p>Assigned: {{ metrics.assigned }}</p>
+  <p>In progress: {{ metrics.in_progress }}</p>
+  <p>Completed: {{ metrics.completed }}</p>
+  <p>Overdue: {{ metrics.overdue }}</p>
+  <p>Completion: {{ metrics.completion_percent }}% of non-cancelled assignments</p>
+  <p>Certificates issued: {{ certificates_issued }}</p>
+  <a href="{% url 'reports:assignment-report' %}">Assignment report</a>
+  <h2>Employees with incomplete training</h2>
+  <ul>
+  {% for employee in incomplete_employees %}
+    <li>{{ employee.display_name }} - {{ employee.incomplete_assignment_count }} incomplete, {{ employee.overdue_assignment_count }} overdue</li>
+  {% empty %}
+    <li>No employees with incomplete training.</li>
+  {% endfor %}
+  </ul>
+  <h2>Recent assessment failures</h2>
+  <ul>
+  {% for attempt in recent_attempts %}
+    <li>{{ attempt.assignment.employee.display_name }} - {{ attempt.assessment.title }} - {{ attempt.score_points }}/{{ attempt.maximum_points }} - {{ attempt.submitted_at|date:"Y-m-d H:i" }}</li>
+  {% empty %}
+    <li>No recent failures.</li>
+  {% endfor %}
+  </ul>
+{% else %}
+  <h1>My training</h1>
+  <p>Assigned: {{ metrics.assigned }}</p>
+  <p>In progress: {{ metrics.in_progress }}</p>
+  <p>Completed: {{ metrics.completed }}</p>
+  <p>Overdue: {{ metrics.overdue }}</p>
+  <p>Completion: {{ metrics.completion_percent }}% of non-cancelled assignments</p>
+  <h2>Assigned training</h2>
+  <ul>{% for assignment in assigned_training %}<li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.title }}</a> - due {{ assignment.due_at|date:"Y-m-d"|default:"Not set" }}</li>{% empty %}<li>None</li>{% endfor %}</ul>
+  <h2>In progress</h2>
+  <ul>{% for assignment in in_progress_training %}<li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.title }}</a> - due {{ assignment.due_at|date:"Y-m-d"|default:"Not set" }}</li>{% empty %}<li>None</li>{% endfor %}</ul>
+  <h2>Completed</h2>
+  <ul>{% for assignment in completed_training %}<li>{{ assignment.training_version.title }} - completed {{ assignment.completed_at|date:"Y-m-d" }}</li>{% empty %}<li>None</li>{% endfor %}</ul>
+  <h2>Overdue assignments</h2>
+  <ul>{% for assignment in overdue_assignments %}<li>{{ assignment.training_version.title }} - due {{ assignment.due_at|date:"Y-m-d" }}</li>{% empty %}<li>None</li>{% endfor %}</ul>
+  <h2>Certificates</h2>
+  <ul>{% for certificate in certificates %}<li><a href="{% url 'certifications:certificate-detail' certificate.pk %}">{{ certificate.training_title_snapshot }} v{{ certificate.version_number_snapshot }}</a> - {% if certificate.revoked_at %}Revoked{% else %}Issued {{ certificate.issued_at|date:"Y-m-d" }}{% endif %}</li>{% empty %}<li>None</li>{% endfor %}</ul>
+  <h2>Recent assessment results</h2>
+  <ul>{% for attempt in recent_attempts %}<li>{{ attempt.assessment.title }} - {{ attempt.score_points }}/{{ attempt.maximum_points }} - {% if attempt.passed %}Passed{% else %}Not passed{% endif %} - {{ attempt.submitted_at|date:"Y-m-d H:i" }}</li>{% empty %}<li>None</li>{% endfor %}</ul>
+{% endif %}
+{% endblock %}
