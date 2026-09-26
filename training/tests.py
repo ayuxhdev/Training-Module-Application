@@ -580,6 +580,27 @@ class PlaybackViewTests(CurriculumTestCase):
         response = self.client.post(self.url("sessions/start"), data="not-json", content_type="application/json")
         self.assertEqual(response.status_code, 400)
 
+    def test_video_session_metadata_requires_bounded_strings(self):
+        for field, value in (
+            ("session_identifier", {"id": "forged"}),
+            ("device_identifier", ["device"]),
+            ("session_identifier", "x" * 129),
+        ):
+            with self.subTest(field=field, value_type=type(value).__name__):
+                response = self.post_json(self.url("sessions/start"), {"position": 0, field: value})
+                self.assertEqual(response.status_code, 400)
+        self.assertFalse(VideoWatchSession.objects.filter(assignment=self.assignment).exists())
+
+    def test_playback_mutations_require_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.employee_user)
+        response = client.post(
+            self.url("sessions/start"),
+            data=json.dumps({"position": 0}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_malformed_session_ids_are_rejected_before_orm_lookup(self):
         session_id = self.start().json()["session_id"]
         for invalid_id in ([], {}, None, True, False, "bad", str(session_id), -1, 0):
@@ -681,6 +702,63 @@ class PlaybackViewTests(CurriculumTestCase):
         self.assertEqual(session.active_watch_seconds, 0)
         self.assertTrue(session.completed_normally)
 
+    def test_stale_heartbeat_cannot_turn_idle_time_into_watch_credit(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        resumed_at = start_time + timedelta(hours=1)
+        with patch("training.views.timezone.now", return_value=resumed_at):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 90,
+                "completed": True, "watched_seconds": 100, "watched_ranges": [[0, 100]]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["watched_seconds"], 0.0)
+        self.assertFalse(response.json()["completed"])
+        self.assertEqual(VideoWatchSession.objects.get(pk=session_id).active_watch_seconds, 0)
+        # The stale observation resets the position baseline; fresh playback still works.
+        with patch("training.views.timezone.now", return_value=resumed_at + timedelta(seconds=5)):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 95})
+        self.assertEqual(response.json()["watched_ranges"], [[90.0, 95.0]])
+
+    def test_stale_session_end_cannot_forge_video_completion(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(hours=1)):
+            response = self.post_json(self.url(f"sessions/{session_id}/end"), {
+                "position": 100, "completed_normally": True, "active_watch_seconds": 100,
+            })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["watched_seconds"], 0.0)
+        self.assertFalse(response.json()["completed"])
+        session = VideoWatchSession.objects.get(pk=session_id)
+        self.assertIsNotNone(session.ended_at)
+        self.assertEqual(session.active_watch_seconds, 0)
+
+    def test_idle_time_cannot_fund_rapid_heartbeat_tolerance(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(hours=1)):
+            self.post_json(self.url(), {"session_id": session_id, "position": 0})
+            for position in range(2, 92, 2):
+                response = self.post_json(self.url(), {"session_id": session_id, "position": position})
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(response.json()["watched_seconds"], 2.0)
+        self.assertLessEqual(VideoWatchSession.objects.get(pk=session_id).active_watch_seconds, 2)
+        self.assertFalse(response.json()["completed"])
+
+    def test_idle_time_cannot_fund_tolerance_from_new_sessions(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            self.start()
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(hours=1)):
+            for position in range(0, 10, 2):
+                session_id = self.start(position).json()["session_id"]
+                response = self.post_json(self.url(), {"session_id": session_id, "position": position + 2})
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(response.json()["watched_seconds"], 2.0)
+        self.assertFalse(response.json()["completed"])
+
     def test_completed_normally_requires_boolean_and_is_not_lesson_completion(self):
         session_id = self.start().json()["session_id"]
         response = self.post_json(self.url(f"sessions/{session_id}/end"), {
@@ -728,9 +806,10 @@ class PlaybackViewTests(CurriculumTestCase):
         start_time = self.now + timedelta(minutes=1)
         with patch("training.views.timezone.now", return_value=start_time):
             session_id = self.start().json()["session_id"]
-        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=90)):
-            with self.captureOnCommitCallbacks(execute=True):
-                response = self.post_json(self.url(), {"session_id": session_id, "position": 90})
+        for position in (30, 60, 90):
+            with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=position)):
+                with self.captureOnCommitCallbacks(execute=True):
+                    response = self.post_json(self.url(), {"session_id": session_id, "position": position})
         self.assertTrue(response.json()["completed"])
         completed_at = LessonProgress.objects.get(pk=response.json()["progress_id"]).completed_at
         with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=91)):

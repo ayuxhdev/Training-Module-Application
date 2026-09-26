@@ -52,6 +52,9 @@ def assignment_scope(user):
 
 
 VIDEO_HEARTBEAT_TOLERANCE = Decimal("2.0")
+# Longer gaps cannot establish continuous playback; the next observation only
+# resets the position baseline. Clients must report progress at least every 30s.
+VIDEO_HEARTBEAT_MAX_GAP = Decimal("30.0")
 
 
 def _json_body(request):
@@ -143,15 +146,26 @@ def _apply_observed_position(progress, session, position, now):
 	session_elapsed = max(Decimal("0"), Decimal(str((now - session.started_at).total_seconds())))
 	# Accepted movement spends the session's one-time jitter allowance, including replay.
 	remaining_budget = max(Decimal("0"), session_elapsed + VIDEO_HEARTBEAT_TOLERANCE - session.active_watch_seconds)
+	# Idle time must not replenish jitter credit on later rapid requests.
+	session_tolerance = max(Decimal("0"), VIDEO_HEARTBEAT_TOLERANCE - session.active_watch_seconds)
 	interval = None
 	advance = position - previous_position
-	if 0 < advance <= elapsed + VIDEO_HEARTBEAT_TOLERANCE and advance <= remaining_budget:
+	if (elapsed <= VIDEO_HEARTBEAT_MAX_GAP
+			and 0 < advance <= elapsed + session_tolerance
+			and advance <= remaining_budget):
 		candidate = _merge_ranges(progress.watched_ranges, (previous_position, position))
 		candidate_seconds = sum((Decimal(str(end)) - Decimal(str(start)) for start, end in candidate), Decimal("0"))
 		lesson_elapsed = max(Decimal("0"), Decimal(str((now - progress.started_at).total_seconds())))
 		new_unique_seconds = candidate_seconds - progress.watched_seconds
 		remaining_unique_budget = max(
 			Decimal("0"), lesson_elapsed + VIDEO_HEARTBEAT_TOLERANCE - progress.watched_seconds
+		)
+		# Share the latest observation budget across sessions, so opening another
+		# session cannot spend time or jitter already consumed by this lesson.
+		observed_elapsed = max(Decimal("0"), Decimal(str((now - progress.last_accessed_at).total_seconds())))
+		remaining_unique_budget = min(
+			remaining_unique_budget,
+			observed_elapsed + max(Decimal("0"), VIDEO_HEARTBEAT_TOLERANCE - progress.watched_seconds),
 		)
 		if new_unique_seconds <= remaining_unique_budget:
 			interval = (previous_position, position)
@@ -248,6 +262,14 @@ def start_video_session(request, assignment_pk, lesson_pk):
 	try:
 		body = _json_body(request)
 		requested_position = body.get("position")
+		session_identifier = body.get("session_identifier", "")
+		device_identifier = body.get("device_identifier", "")
+		for field_name, value in (
+			("session_identifier", session_identifier),
+			("device_identifier", device_identifier),
+		):
+			if not isinstance(value, str) or len(value) > 128:
+				raise ValidationError(f"{field_name} must be a string of at most 128 characters.")
 		with transaction.atomic():
 			assignment = _lock_playback_assignment(assignment)
 			if assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
@@ -267,8 +289,8 @@ def start_video_session(request, assignment_pk, lesson_pk):
 				started_at=now,
 				starting_position_seconds=position,
 				ending_position_seconds=position,
-				session_identifier=str(body.get("session_identifier", "")),
-				device_identifier=str(body.get("device_identifier", "")),
+				session_identifier=session_identifier,
+				device_identifier=device_identifier,
 			)
 			session.save()
 			if progress is None:

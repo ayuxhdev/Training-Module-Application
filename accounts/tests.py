@@ -1,9 +1,50 @@
 from importlib import import_module
+import os
+from pathlib import Path
+import runpy
+from unittest.mock import patch
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
-from django.test import TestCase
+from django.core.exceptions import ImproperlyConfigured
+from django.test import SimpleTestCase, TestCase
+
+
+class ProductionSettingsTests(SimpleTestCase):
+	def load_settings(self, environment):
+		with patch.dict(os.environ, environment, clear=True), patch("dotenv.load_dotenv"):
+			return runpy.run_path(str(Path(__file__).resolve().parents[1] / "config" / "settings.py"))
+
+	def test_debug_defaults_off_and_production_cookies_cannot_be_disabled(self):
+		values = self.load_settings({
+			"DJANGO_SECRET_KEY": "test-only-settings-key",
+			"SESSION_COOKIE_SECURE": "false", "CSRF_COOKIE_SECURE": "false",
+		})
+		self.assertFalse(values["DEBUG"])
+		self.assertTrue(values["SESSION_COOKIE_SECURE"])
+		self.assertTrue(values["CSRF_COOKIE_SECURE"])
+		self.assertEqual(values["ALLOWED_HOSTS"], [])
+
+	def test_missing_production_secret_fails_closed(self):
+		with self.assertRaises(ImproperlyConfigured):
+			self.load_settings({})
+
+	def test_explicit_development_and_https_settings(self):
+		values = self.load_settings({"DEBUG": "true"})
+		self.assertTrue(values["DEBUG"])
+		self.assertTrue(values["SECRET_KEY"])
+		self.assertFalse(values["SESSION_COOKIE_SECURE"])
+		values = self.load_settings({
+			"DJANGO_SECRET_KEY": "test-only-settings-key", "SECURE_SSL_REDIRECT": "true",
+			"SECURE_HSTS_SECONDS": "3600", "SECURE_HSTS_INCLUDE_SUBDOMAINS": "true",
+			"SECURE_HSTS_PRELOAD": "true", "ALLOWED_HOSTS": "training.example.test",
+		})
+		self.assertTrue(values["SECURE_SSL_REDIRECT"])
+		self.assertEqual(values["SECURE_HSTS_SECONDS"], 3600)
+		self.assertTrue(values["SECURE_HSTS_INCLUDE_SUBDOMAINS"])
+		self.assertTrue(values["SECURE_HSTS_PRELOAD"])
+		self.assertEqual(values["ALLOWED_HOSTS"], ["training.example.test"])
 
 
 class RoleBootstrapTests(TestCase):

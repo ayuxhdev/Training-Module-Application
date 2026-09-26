@@ -27,7 +27,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-DEBUG = os.getenv("DEBUG", "true").strip().lower() in {"1", "true", "yes", "on"}
+def _environment_flag(name, default=False):
+    return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+
+
+DEBUG = _environment_flag("DEBUG", default=False)
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
     if not DEBUG:
@@ -37,6 +41,14 @@ if not SECRET_KEY:
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()]
 if DEBUG and not ALLOWED_HOSTS:
     ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
+
+SESSION_COOKIE_SECURE = not DEBUG or _environment_flag("SESSION_COOKIE_SECURE")
+CSRF_COOKIE_SECURE = not DEBUG or _environment_flag("CSRF_COOKIE_SECURE")
+SECURE_SSL_REDIRECT = _environment_flag("SECURE_SSL_REDIRECT")
+SECURE_HSTS_SECONDS = max(0, int(os.getenv("SECURE_HSTS_SECONDS", "0")))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _environment_flag("SECURE_HSTS_INCLUDE_SUBDOMAINS")
+SECURE_HSTS_PRELOAD = _environment_flag("SECURE_HSTS_PRELOAD")
+SECURE_CONTENT_TYPE_NOSNIFF = True
 
 
 # Application definition

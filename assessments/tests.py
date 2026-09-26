@@ -335,6 +335,11 @@ class AssessmentEndpointTests(CurriculumTestCase):
         client = self.client_for(self.employee_user)
         self.assertEqual(client.post(f"/attempts/{attempt.pk}/submit/", {"answer_invalid": "1"}).status_code, 400)
         self.assertEqual(client.post(f"/attempts/{attempt.pk}/submit/", {f"answer_{self.quiz_item.pk}": "bad"}).status_code, 400)
+        self.assertEqual(client.post(
+            f"/attempts/{attempt.pk}/submit/",
+            {f"answer_{self.quiz_item.pk}": str(10**100)},
+        ).status_code, 400)
+        self.assertEqual(client.get(f"/attempts/{10**100}/").status_code, 404)
         response = client.post(
             f"/attempts/{attempt.pk}/submit/",
             data=json.dumps({"answers": {str(self.quiz_item.pk): True}}),
