@@ -302,8 +302,11 @@ def _attempt_total(assessment):
 
 @transaction.atomic
 def _try_complete_assignment(assignment):
+	from certifications.services import issue_completed_assignment_certificate
+
 	assignment = TrainingAssignment.objects.select_for_update().get(pk=assignment.pk)
 	if assignment.status == TrainingAssignment.Status.COMPLETED:
+		issue_completed_assignment_certificate(assignment.pk)
 		return
 	if assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
 		return
@@ -313,6 +316,8 @@ def _try_complete_assignment(assignment):
 		assignment.save()
 	except ValidationError:
 		assignment.refresh_from_db()
+	if assignment.status == TrainingAssignment.Status.COMPLETED:
+		issue_completed_assignment_certificate(assignment.pk)
 
 
 @login_required

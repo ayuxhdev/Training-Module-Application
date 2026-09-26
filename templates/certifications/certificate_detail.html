@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ certificate.training_title_snapshot }} certificate</h1>
+<p>Employee: {{ certificate.employee_name_snapshot }} ({{ certificate.employee_code_snapshot }})</p>
+<p>Training: {{ certificate.training_title_snapshot }}</p>
+<p>Training version: {{ certificate.version_number_snapshot }}</p>
+<p>Certificate number: {{ certificate.certificate_number }}</p>
+<p>Issued: {{ certificate.issued_at|date:"Y-m-d H:i" }}</p>
+{% if certificate.revoked_at %}
+  <p>Status: Revoked on {{ certificate.revoked_at|date:"Y-m-d H:i" }}</p>
+  <p>Reason: {{ certificate.revocation_reason }}</p>
+{% else %}
+  <p>Status: Valid</p>
+  {% if can_revoke %}
+  <form method="post" action="{% url 'certifications:certificate-revoke' certificate.pk %}">
+    {% csrf_token %}
+    <label for="reason">Revocation reason</label>
+    <textarea id="reason" name="reason" required></textarea>
+    <button type="submit">Revoke certificate</button>
+  </form>
+  {% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Certificates</h1>
+<ul>
+{% for certificate in certificates %}
+  <li>
+    <a href="{% url 'certifications:certificate-detail' certificate.pk %}">{{ certificate.training_title_snapshot }} v{{ certificate.version_number_snapshot }}</a>
+    for {{ certificate.employee_name_snapshot }} ({{ certificate.certificate_number }})
+    {% if certificate.revoked_at %}Revoked{% else %}Issued {{ certificate.issued_at|date:"Y-m-d" }}{% endif %}
+  </li>
+{% empty %}
+  <li>No certificates found.</li>
+{% endfor %}
+</ul>
+{% endblock %}
