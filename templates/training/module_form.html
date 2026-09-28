@@ -1,2 +1,11 @@
 {% extends "base.html" %}
-{% block content %}<h1>Module</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save</button></form>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li><li><a href="{% url 'training:training-detail' form.instance.training_version.training_id %}">{{ form.instance.training_version.training.catalog_title }}</a></li><li><a href="{% url 'training:version-detail' form.instance.training_version_id %}">Version {{ form.instance.training_version.version_number }}</a></li>{% if form.instance.pk %}<li>Edit module</li>{% else %}<li>Add module</li>{% endif %}</ol></nav>
+<header class="page-heading"><h1>{% if form.instance.pk %}Edit module{% else %}Add module{% endif %}</h1></header>
+<form method="post" class="form-stack">
+	{% csrf_token %}
+	{{ form.non_field_errors }}
+	{{ form.as_p }}
+	<div class="action-list"><button type="submit">Save module</button><a href="{% url 'training:version-detail' form.instance.training_version_id %}">Cancel</a></div>
+</form>
+{% endblock %}

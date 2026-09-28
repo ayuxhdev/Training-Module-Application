@@ -1,10 +1,63 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>{{ version }}</h1><p>Status: {{ version.get_status_display }}</p><p>{{ version.description }}</p>
-{% if errors %}<p>{{ errors }}</p>{% endif %}
-{% if version.status == 'DRAFT' and perms.training.change_trainingversion %}<a href="{% url 'training:version-update' version.pk %}">Edit draft</a><form method="post" action="{% url 'training:version-publish' version.pk %}" style="display:inline">{% csrf_token %}<button type="submit">Publish</button></form>{% endif %}
-{% if version.status == 'PUBLISHED' and perms.training.change_trainingversion %}<form method="post" action="{% url 'training:version-retire' version.pk %}">{% csrf_token %}<button type="submit">Retire</button></form>{% endif %}
-{% if perms.assessments.view_assessment %}<p><a href="{% url 'assessments:assessment-list' version.pk %}">Manage assessments</a></p>{% endif %}
-{% if version.status == 'DRAFT' %}<a href="{% url 'training:module-create' version.pk %}">Add module</a>{% endif %}
-{% for module in version.modules.all %}<section><h2>{{ module.position }}. {{ module.title }}</h2><p>{{ module.description }}</p>{% if version.status == 'DRAFT' %}<a href="{% url 'training:module-update' module.pk %}">Edit module</a> <a href="{% url 'training:lesson-create' module.pk %}">Add lesson</a>{% endif %}<ol>{% for lesson in module.lessons.all %}<li>{{ lesson.position }}. {{ lesson.title }} ({{ lesson.get_content_type_display }}){% if version.status == 'DRAFT' %} <a href="{% url 'training:lesson-update' lesson.pk %}">Edit</a>{% endif %}</li>{% endfor %}</ol></section>{% endfor %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li><li><a href="{% url 'training:training-detail' version.training_id %}">{{ version.training.catalog_title }}</a></li><li><a href="{% url 'training:version-list' version.training_id %}">Versions</a></li><li>Version {{ version.version_number }}</li></ol></nav>
+<header class="page-heading">
+	<div>
+		<h1>{{ version.title }}</h1>
+		<p class="muted">{{ version.training.catalog_title }} · Version {{ version.version_number }} · <span class="status-badge status-{{ version.status|lower }}">Status: {{ version.get_status_display }}</span></p>
+	</div>
+	<div class="action-list">
+		{% if version.status == 'DRAFT' and perms.training.change_trainingversion %}
+			<a class="action-link" href="{% url 'training:version-update' version.pk %}">Edit draft</a>
+			<form method="post" action="{% url 'training:version-publish' version.pk %}">{% csrf_token %}<button type="submit">Publish version</button></form>
+		{% endif %}
+		{% if version.status == 'PUBLISHED' and perms.training.change_trainingversion %}
+			<form method="post" action="{% url 'training:version-retire' version.pk %}">{% csrf_token %}<button type="submit">Retire version</button></form>
+		{% endif %}
+		{% if perms.assessments.view_assessment %}<a href="{% url 'assessments:assessment-list' version.pk %}">Assessments</a>{% endif %}
+	</div>
+</header>
+{% if errors %}<div class="form-errors" role="alert"><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
+{% if version.description %}<p>{{ version.description }}</p>{% endif %}
+{% if version.learning_objectives %}<section><h2>Learning objectives</h2><p>{{ version.learning_objectives|linebreaksbr }}</p></section>{% endif %}
+{% if version.change_summary %}<section><h2>Change summary</h2><p>{{ version.change_summary|linebreaksbr }}</p></section>{% endif %}
+{% if version.published_at %}<p class="muted">Published {{ version.published_at|date:"Y-m-d" }}{% if version.published_by %} by {{ version.published_by.get_username }}{% endif %}</p>{% endif %}
+<header class="page-heading">
+	<h2>Modules</h2>
+	{% if version.status == 'DRAFT' and perms.training.add_module %}<a class="action-link" href="{% url 'training:module-create' version.pk %}">Add module</a>{% endif %}
+</header>
+<ol class="builder-modules">
+{% for module in version.modules.all %}
+	<li>
+		<article class="builder-item">
+			<header class="page-heading">
+				<h3>{{ module.title }}</h3>
+				<div class="action-list">
+					{% if version.status == 'DRAFT' and perms.training.change_module %}<a href="{% url 'training:module-update' module.pk %}">Edit module</a>{% endif %}
+					{% if version.status == 'DRAFT' and perms.training.add_lesson %}<a href="{% url 'training:lesson-create' module.pk %}">Add lesson</a>{% endif %}
+				</div>
+			</header>
+			{% if module.description %}<p>{{ module.description }}</p>{% endif %}
+			<h4>Lessons</h4>
+			<ol class="builder-lessons">
+			{% for lesson in module.lessons.all %}
+				<li>
+					<strong>{{ lesson.title }}</strong>
+					<span class="status-badge">{{ lesson.get_content_type_display }}</span>
+					{% if lesson.is_required %}<span>Required</span>{% else %}<span>Optional</span>{% endif %}
+					{% if lesson.content_type == 'VIDEO' and lesson.video_duration_seconds %}<span>{{ lesson.video_duration_seconds }} seconds</span>{% endif %}
+					{% if lesson.content_type == 'VIDEO' %}<span>Completion threshold: {{ lesson.minimum_watch_percent }}%</span>{% endif %}
+					{% if lesson.body %}<p>{{ lesson.body|truncatewords:28 }}</p>{% endif %}
+					{% if version.status == 'DRAFT' and perms.training.change_lesson %}<a href="{% url 'training:lesson-update' lesson.pk %}">Edit lesson</a>{% endif %}
+				</li>
+			{% empty %}
+				<li class="empty-state">No lessons in this module yet.</li>
+			{% endfor %}
+			</ol>
+		</article>
+	</li>
+{% empty %}
+	<li class="empty-state">No modules in this version yet.</li>
+{% endfor %}
+</ol>
 {% endblock %}

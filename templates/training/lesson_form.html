@@ -1,2 +1,11 @@
 {% extends "base.html" %}
-{% block content %}<h1>Lesson</h1><form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button type="submit">Save</button></form>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li><li><a href="{% url 'training:training-detail' form.instance.module.training_version.training_id %}">{{ form.instance.module.training_version.training.catalog_title }}</a></li><li><a href="{% url 'training:version-detail' form.instance.module.training_version_id %}">Version {{ form.instance.module.training_version.version_number }}</a></li><li>{{ form.instance.module.title }}</li>{% if form.instance.pk %}<li>Edit lesson</li>{% else %}<li>Add lesson</li>{% endif %}</ol></nav>
+<header class="page-heading"><h1>{% if form.instance.pk %}Edit lesson{% else %}Add lesson{% endif %}</h1></header>
+<form method="post" enctype="multipart/form-data" class="form-stack">
+	{% csrf_token %}
+	{{ form.non_field_errors }}
+	{{ form.as_p }}
+	<div class="action-list"><button type="submit">Save lesson</button><a href="{% url 'training:version-detail' form.instance.module.training_version_id %}">Cancel</a></div>
+</form>
+{% endblock %}

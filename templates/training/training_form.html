@@ -1,2 +1,11 @@
 {% extends "base.html" %}
-{% block content %}<h1>Training</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save</button></form>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li>{% if form.instance.pk %}<li><a href="{% url 'training:training-detail' form.instance.pk %}">{{ form.instance.catalog_title }}</a></li><li>Edit</li>{% else %}<li>Add training</li>{% endif %}</ol></nav>
+<header class="page-heading"><h1>{% if form.instance.pk %}Edit training{% else %}Add training{% endif %}</h1></header>
+<form method="post" class="form-stack">
+	{% csrf_token %}
+	{{ form.non_field_errors }}
+	{{ form.as_p }}
+	<div class="action-list"><button type="submit">Save training</button><a href="{% url 'training:training-list' %}">Cancel</a></div>
+</form>
+{% endblock %}

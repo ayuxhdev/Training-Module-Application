@@ -1,2 +1,11 @@
 {% extends "base.html" %}
-{% block content %}<h1>Training version</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save draft</button></form>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li><li><a href="{% url 'training:training-detail' form.instance.training_id %}">{{ form.instance.training.catalog_title }}</a></li>{% if form.instance.pk %}<li><a href="{% url 'training:version-detail' form.instance.pk %}">Version {{ form.instance.version_number }}</a></li><li>Edit draft</li>{% else %}<li>Add version</li>{% endif %}</ol></nav>
+<header class="page-heading"><h1>{% if form.instance.pk %}Edit draft version{% else %}Add version{% endif %}</h1></header>
+<form method="post" class="form-stack">
+	{% csrf_token %}
+	{{ form.non_field_errors }}
+	{{ form.as_p }}
+	<div class="action-list"><button type="submit">Save draft</button><a href="{% url 'training:training-detail' form.instance.training_id %}">Cancel</a></div>
+</form>
+{% endblock %}

@@ -1,6 +1,25 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Training</h1>
-{% if perms.training.add_training %}<a href="{% url 'training:training-create' %}">Add training</a>{% endif %}
-<ul>{% for training in trainings %}<li><a href="{% url 'training:training-detail' training.pk %}">{{ training.code }} - {{ training.catalog_title }}</a></li>{% empty %}<li>No training found.</li>{% endfor %}</ul>
+<header class="page-heading">
+	<h1>Training</h1>
+	{% if perms.training.add_training %}<a class="action-link" href="{% url 'training:training-create' %}">Add training</a>{% endif %}
+</header>
+<div class="table-scroll" role="region" aria-label="Training catalog" tabindex="0">
+	<table>
+		<thead><tr><th>Code</th><th>Training</th><th>Description</th><th>Status</th><th>Actions</th></tr></thead>
+		<tbody>
+		{% for item in trainings %}
+			<tr>
+				<td>{{ item.code }}</td>
+				<td><a href="{% url 'training:training-detail' item.pk %}">{{ item.catalog_title }}</a></td>
+				<td>{{ item.description|default:"-"|truncatewords:18 }}</td>
+				<td><span class="status-badge{% if not item.is_active %} status-inactive{% endif %}">{% if item.is_active %}Active{% else %}Inactive{% endif %}</span></td>
+				<td>{% if perms.training.change_training %}<a href="{% url 'training:training-update' item.pk %}">Edit</a>{% endif %}</td>
+			</tr>
+		{% empty %}
+			<tr><td class="empty-state" colspan="5">No training has been added yet.</td></tr>
+		{% endfor %}
+		</tbody>
+	</table>
+</div>
 {% endblock %}

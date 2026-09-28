@@ -7,6 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Prefetch
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
@@ -487,12 +488,19 @@ class TrainingListView(ContentPermissionMixin, ListView):
 	template_name = "training/training_list.html"
 	context_object_name = "trainings"
 
+	def get_queryset(self):
+		return Training.objects.order_by("catalog_title", "code", "pk")
+
 
 class TrainingDetailView(ContentPermissionMixin, DetailView):
 	permission_required = "training.view_training"
 	model = Training
 	template_name = "training/training_detail.html"
 	context_object_name = "training"
+
+	def get_queryset(self):
+		versions = TrainingVersion.objects.order_by("-version_number", "pk")
+		return Training.objects.prefetch_related(Prefetch("versions", queryset=versions))
 
 
 class TrainingCreateView(ContentPermissionMixin, CreateView):
@@ -522,7 +530,9 @@ class TrainingVersionListView(ContentPermissionMixin, ListView):
 	context_object_name = "versions"
 
 	def get_queryset(self):
-		return TrainingVersion.objects.filter(training_id=self.kwargs["training_pk"]).order_by("-version_number")
+		return TrainingVersion.objects.filter(
+			training_id=self.kwargs["training_pk"],
+		).order_by("-version_number", "pk")
 
 	def get_context_data(self, **kwargs):
 		context = super().get_context_data(**kwargs)
@@ -535,6 +545,11 @@ class TrainingVersionDetailView(ContentPermissionMixin, DetailView):
 	model = TrainingVersion
 	template_name = "training/version_detail.html"
 	context_object_name = "version"
+
+	def get_queryset(self):
+		return TrainingVersion.objects.select_related("training").prefetch_related(
+			"modules__lessons",
+		)
 
 
 class TrainingVersionCreateView(ContentPermissionMixin, CreateView):

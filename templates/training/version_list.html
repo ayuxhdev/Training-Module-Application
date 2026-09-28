@@ -1,2 +1,26 @@
 {% extends "base.html" %}
-{% block content %}<h1>{{ training.catalog_title }} versions</h1><ul>{% for version in versions %}<li><a href="{% url 'training:version-detail' version.pk %}">{{ version }}</a> ({{ version.get_status_display }})</li>{% empty %}<li>No versions found.</li>{% endfor %}</ul>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li><li><a href="{% url 'training:training-detail' training.pk %}">{{ training.catalog_title }}</a></li><li>Versions</li></ol></nav>
+<header class="page-heading">
+	<h1>Versions of {{ training.catalog_title }}</h1>
+	{% if perms.training.add_trainingversion %}<a class="action-link" href="{% url 'training:version-create' training.pk %}">Add version</a>{% endif %}
+</header>
+<div class="table-scroll" role="region" aria-label="Training versions" tabindex="0">
+	<table>
+		<thead><tr><th>Version</th><th>Title</th><th>Status</th><th>Published</th><th>Actions</th></tr></thead>
+		<tbody>
+		{% for version in versions %}
+			<tr>
+				<td>{{ version.version_number }}</td>
+				<td><a href="{% url 'training:version-detail' version.pk %}">{{ version.title }}</a></td>
+				<td><span class="status-badge status-{{ version.status|lower }}">{{ version.get_status_display }}</span></td>
+				<td>{{ version.published_at|date:"Y-m-d"|default:"-" }}</td>
+				<td>{% if version.status == 'DRAFT' and perms.training.change_trainingversion %}<a href="{% url 'training:version-update' version.pk %}">Edit draft</a>{% endif %}</td>
+			</tr>
+		{% empty %}
+			<tr><td class="empty-state" colspan="5">No versions have been created for this training.</td></tr>
+		{% endfor %}
+		</tbody>
+	</table>
+</div>
+{% endblock %}

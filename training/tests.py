@@ -135,6 +135,117 @@ class ContentManagementViewTests(CurriculumTestCase):
         response = self.client_for(self.manager).get("/trainings/")
         self.assertEqual(response.status_code, 403)
 
+    def test_training_and_version_pages_link_through_the_existing_hierarchy(self):
+        client = self.client_for(self.coordinator)
+        training_list = client.get("/trainings/")
+        self.assertEqual(training_list.status_code, 200)
+        self.assertContains(training_list, "Safety")
+        self.assertContains(training_list, f"/trainings/{self.training.pk}/edit/")
+        self.assertContains(training_list, "/trainings/new/")
+
+        training_detail = client.get(f"/trainings/{self.training.pk}/")
+        self.assertEqual(training_detail.status_code, 200)
+        self.assertContains(training_detail, f"/trainings/{self.training.pk}/versions/")
+        self.assertContains(training_detail, f"/trainings/{self.training.pk}/versions/new/")
+        self.assertContains(training_detail, f"/versions/{self.version.pk}/")
+        self.assertContains(training_detail, "Published")
+
+        version_list = client.get(f"/trainings/{self.training.pk}/versions/")
+        self.assertEqual(version_list.status_code, 200)
+        self.assertContains(version_list, f"/versions/{self.version.pk}/")
+        self.assertEqual(client.get(f"/versions/{self.version.pk}/").status_code, 200)
+
+    def test_draft_builder_shows_empty_states_and_trusted_parent_breadcrumbs(self):
+        client = self.client_for(self.coordinator)
+        version = self.new_version()
+        version_detail = client.get(f"/versions/{version.pk}/")
+        self.assertContains(version_detail, "No modules in this version yet.")
+        self.assertContains(version_detail, f"/versions/{version.pk}/modules/new/")
+
+        module_form = client.get(f"/versions/{version.pk}/modules/new/")
+        self.assertEqual(module_form.status_code, 200)
+        self.assertContains(module_form, self.training.catalog_title)
+        self.assertContains(module_form, f"Version {version.version_number}")
+        self.assertNotContains(module_form, 'name="training_version"')
+
+        module_response = client.post(f"/versions/{version.pk}/modules/new/", {
+            "title": "Builder module", "description": "Module description", "position": 1,
+        })
+        self.assertEqual(module_response.status_code, 302)
+        module = Module.objects.get(training_version=version)
+        version_detail = client.get(f"/versions/{version.pk}/")
+        self.assertContains(version_detail, "No lessons in this module yet.")
+        self.assertContains(version_detail, f"/modules/{module.pk}/edit/")
+        self.assertContains(version_detail, f"/modules/{module.pk}/lessons/new/")
+
+        lesson_form = client.get(f"/modules/{module.pk}/lessons/new/")
+        self.assertEqual(lesson_form.status_code, 200)
+        self.assertContains(lesson_form, "Builder module")
+        self.assertContains(lesson_form, f"Version {version.version_number}")
+        self.assertNotContains(lesson_form, 'name="module"')
+
+        lesson_response = client.post(f"/modules/{module.pk}/lessons/new/", {
+            "title": "Builder lesson", "position": 1, "content_type": "TEXT",
+            "body": "Lesson body", "minimum_watch_percent": "90",
+        })
+        self.assertEqual(lesson_response.status_code, 302)
+        version_detail = client.get(f"/versions/{version.pk}/")
+        self.assertContains(version_detail, "Builder lesson")
+        self.assertContains(version_detail, "Lesson body")
+        self.assertContains(version_detail, f"/lessons/{Lesson.objects.get(module=module).pk}/edit/")
+
+    def test_builder_order_is_rendered_once_and_position_inputs_advertise_minimum(self):
+        client = self.client_for(self.coordinator)
+        version_detail = client.get(f"/versions/{self.version.pk}/")
+        self.assertContains(version_detail, "Introduction")
+        self.assertContains(version_detail, "Read")
+        self.assertNotContains(version_detail, "1. Introduction")
+        self.assertNotContains(version_detail, "1. Read")
+
+        version = self.new_version()
+        module_form = client.get(f"/versions/{version.pk}/modules/new/")
+        module_position = str(module_form.context["form"]["position"])
+        self.assertIn('min="1"', module_position)
+        self.assertIn('step="1"', module_position)
+
+        module = Module.objects.create(training_version=version, title="Ordered module", position=1)
+        lesson_form = client.get(f"/modules/{module.pk}/lessons/new/")
+        lesson_position = str(lesson_form.context["form"]["position"])
+        self.assertIn('min="1"', lesson_position)
+        self.assertIn('step="1"', lesson_position)
+
+    def test_version_actions_follow_real_state_and_permission_rules(self):
+        client = self.client_for(self.coordinator)
+        published_page = client.get(f"/versions/{self.version.pk}/")
+        self.assertContains(published_page, "Status: Published")
+        self.assertContains(published_page, f"/versions/{self.version.pk}/retire/")
+        self.assertNotContains(published_page, "Edit draft")
+        self.assertNotContains(published_page, "Publish version")
+        self.assertNotContains(published_page, "Add module")
+        self.assertNotContains(published_page, "Edit module")
+        self.assertNotContains(published_page, "Add lesson")
+        self.assertNotContains(published_page, "Edit lesson")
+
+        response = client.get(f"/versions/{self.version.pk}/retire/")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(client.post(f"/versions/{self.version.pk}/retire/").status_code, 302)
+        retired_page = client.get(f"/versions/{self.version.pk}/")
+        self.assertContains(retired_page, "Status: Retired")
+        self.assertNotContains(retired_page, "Retire version")
+        self.assertNotContains(retired_page, "Edit draft")
+        self.assertNotContains(retired_page, "Add module")
+
+    def test_duplicate_training_code_is_a_controlled_form_error(self):
+        response = self.client_for(self.coordinator).post("/trainings/new/", {
+            "code": self.training.code,
+            "catalog_title": "Duplicate training",
+            "description": "",
+            "is_active": "on",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("code", response.context["form"].errors)
+        self.assertFalse(Training.objects.filter(catalog_title="Duplicate training").exists())
+
     def test_published_version_is_not_in_edit_queryset(self):
         response = self.client_for(self.coordinator).get(f"/versions/{self.version.pk}/edit/")
         self.assertEqual(response.status_code, 404)

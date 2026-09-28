@@ -28,6 +28,8 @@ class TrainingVersionForm(forms.ModelForm):
 
 
 class ModuleForm(forms.ModelForm):
+    position = forms.IntegerField(min_value=1, widget=forms.NumberInput(attrs={"step": "1"}))
+
     class Meta:
         model = Module
         fields = ["title", "description", "position"]
@@ -42,13 +44,17 @@ class ModuleForm(forms.ModelForm):
 
 
 class LessonForm(forms.ModelForm):
+    position = forms.IntegerField(min_value=1, widget=forms.NumberInput(attrs={"step": "1"}))
+
     class Meta:
         model = Lesson
         fields = [
             "title", "position", "content_type", "body", "video_file",
             "video_duration_seconds", "video_checksum", "is_required", "minimum_watch_percent",
         ]
-        widgets = {"video_file": forms.FileInput()}
+        widgets = {
+            "video_file": forms.FileInput(),
+        }
 
     def clean_position(self):
         position = self.cleaned_data["position"]

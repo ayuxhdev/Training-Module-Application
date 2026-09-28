@@ -1,6 +1,39 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>{{ training.catalog_title }}</h1><p>{{ training.description }}</p>
-{% if perms.training.change_training %}<a href="{% url 'training:training-update' training.pk %}">Edit</a>{% endif %}
-<h2>Versions</h2><a href="{% url 'training:version-list' training.pk %}">View versions</a>{% if perms.training.add_trainingversion %} <a href="{% url 'training:version-create' training.pk %}">Add version</a>{% endif %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li><li>{{ training.catalog_title }}</li></ol></nav>
+<header class="page-heading">
+	<div>
+		<h1>{{ training.catalog_title }}</h1>
+		<p class="muted">{{ training.code }} · {% if training.is_active %}Active{% else %}Inactive{% endif %}</p>
+	</div>
+	{% if perms.training.change_training %}<a class="action-link" href="{% url 'training:training-update' training.pk %}">Edit training</a>{% endif %}
+</header>
+{% if training.description %}<p>{{ training.description }}</p>{% endif %}
+{% if perms.training.view_trainingversion %}
+	<header class="page-heading">
+		<h2>Versions</h2>
+		<div class="action-list">
+			{% if perms.training.view_trainingversion %}<a href="{% url 'training:version-list' training.pk %}">Version history</a>{% endif %}
+			{% if perms.training.add_trainingversion %}<a class="action-link" href="{% url 'training:version-create' training.pk %}">Add version</a>{% endif %}
+		</div>
+	</header>
+	<div class="table-scroll" role="region" aria-label="Training versions" tabindex="0">
+		<table>
+			<thead><tr><th>Version</th><th>Title</th><th>Status</th><th>Published</th><th>Actions</th></tr></thead>
+			<tbody>
+			{% for version in training.versions.all %}
+				<tr>
+					<td>{{ version.version_number }}</td>
+					<td><a href="{% url 'training:version-detail' version.pk %}">{{ version.title }}</a></td>
+					<td><span class="status-badge status-{{ version.status|lower }}">{{ version.get_status_display }}</span></td>
+					<td>{{ version.published_at|date:"Y-m-d"|default:"-" }}</td>
+					<td>{% if version.status == 'DRAFT' and perms.training.change_trainingversion %}<a href="{% url 'training:version-update' version.pk %}">Edit draft</a>{% endif %}</td>
+				</tr>
+			{% empty %}
+				<tr><td class="empty-state" colspan="5">No versions have been created yet.</td></tr>
+			{% endfor %}
+			</tbody>
+		</table>
+	</div>
+{% endif %}
 {% endblock %}
