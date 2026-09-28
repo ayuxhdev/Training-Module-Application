@@ -1,6 +1,25 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Employees</h1>
-{% if perms.organization.change_employee %}<a href="{% url 'organization:employee-create' %}">Add employee</a>{% endif %}
-<ul>{% for employee in employees %}<li><a href="{% url 'organization:employee-detail' employee.pk %}">{{ employee }}</a> ({{ employee.department }}, {{ employee.job_role }})</li>{% empty %}<li>No employees available.</li>{% endfor %}</ul>
+<header class="page-heading">
+	<h1>Employees</h1>
+	{% if perms.organization.add_employee %}<a class="action-link" href="{% url 'organization:employee-create' %}">Add employee</a>{% endif %}
+</header>
+<div class="table-scroll" role="region" aria-label="Employees" tabindex="0">
+	<table>
+		<thead><tr><th>Employee</th><th>Department</th><th>Job role</th><th>Reporting manager</th><th>Status</th></tr></thead>
+		<tbody>
+		{% for employee in employees %}
+			<tr>
+				<td><a href="{% url 'organization:employee-detail' employee.pk %}">{{ employee.display_name }}</a><br><small>{{ employee.employee_code }}</small></td>
+				<td>{{ employee.department.name }}</td>
+				<td>{{ employee.job_role.name }}</td>
+				<td>{% if employee.reporting_manager %}{{ employee.reporting_manager.display_name }}{% else %}<span aria-label="No reporting manager">-</span>{% endif %}</td>
+				<td><span class="status-badge{% if not employee.is_active %} status-inactive{% endif %}">{% if employee.is_active %}Active{% else %}Inactive{% endif %}</span></td>
+			</tr>
+		{% empty %}
+			<tr><td class="empty-state" colspan="5">No employees available.</td></tr>
+		{% endfor %}
+		</tbody>
+	</table>
+</div>
 {% endblock %}

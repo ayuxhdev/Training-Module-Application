@@ -2,45 +2,76 @@
 {% block content %}
 {% if role == "unavailable" %}
   <h1>Dashboard</h1>
-  <p>No dashboard is available for this account.</p>
+  <p class="empty-state">No dashboard is available for this account.</p>
 {% elif role == "company" %}
-  <h1>Company dashboard</h1>
-  <p>Active employees: {{ active_employee_count }}</p>
-  <p>Departments: {{ department_count }}</p>
-  <p>Published trainings: {{ published_training_count }}</p>
-  <p>Total assignments: {{ metrics.total }}</p>
-  <p>Assigned: {{ metrics.assigned }}</p>
-  <p>In progress: {{ metrics.in_progress }}</p>
-  <p>Completed: {{ metrics.completed }}</p>
-  <p>Overdue: {{ metrics.overdue }}</p>
-  <p>Completion: {{ metrics.completion_percent }}% of non-cancelled assignments</p>
-  <p>Certificates issued: {{ certificates_issued }}</p>
-  <a href="{% url 'reports:assignment-report' %}">Assignment report</a>
+  <header class="page-heading">
+    <h1>Company dashboard</h1>
+    <nav aria-label="Company management">
+      <ul class="action-list">
+        {% if perms.organization.view_employee %}<li><a href="{% url 'organization:employee-list' %}">Employees</a></li>{% endif %}
+        {% if perms.organization.view_department %}<li><a href="{% url 'organization:department-list' %}">Departments</a></li>{% endif %}
+        {% if perms.organization.view_jobrole %}<li><a href="{% url 'organization:job-role-list' %}">Job roles</a></li>{% endif %}
+        {% if perms.training.view_training %}<li><a href="{% url 'training:training-list' %}">Trainings</a></li>{% endif %}
+        {% if perms.training.add_trainingassignment %}<li><a href="{% url 'training:assignment-list' %}">Assignments</a></li>{% endif %}
+        {% if perms.certifications.view_certificate %}<li><a href="{% url 'certifications:certificate-list' %}">Certificates</a></li>{% endif %}
+        {% if perms.assessments.view_question %}<li><a href="{% url 'assessments:question-list' %}">Question bank</a></li>{% endif %}
+        {% if perms.audit.view_auditlog %}<li><a href="{% url 'audit:audit-log-list' %}">Audit history</a></li>{% endif %}
+        <li><a href="{% url 'reports:assignment-report' %}">Assignment report</a></li>
+      </ul>
+    </nav>
+  </header>
+  <dl class="summary-grid">
+    <div><dt>Active employees</dt><dd>{{ active_employee_count }}</dd></div>
+    <div><dt>Departments</dt><dd>{{ department_count }}</dd></div>
+    <div><dt>Published trainings</dt><dd>{{ published_training_count }}</dd></div>
+    <div><dt>Total assignments</dt><dd>{{ metrics.total }}</dd></div>
+    <div><dt>Assigned</dt><dd>{{ metrics.assigned }}</dd></div>
+    <div><dt>In progress</dt><dd>{{ metrics.in_progress }}</dd></div>
+    <div><dt>Completed</dt><dd>{{ metrics.completed }}</dd></div>
+    <div><dt>Overdue</dt><dd>{{ metrics.overdue }}</dd></div>
+    <div><dt>Completion</dt><dd>{{ metrics.completion_percent }}%</dd></div>
+    <div><dt>Certificates issued</dt><dd>{{ certificates_issued }}</dd></div>
+  </dl>
   <h2>Recent assessment failures</h2>
-  <ul>
+  <div class="table-scroll" role="region" aria-label="Recent assessment failures" tabindex="0">
+  <table>
+    <thead><tr><th>Employee</th><th>Assessment</th><th>Score</th><th>Date</th></tr></thead>
+    <tbody>
   {% for attempt in recent_attempts %}
-    <li>{{ attempt.assignment.employee }} - {{ attempt.assessment.title }} - {{ attempt.score_points }}/{{ attempt.maximum_points }} - {{ attempt.submitted_at|date:"Y-m-d H:i" }}</li>
+      <tr><td>{{ attempt.assignment.employee }}</td><td>{{ attempt.assessment.title }}</td><td>{{ attempt.score_points }} / {{ attempt.maximum_points }}</td><td>{{ attempt.submitted_at|date:"Y-m-d H:i" }}</td></tr>
   {% empty %}
-    <li>No recent failures.</li>
+      <tr><td colspan="4">No recent failures.</td></tr>
   {% endfor %}
-  </ul>
+    </tbody>
+  </table>
+  </div>
 {% elif role == "manager" %}
-  <h1>Manager dashboard</h1>
-  <p>Employees in reporting scope: {{ employees_in_scope }}</p>
-  <p>Total assignments: {{ metrics.total }}</p>
-  <p>Assigned: {{ metrics.assigned }}</p>
-  <p>In progress: {{ metrics.in_progress }}</p>
-  <p>Completed: {{ metrics.completed }}</p>
-  <p>Overdue: {{ metrics.overdue }}</p>
-  <p>Completion: {{ metrics.completion_percent }}% of non-cancelled assignments</p>
-  <p>Certificates issued: {{ certificates_issued }}</p>
-  <a href="{% url 'reports:assignment-report' %}">Assignment report</a>
+  <header class="page-heading">
+    <h1>Manager dashboard</h1>
+    <nav aria-label="Reporting scope">
+      <ul class="action-list">
+        {% if perms.organization.view_employee %}<li><a href="{% url 'organization:employee-list' %}">My reporting team</a></li>{% endif %}
+        {% if shell_role %}<li><a href="{% url 'training:assignment-list' %}">Team assignments</a></li>{% endif %}
+        <li><a href="{% url 'reports:assignment-report' %}">Assignment report</a></li>
+      </ul>
+    </nav>
+  </header>
+  <dl class="summary-grid">
+    <div><dt>Active employees in scope</dt><dd>{{ employees_in_scope }}</dd></div>
+    <div><dt>Total assignments</dt><dd>{{ metrics.total }}</dd></div>
+    <div><dt>Assigned</dt><dd>{{ metrics.assigned }}</dd></div>
+    <div><dt>In progress</dt><dd>{{ metrics.in_progress }}</dd></div>
+    <div><dt>Completed</dt><dd>{{ metrics.completed }}</dd></div>
+    <div><dt>Overdue</dt><dd>{{ metrics.overdue }}</dd></div>
+    <div><dt>Completion</dt><dd>{{ metrics.completion_percent }}%</dd></div>
+    <div><dt>Certificates issued</dt><dd>{{ certificates_issued }}</dd></div>
+  </dl>
   <h2>Employees with incomplete training</h2>
   <ul>
   {% for employee in incomplete_employees %}
-    <li>{{ employee.display_name }} - {{ employee.incomplete_assignment_count }} incomplete, {{ employee.overdue_assignment_count }} overdue</li>
+    <li><a href="{% url 'organization:employee-detail' employee.pk %}">{{ employee.display_name }}</a> - {{ employee.incomplete_assignment_count }} incomplete, {{ employee.overdue_assignment_count }} overdue</li>
   {% empty %}
-    <li>No employees with incomplete training.</li>
+    <li class="empty-state">No employees with incomplete training.</li>
   {% endfor %}
   </ul>
   <h2>Recent assessment failures</h2>
@@ -48,27 +79,37 @@
   {% for attempt in recent_attempts %}
     <li>{{ attempt.assignment.employee.display_name }} - {{ attempt.assessment.title }} - {{ attempt.score_points }}/{{ attempt.maximum_points }} - {{ attempt.submitted_at|date:"Y-m-d H:i" }}</li>
   {% empty %}
-    <li>No recent failures.</li>
+    <li class="empty-state">No recent failures.</li>
   {% endfor %}
   </ul>
 {% else %}
-  <h1>My training</h1>
-  <p>Assigned: {{ metrics.assigned }}</p>
-  <p>In progress: {{ metrics.in_progress }}</p>
-  <p>Completed: {{ metrics.completed }}</p>
-  <p>Overdue: {{ metrics.overdue }}</p>
-  <p>Completion: {{ metrics.completion_percent }}% of non-cancelled assignments</p>
+  <header class="page-heading">
+    <h1>My training</h1>
+    <nav aria-label="My training">
+      <ul class="action-list">
+        {% if shell_role %}<li><a href="{% url 'training:assignment-list' %}">My assignments</a></li>{% endif %}
+        {% if shell_can_view_certificates %}<li><a href="{% url 'certifications:certificate-list' %}">My certificates</a></li>{% endif %}
+      </ul>
+    </nav>
+  </header>
+  <dl class="summary-grid">
+    <div><dt>Assigned</dt><dd>{{ metrics.assigned }}</dd></div>
+    <div><dt>In progress</dt><dd>{{ metrics.in_progress }}</dd></div>
+    <div><dt>Completed</dt><dd>{{ metrics.completed }}</dd></div>
+    <div><dt>Overdue</dt><dd>{{ metrics.overdue }}</dd></div>
+    <div><dt>Completion</dt><dd>{{ metrics.completion_percent }}%</dd></div>
+  </dl>
   <h2>Assigned training</h2>
-  <ul>{% for assignment in assigned_training %}<li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.title }}</a> - due {{ assignment.due_at|date:"Y-m-d"|default:"Not set" }}</li>{% empty %}<li>None</li>{% endfor %}</ul>
+  <ul>{% for assignment in assigned_training %}<li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.title }}</a> - due {{ assignment.due_at|date:"Y-m-d"|default:"Not set" }}</li>{% empty %}<li class="empty-state">No assigned training.</li>{% endfor %}</ul>
   <h2>In progress</h2>
-  <ul>{% for assignment in in_progress_training %}<li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.title }}</a> - due {{ assignment.due_at|date:"Y-m-d"|default:"Not set" }}</li>{% empty %}<li>None</li>{% endfor %}</ul>
+  <ul>{% for assignment in in_progress_training %}<li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.title }}</a> - due {{ assignment.due_at|date:"Y-m-d"|default:"Not set" }}</li>{% empty %}<li class="empty-state">No training in progress.</li>{% endfor %}</ul>
   <h2>Completed</h2>
-  <ul>{% for assignment in completed_training %}<li>{{ assignment.training_version.title }} - completed {{ assignment.completed_at|date:"Y-m-d" }}</li>{% empty %}<li>None</li>{% endfor %}</ul>
+  <ul>{% for assignment in completed_training %}<li>{{ assignment.training_version.title }} - completed {{ assignment.completed_at|date:"Y-m-d" }}</li>{% empty %}<li class="empty-state">No completed training yet.</li>{% endfor %}</ul>
   <h2>Overdue assignments</h2>
-  <ul>{% for assignment in overdue_assignments %}<li>{{ assignment.training_version.title }} - due {{ assignment.due_at|date:"Y-m-d" }}</li>{% empty %}<li>None</li>{% endfor %}</ul>
+  <ul>{% for assignment in overdue_assignments %}<li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.title }}</a> - due {{ assignment.due_at|date:"Y-m-d" }}</li>{% empty %}<li class="empty-state">No overdue assignments.</li>{% endfor %}</ul>
   <h2>Certificates</h2>
-  <ul>{% for certificate in certificates %}<li><a href="{% url 'certifications:certificate-detail' certificate.pk %}">{{ certificate.training_title_snapshot }} v{{ certificate.version_number_snapshot }}</a> - {% if certificate.revoked_at %}Revoked{% else %}Issued {{ certificate.issued_at|date:"Y-m-d" }}{% endif %}</li>{% empty %}<li>None</li>{% endfor %}</ul>
+  <ul>{% for certificate in certificates %}<li><a href="{% url 'certifications:certificate-detail' certificate.pk %}">{{ certificate.training_title_snapshot }} v{{ certificate.version_number_snapshot }}</a> - {% if certificate.revoked_at %}Revoked{% else %}Issued {{ certificate.issued_at|date:"Y-m-d" }}{% endif %}</li>{% empty %}<li class="empty-state">No certificates yet.</li>{% endfor %}</ul>
   <h2>Recent assessment results</h2>
-  <ul>{% for attempt in recent_attempts %}<li>{{ attempt.assessment.title }} - {{ attempt.score_points }}/{{ attempt.maximum_points }} - {% if attempt.passed %}Passed{% else %}Not passed{% endif %} - {{ attempt.submitted_at|date:"Y-m-d H:i" }}</li>{% empty %}<li>None</li>{% endfor %}</ul>
+  <ul>{% for attempt in recent_attempts %}<li>{{ attempt.assessment.title }} - {{ attempt.score_points }}/{{ attempt.maximum_points }} - {% if attempt.passed %}Passed{% else %}Not passed{% endif %} - {{ attempt.submitted_at|date:"Y-m-d H:i" }}</li>{% empty %}<li class="empty-state">No assessment results yet.</li>{% endfor %}</ul>
 {% endif %}
 {% endblock %}

@@ -97,6 +97,7 @@ class OrganizationViewTests(TestCase):
         self.assertContains(response, "Report")
         self.assertContains(response, "Grandchild")
         self.assertNotContains(response, "Other")
+        self.assertNotContains(response, "Add employee")
         self.assertEqual(client.get(f"/employees/{self.grandchild.pk}/").status_code, 200)
         self.assertEqual(client.get(f"/employees/{self.other.pk}/").status_code, 404)
 
@@ -115,7 +116,7 @@ class OrganizationViewTests(TestCase):
         response = client.get("/employees/")
         self.assertContains(response, "Other")
         self.assertNotContains(response, "Manager")
-        self.assertNotContains(response, "Report")
+        self.assertNotContains(response, self.report.employee_code)
         self.assertEqual(client.get(f"/employees/{self.other.pk}/").status_code, 200)
         self.assertEqual(client.get(f"/employees/{self.report.pk}/").status_code, 404)
 
@@ -160,6 +161,7 @@ class OrganizationViewTests(TestCase):
         self.assertTrue(client.login(username="admin", password="password"))
         response = client.post(f"/employees/{self.report.pk}/deactivate/", {"reason": "   "})
         self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "This field is required.", status_code=400)
         self.report.refresh_from_db()
         self.assertTrue(self.report.is_active)
         self.assertIsNone(self.report.deactivated_at)
@@ -225,6 +227,32 @@ class OrganizationViewTests(TestCase):
         for path in ("/departments/", "/job-roles/"):
             response = client.get(path)
             self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, ">Add department<")
+            self.assertNotContains(response, ">Add job role<")
+
+    def test_coordinator_reference_pages_link_to_existing_edit_routes(self):
+        client = Client()
+        client.force_login(self.coordinator_user)
+        departments = client.get("/departments/")
+        job_roles = client.get("/job-roles/")
+        self.assertContains(departments, f"/departments/{self.department.pk}/edit/")
+        self.assertContains(job_roles, f"/job-roles/{self.role.pk}/edit/")
+        self.assertContains(departments, ">Add department</a>")
+        self.assertContains(job_roles, ">Add job role</a>")
+        self.assertEqual(client.get(f"/departments/{self.department.pk}/edit/").status_code, 200)
+        self.assertEqual(client.get(f"/job-roles/{self.role.pk}/edit/").status_code, 200)
+
+    def test_employee_detail_shows_existing_profile_fields_without_edit_actions(self):
+        client = Client()
+        self.assertTrue(client.login(username="employee", password="password"))
+        response = client.get(f"/employees/{self.report.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.report.employee_code)
+        self.assertContains(response, self.department.name)
+        self.assertContains(response, self.role.name)
+        self.assertContains(response, "Login account")
+        self.assertNotContains(response, "Edit employee")
+        self.assertNotContains(response, "Deactivate employee")
 
     def test_duplicate_department_and_job_role_codes_are_form_errors(self):
         client = Client()
@@ -260,7 +288,6 @@ class OrganizationViewTests(TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertIn("user", response.context["form"].errors)
                 self.assertFalse(Employee.objects.filter(employee_code=code).exists())
-
     def test_coordinator_cannot_link_privileged_user_by_editing(self):
         superuser = get_user_model().objects.create_superuser(username="edit-superuser", password="password", email="edit@example.test")
         employee = Employee.objects.create(employee_code="GN-UNLINKED", display_name="Unlinked",
@@ -323,3 +350,23 @@ class OrganizationViewTests(TestCase):
         self.assertEqual(self.client.post(f"/employees/{employee.pk}/deactivate/", {"reason": "Left company"}).status_code, 302)
         ordinary.refresh_from_db()
         self.assertFalse(ordinary.is_active)
+
+
+class EmptyOrganizationPageTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.coordinator = get_user_model().objects.create_user(username="empty-organization-coordinator")
+        Group.objects.get(name="Training Coordinator").user_set.add(cls.coordinator)
+
+    def test_empty_employee_department_and_job_role_lists_render(self):
+        client = Client()
+        client.force_login(self.coordinator)
+        for path, empty_state in (
+            ("/employees/", "No employees available."),
+            ("/departments/", "No departments available."),
+            ("/job-roles/", "No job roles available."),
+        ):
+            with self.subTest(path=path):
+                response = client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, empty_state)

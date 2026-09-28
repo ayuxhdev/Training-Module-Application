@@ -1,2 +1,35 @@
 {% extends "base.html" %}
-{% block content %}<h1>{{ title }}</h1><a href="{% url create_url %}">Add</a><ul>{% for item in items %}<li>{{ item }} {% if item.is_active %}Active{% else %}Inactive{% endif %}</li>{% empty %}<li>None available.</li>{% endfor %}</ul>{% endblock %}
+{% block content %}
+<header class="page-heading">
+	<h1>{{ title }}</h1>
+	{% if title == "Departments" %}
+		{% if perms.organization.add_department %}<a class="action-link" href="{% url create_url %}">Add department</a>{% endif %}
+	{% else %}
+		{% if perms.organization.add_jobrole %}<a class="action-link" href="{% url create_url %}">Add job role</a>{% endif %}
+	{% endif %}
+</header>
+<div class="table-scroll" role="region" aria-label="{{ title }}" tabindex="0">
+	<table>
+		<thead><tr><th>Code</th><th>Name</th><th>Description</th><th>Status</th><th>Actions</th></tr></thead>
+		<tbody>
+		{% for item in items %}
+			<tr>
+				<td>{{ item.code }}</td>
+				<td>{{ item.name }}</td>
+				<td>{{ item.description|default:"—" }}</td>
+				<td><span class="status-badge{% if not item.is_active %} status-inactive{% endif %}">{% if item.is_active %}Active{% else %}Inactive{% endif %}</span></td>
+				<td>
+					{% if title == "Departments" %}
+						{% if perms.organization.change_department %}<a href="{% url 'organization:department-update' item.pk %}">Edit</a>{% endif %}
+					{% else %}
+						{% if perms.organization.change_jobrole %}<a href="{% url 'organization:job-role-update' item.pk %}">Edit</a>{% endif %}
+					{% endif %}
+				</td>
+			</tr>
+		{% empty %}
+			<tr><td class="empty-state" colspan="5">No {{ title|lower }} available.</td></tr>
+		{% endfor %}
+		</tbody>
+	</table>
+</div>
+{% endblock %}

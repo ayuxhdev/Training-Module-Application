@@ -1,6 +1,36 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>{{ employee }}</h1>
-<p>Department: {{ employee.department }}</p><p>Job role: {{ employee.job_role }}</p><p>Status: {% if employee.is_active %}Active{% else %}Inactive{% endif %}</p>
-{% if perms.organization.change_employee %}<p><a href="{% url 'organization:employee-update' employee.pk %}">Edit</a></p>{% if employee.is_active %}<form method="post" action="{% url 'organization:employee-deactivate' employee.pk %}">{% csrf_token %}<label>Reason <input name="reason" required></label><button type="submit">Deactivate</button></form>{% endif %}{% endif %}
+<header class="page-heading">
+	<div>
+		<h1>{{ employee.display_name }}</h1>
+		<p class="muted">Employee code: {{ employee.employee_code }}</p>
+	</div>
+	{% if perms.organization.change_employee %}<a class="action-link" href="{% url 'organization:employee-update' employee.pk %}">Edit employee</a>{% endif %}
+</header>
+<dl class="detail-list">
+	<div><dt>Department</dt><dd>{{ employee.department.name }}</dd></div>
+	<div><dt>Job role</dt><dd>{{ employee.job_role.name }}</dd></div>
+	<div><dt>Date joined</dt><dd>{{ employee.date_joined|date:"Y-m-d" }}</dd></div>
+	<div><dt>Employment status</dt><dd><span class="status-badge{% if not employee.is_active %} status-inactive{% endif %}">{% if employee.is_active %}Active{% else %}Inactive{% endif %}</span></dd></div>
+	<div><dt>Login account</dt><dd>{% if employee.user %}{% if employee.user.is_active %}Active{% else %}Inactive{% endif %}{% else %}Not linked{% endif %}</dd></div>
+</dl>
+{% if perms.organization.change_employee and employee.is_active %}
+	<section class="form-section">
+		<h2>Deactivate employee</h2>
+		<form method="post" action="{% url 'organization:employee-deactivate' employee.pk %}" class="form-stack">
+			{% csrf_token %}
+			{% if form %}
+				{{ form.non_field_errors }}
+				{{ form.reason.label_tag }}
+				{{ form.reason }}
+				{{ form.reason.errors }}
+			{% else %}
+				<label for="id_reason">Reason</label>
+				<textarea id="id_reason" name="reason" maxlength="1000" required></textarea>
+			{% endif %}
+			<button type="submit">Deactivate employee</button>
+		</form>
+	</section>
+{% endif %}
+<p><a href="{% url 'organization:employee-list' %}">Back to employees</a></p>
 {% endblock %}

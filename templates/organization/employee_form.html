@@ -1,2 +1,13 @@
 {% extends "base.html" %}
-{% block content %}<h1>Employee</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save</button></form>{% endblock %}
+{% block content %}
+<header class="page-heading">
+	<h1>{% if form.instance.pk %}Edit employee{% else %}Add employee{% endif %}</h1>
+	<a href="{% url 'organization:employee-list' %}">Back to employees</a>
+</header>
+<form method="post" class="form-stack">
+	{% csrf_token %}
+	{{ form.non_field_errors }}
+	{{ form.as_p }}
+	<button type="submit">Save employee</button>
+</form>
+{% endblock %}

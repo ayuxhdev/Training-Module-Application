@@ -145,6 +145,15 @@ class JobRoleListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
 class ManageDepartmentMixin(ManageEmployeeMixin):
 	permission_required = "organization.change_department"
 
+	def get_context_data(self, **kwargs):
+		context = super().get_context_data(**kwargs)
+		if self.model is Department:
+			context.update(reference_name="department", reference_list_url="organization:department-list")
+		else:
+			context.update(reference_name="job role", reference_list_url="organization:job-role-list")
+		context["reference_edit"] = self.object is not None
+		return context
+
 
 class DepartmentCreateView(ManageDepartmentMixin, CreateView):
 	permission_required = "organization.add_department"
