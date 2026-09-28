@@ -13,7 +13,7 @@ This file is the repository-side development roadmap.
 Current milestone:
 
 ```text
-Milestone 11 - Documentation + Project Structure + CI
+Milestone 12 - Functional Frontend
 ```
 
 Current backend status:
@@ -40,11 +40,11 @@ The application is still pre-release.
 
 Immediate priorities are:
 
-1. Finish repository documentation.
-2. Add GitHub Actions CI.
-3. Verify CI against MySQL.
-4. Preserve the 189-test backend baseline.
-5. Begin Functional Frontend work after Milestone 11 closes.
+1. Begin Milestone 12 - Functional Frontend.
+2. Build the complete usable browser interface across the implemented backend workflows.
+3. Preserve the 189-test MySQL backend baseline while integrating the frontend.
+4. Keep backend authorization authoritative and avoid UI-only security assumptions.
+5. Prepare the application for later UX, responsive, accessibility, and E2E milestones.
 
 ## 4. Milestone Overview
 
@@ -60,8 +60,8 @@ Milestone 7  - Dashboards & Reports                          COMPLETE
 Milestone 8  - Audit Logging & Backend Hardening             COMPLETE
 Milestone 9  - Backend Cleanup & Simplification              COMPLETE
 Milestone 10 - Security Hardening & Vulnerability Testing    COMPLETE
-Milestone 11 - Documentation + Project Structure + CI        IN PROGRESS
-Milestone 12 - Functional Frontend                           PLANNED
+Milestone 11 - Documentation + Project Structure + CI        COMPLETE
+Milestone 12 - Functional Frontend                           IN PROGRESS
 Milestone 13 - UX + Responsive + Accessibility               PLANNED
 Milestone 14 - Full E2E + Integration Testing                PLANNED
 Milestone 15 - Production + Deployment Hardening             PLANNED
@@ -430,7 +430,7 @@ git diff --check
 Status:
 
 ```text
-IN PROGRESS
+COMPLETE
 ```
 
 ### Documentation Tasks
@@ -457,7 +457,7 @@ docs/
 └── DEPLOYMENT.md
 ```
 
-### Current Documentation Progress
+### Documentation Progress
 
 ```text
 README.md                COMPLETE
@@ -469,45 +469,67 @@ docs/SECURITY.md         COMPLETE
 docs/TESTING.md          COMPLETE
 docs/DEPLOYMENT.md       COMPLETE
 docs/DESIGN.md           COMPLETE
-docs/TASKS.md            IN PROGRESS
-docs/MEMORY.md           PENDING
+docs/TASKS.md            COMPLETE
+docs/MEMORY.md           COMPLETE
 ```
 
 ### CI Tasks
 
-Still required:
+Completed:
 
 ```text
-[ ] Create .github/workflows/ci.yml
-[ ] Configure Python
-[ ] Configure MySQL 8 service
-[ ] Install dependencies
-[ ] Run Django system check
-[ ] Run migration consistency check
-[ ] Run full MySQL test suite
-[ ] Run pip check
-[ ] Push workflow
-[ ] Confirm GitHub Actions passes
+[x] Create .github/workflows/ci.yml
+[x] Configure Python
+[x] Configure MySQL 8 service
+[x] Install dependencies
+[x] Run Django system check
+[x] Run migration consistency check
+[x] Run full MySQL test suite
+[x] Run pip check
+[x] Push workflow
+[x] Confirm GitHub Actions passes
 ```
 
-### Milestone 11 Exit Criteria
+GitHub Actions CI runs against MySQL.
 
-Milestone 11 is complete only when:
+The initial CI run exposed a Linux filename case-sensitivity issue because the dependency file was named:
 
 ```text
-[ ] Required documentation exists
-[ ] Documentation matches implemented behavior
-[ ] No future feature is falsely described as implemented
-[ ] GitHub Actions workflow exists
-[ ] CI uses MySQL
-[ ] CI passes
-[ ] Full local test suite passes
-[ ] Django check passes
-[ ] Migration check passes
-[ ] pip check passes
-[ ] git diff --check passes
-[ ] Changes reviewed
-[ ] Stable changes committed and pushed
+Requirements.txt
+```
+
+It was renamed to the conventional:
+
+```text
+requirements.txt
+```
+
+After the rename, GitHub Actions completed successfully.
+
+### Milestone 11 Verification
+
+```text
+[x] Required documentation exists
+[x] Documentation reflects the current project baseline
+[x] Future functionality is separated from implemented functionality
+[x] GitHub Actions workflow exists
+[x] CI uses MySQL
+[x] CI passes
+[x] Full local test suite passes
+[x] Django check passes
+[x] Migration check passes
+[x] pip check passes
+[x] git diff --check passes
+[x] Changes reviewed
+[x] Stable changes committed and pushed
+```
+
+Milestone 11 completed successfully.
+
+Backend baseline preserved:
+
+```text
+189 full tests passing on MySQL
 ```
 
 ## 18. Milestone 12 - Functional Frontend
@@ -515,7 +537,7 @@ Milestone 11 is complete only when:
 Status:
 
 ```text
-PLANNED
+IN PROGRESS
 ```
 
 Primary goal:
@@ -555,6 +577,82 @@ Django Templates + HTML + CSS + basic JavaScript
 
 Do not introduce React without an explicit architecture decision.
 
+### Milestone 12 Development Principles
+
+Frontend development must preserve the existing backend architecture.
+
+The frontend must not become authoritative for:
+
+- permissions
+- employee scope
+- Manager scope
+- assignment ownership
+- progress
+- assessment scores
+- completion
+- certificate eligibility
+
+The backend remains authoritative.
+
+Frontend controls are primarily responsible for:
+
+- usability
+- navigation
+- presentation
+- feedback
+- workflow clarity
+
+### Milestone 12 Initial Priorities
+
+Initial implementation order should favor:
+
+```text
+Application shell
+-> navigation
+-> role-aware menus
+-> dashboards
+-> organization pages
+-> training management
+-> assignments
+-> employee learning flow
+-> video experience
+-> assessment experience
+-> certificates
+-> reports
+-> audit interface
+```
+
+The exact order may be adjusted based on dependencies discovered during implementation.
+
+### Milestone 12 Exit Criteria
+
+Milestone 12 should not close until:
+
+```text
+[ ] Core application shell exists
+[ ] Navigation works
+[ ] Role-aware navigation works
+[ ] Administrator workflows are usable
+[ ] Training Coordinator workflows are usable
+[ ] Manager workflows are usable
+[ ] Employee workflows are usable
+[ ] Organization management is usable
+[ ] Training management is usable
+[ ] Assignment management is usable
+[ ] Video training flow is usable
+[ ] Assessment flow is usable
+[ ] Certificate pages are usable
+[ ] Reports are usable
+[ ] Audit interface is usable
+[ ] Form errors are visible and understandable
+[ ] Success/error feedback is present
+[ ] Existing backend authorization remains intact
+[ ] Full MySQL test suite passes
+[ ] CI passes
+```
+
+Deep responsive, accessibility, and premium visual work belongs to later milestones.
+
 ## 19. Milestone 13 - UX + Responsive + Accessibility
 
 Status:
@@ -584,6 +682,12 @@ Planned work includes:
 
 Playwright may begin being used heavily here.
 
+Primary question for this milestone:
+
+```text
+Is the application easy to use?
+```
+
 ## 20. Milestone 14 - Full E2E + Integration Testing
 
 Status:
@@ -598,7 +702,7 @@ Primary goal:
 Verify complete workflows through the browser.
 ```
 
-Representative flows include:
+Representative administrative flow:
 
 ```text
 Administrator
@@ -611,7 +715,7 @@ Administrator
 -> Assign Employee
 ```
 
-and:
+Representative Employee flow:
 
 ```text
 Employee
@@ -634,6 +738,17 @@ Planned work includes:
 - malformed browser flows
 - browser integration bugs
 - frontend/backend integration fixes
+
+Important roles should include at minimum:
+
+```text
+Administrator
+Training Coordinator
+Manager
+Employee
+```
+
+Trainer and Supervisor flows should be tested according to their actual implemented V1 permissions.
 
 ## 21. Milestone 15 - Production + Deployment Hardening
 
@@ -662,6 +777,8 @@ Planned work includes:
 - operational logging
 - smoke testing
 - rollback procedure
+
+Production-specific values should not be guessed before the deployment environment is selected.
 
 ## 22. Milestone 16 - Final Bug Hunt + Security + Repository Review
 
@@ -696,11 +813,23 @@ Planned work includes:
 - TODO review
 - debug artifact review
 
-Strix or another authorized security tool may be used at this stage.
+Potential tools include:
+
+- `pip-audit`
+- Strix or another authorized security testing tool
+- manual targeted review
+- Playwright negative/security flows
 
 Automated findings must be reviewed manually.
 
 Do not blindly apply generated security patches.
+
+The release target remains:
+
+```text
+No known exploitable critical/high-severity security issue.
+No known important reproducible release-blocking bug left unresolved.
+```
 
 ## 23. Milestone 17 - Final Readability + Refactor Pass
 
@@ -740,11 +869,13 @@ actor = forms.ModelChoiceField(
 
 rather than compressed equivalents.
 
-After each refactor:
+After each meaningful refactor:
 
 - run focused tests
 - preserve behavior
-- run full suite where appropriate
+- run the full suite where appropriate
+
+No broad redesign should occur merely because code can be written differently.
 
 ## 24. Milestone 18 - Premium Visual Polish
 
@@ -779,11 +910,17 @@ Planned work includes:
 - badges
 - progress indicators
 - spacing
-- responsiveness
-- polish
+- responsive refinement
+- polished empty states
 - consistent interaction states
 
 No backend business-logic changes should be introduced during this pass unless a genuine bug is discovered.
+
+Primary question:
+
+```text
+Does the application feel like a finished Garden's Need product?
+```
 
 ## 25. Milestone 19 - Final Acceptance + V1 Release
 
@@ -800,6 +937,7 @@ Final tasks include:
 - final Playwright run
 - final browser smoke test
 - final responsive review
+- final accessibility review
 - final security review confirmation
 - production configuration confirmation
 - documentation review
@@ -854,6 +992,7 @@ V1 must not be considered ready until all major release gates pass.
 [ ] HTTPS verified
 [ ] Secure cookies verified
 [ ] Backup strategy verified
+[ ] Restore procedure tested
 [ ] Smoke test passes
 ```
 
@@ -867,7 +1006,7 @@ V1 must not be considered ready until all major release gates pass.
 [ ] Deployment documentation accurate
 ```
 
-### Visual Gate
+### Visual and Accessibility Gate
 
 ```text
 [ ] Final premium visual pass complete
@@ -883,7 +1022,7 @@ Current known blocker:
 None
 ```
 
-Milestone 11 can proceed normally.
+Milestone 12 can proceed normally.
 
 If a blocker appears, record:
 
@@ -910,6 +1049,8 @@ The following work is intentionally deferred and should not interrupt current V1
 - native Android screen-capture protection
 - advanced workforce analytics
 
+These are future-scope features and must not be treated as current V1 functionality.
+
 ## 29. Tooling Plan
 
 Current development tools include:
@@ -917,16 +1058,23 @@ Current development tools include:
 - VS Code
 - Git
 - GitHub
+- GitHub Actions
 - GitHub Copilot
 - Codex
 - Context7
 - Playwright
 
-Potential later tools:
-
 ### Context7
 
-Use when current framework or library documentation is needed.
+Use when current framework or library documentation is required.
+
+Useful for:
+
+- Django documentation
+- GitHub Actions documentation
+- library/API behavior that may have changed
+
+Do not use it to replace inspection of the actual project code.
 
 ### Playwright
 
@@ -936,6 +1084,15 @@ Primary use:
 Milestones 13-14
 ```
 
+Expected uses include:
+
+- browser workflows
+- responsive behavior
+- role isolation
+- direct URL testing
+- negative flows
+- E2E testing
+
 ### Strix
 
 Potential use:
@@ -944,17 +1101,35 @@ Potential use:
 Milestone 16
 ```
 
-for authorized final security testing.
+Use only for authorized final security testing against:
+
+- local environments
+- staging
+- systems owned or explicitly authorized by Garden's Need
+
+Automated findings require review.
 
 ### GitBook
 
 Optional.
 
-Repository Markdown remains the source of truth.
+Repository Markdown remains the documentation source of truth.
+
+GitBook may later provide a polished documentation surface.
 
 ### Linear
 
-Optional if the bug/feature backlog becomes difficult to manage.
+Optional.
+
+Consider only if the feature/bug backlog becomes difficult to manage through the current roadmap and repository documentation.
+
+### OmniRoute
+
+Optional backup tooling.
+
+OmniRoute should not block application development.
+
+Use it only when it provides useful additional model capacity without consuming excessive setup time.
 
 ## 30. Development Workflow
 
@@ -979,6 +1154,18 @@ Inspect
 
 Do not commit unstable work.
 
+Take a stable checkpoint before starting risky work.
+
+For confirmed defects:
+
+```text
+Reproduce
+-> Regression Test
+-> Narrow Fix
+-> Focused Verification
+-> Full Verification
+```
+
 ## 31. Current Baseline to Protect
 
 Before starting a major new milestone, preserve this current backend baseline:
@@ -987,32 +1174,55 @@ Before starting a major new milestone, preserve this current backend baseline:
 189 full tests passing on MySQL
 ```
 
+Additional current verification:
+
+```text
+Django check: passing
+Migration check: passing
+pip check: passing
+git diff --check: passing
+GitHub Actions MySQL CI: passing
+```
+
 If future work adds tests, the latest verified passing count becomes the new baseline.
 
 A decrease in test count should be investigated unless tests were deliberately and correctly removed.
 
+Frontend work must not silently weaken the backend test baseline.
+
 ## 32. Current Next Action
 
-Current immediate action:
-
-```text
-Finish Milestone 11 documentation.
-```
-
-After documentation:
-
-```text
-Create GitHub Actions CI.
-```
-
-After CI passes:
-
-```text
-Close Milestone 11.
-```
-
-Then begin:
+Current milestone:
 
 ```text
 Milestone 12 - Functional Frontend
 ```
+
+Immediate goal:
+
+```text
+Make the complete application usable through the browser.
+```
+
+Initial priorities:
+
+```text
+Build the application shell and navigation
+Build role-aware menus
+Connect existing backend workflows to usable pages
+Build Administrator workflows
+Build Training Coordinator workflows
+Build Manager workflows
+Build Employee workflows
+Preserve backend authorization and business rules
+Preserve the 189-test MySQL baseline
+Keep GitHub Actions CI green
+```
+
+After Milestone 12:
+
+```text
+Milestone 13 - UX + Responsive + Accessibility
+```
+
+The immediate development focus is now the functional frontend.
