@@ -1,0 +1,50 @@
+:root {
+  color: #27312b;
+  background: #faf9f4;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+body { margin: 0; }
+a { color: #24513a; }
+
+.skip-link {
+  position: absolute;
+  left: -10000px;
+  top: 0.5rem;
+  z-index: 1;
+  padding: 0.5rem;
+  background: white;
+}
+.skip-link:focus { left: 0.5rem; }
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem clamp(1rem, 3vw, 2rem);
+  background: #183c2a;
+  color: white;
+}
+.site-header a { color: white; }
+.site-brand { font-size: 1.15rem; font-weight: 700; text-decoration: none; }
+.account-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; }
+.account-controls form { margin: 0; }
+.account-controls button { cursor: pointer; }
+
+.primary-nav { padding: 0.5rem clamp(1rem, 3vw, 2rem); background: #e9eee9; }
+.primary-nav ul { display: flex; flex-wrap: wrap; gap: 0.3rem 1.2rem; margin: 0; padding: 0; list-style: none; }
+.primary-nav a { display: inline-block; padding: 0.25rem 0; }
+.page-content { max-width: 80rem; margin: 0 auto; padding: 1.5rem clamp(1rem, 3vw, 2rem); }
+.messages { max-width: 80rem; margin: 1rem auto 0; padding: 0 clamp(1rem, 3vw, 2rem); list-style: none; }
+.message { margin: 0.5rem 0; padding: 0.6rem 0.8rem; border-left: 3px solid #687b54; background: #eef3e8; }
+.message.error { border-color: #a03d32; background: #f9e9e6; }
+
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.table-scroll table { min-width: 46rem; }

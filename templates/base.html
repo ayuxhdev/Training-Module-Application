@@ -1,18 +1,49 @@
+{% load static %}
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Garden's Need Training</title></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Garden's Need Training{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'accounts/shell.css' %}">
+</head>
 <body>
-<nav>
+<a class="skip-link" href="#main-content">Skip to content</a>
+<header class="site-header">
+  <a class="site-brand" href="{% if user.is_authenticated %}{% url 'reports:dashboard' %}{% else %}{% url 'accounts:login' %}{% endif %}">Garden's Need Training</a>
   {% if user.is_authenticated %}
-    <a href="{% url 'reports:dashboard' %}">Dashboard</a>
-    <a href="{% url 'organization:employee-list' %}">Employees</a>
-    <a href="{% url 'training:assignment-list' %}">Assignments</a>
-    {% if perms.certifications.view_certificate or user.employee.is_active %}<a href="{% url 'certifications:certificate-list' %}">Certificates</a>{% endif %}
-    {% if perms.audit.view_auditlog %}<a href="{% url 'audit:audit-log-list' %}">Audit log</a>{% endif %}
-    {% if perms.assessments.view_question %}<a href="{% url 'assessments:question-list' %}">Question bank</a>{% endif %}
-    <form method="post" action="{% url 'accounts:logout' %}" style="display:inline">{% csrf_token %}<button type="submit">Log out</button></form>
+    <div class="account-controls">
+      <span class="signed-in-user">Signed in as {% if user.get_full_name %}{{ user.get_full_name }}{% else %}{{ user.get_username }}{% endif %}</span>
+      <form method="post" action="{% url 'accounts:logout' %}">
+        {% csrf_token %}
+        <button type="submit">Log out</button>
+      </form>
+    </div>
   {% endif %}
+</header>
+{% if user.is_authenticated %}
+<nav class="primary-nav" aria-label="Primary navigation">
+  <ul>
+    <li><a href="{% url 'reports:dashboard' %}">Dashboard</a></li>
+    {% if perms.organization.view_employee %}<li><a href="{% url 'organization:employee-list' %}">Employees</a></li>{% endif %}
+    {% if perms.organization.view_department %}<li><a href="{% url 'organization:department-list' %}">Departments</a></li>{% endif %}
+    {% if perms.organization.view_jobrole %}<li><a href="{% url 'organization:job-role-list' %}">Job roles</a></li>{% endif %}
+    {% if perms.training.view_training %}<li><a href="{% url 'training:training-list' %}">Trainings</a></li>{% endif %}
+    {% if shell_role %}<li><a href="{% url 'training:assignment-list' %}">Assignments</a></li>{% endif %}
+    {% if perms.assessments.view_question %}<li><a href="{% url 'assessments:question-list' %}">Question bank</a></li>{% endif %}
+    {% if shell_can_view_certificates %}<li><a href="{% url 'certifications:certificate-list' %}">Certificates</a></li>{% endif %}
+    {% if shell_role == 'company' or shell_role == 'manager' %}<li><a href="{% url 'reports:assignment-report' %}">Assignment report</a></li>{% endif %}
+    {% if perms.audit.view_auditlog %}<li><a href="{% url 'audit:audit-log-list' %}">Audit log</a></li>{% endif %}
+  </ul>
 </nav>
-<main>{% block content %}{% endblock %}</main>
+{% endif %}
+{% if messages %}
+<ul class="messages" aria-label="Notifications">
+  {% for message in messages %}<li class="message {{ message.tags }}">{{ message }}</li>{% endfor %}
+</ul>
+{% endif %}
+<main id="main-content" class="page-content" tabindex="-1">
+  {% block content %}{% endblock %}
+</main>
 </body>
 </html>

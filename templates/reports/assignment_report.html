@@ -11,6 +11,7 @@
   <p>{{ filter_form.overdue_only }} {{ filter_form.overdue_only.label_tag }} {{ filter_form.overdue_only.errors }}</p>
   <button type="submit">Filter</button>
 </form>
+<div class="table-scroll" role="region" aria-label="Assignment report results" tabindex="0">
 <table>
   <thead><tr><th>Employee</th><th>Department</th><th>Job role</th><th>Training</th><th>Version</th><th>Assigned</th><th>Due</th><th>Status</th><th>Overdue</th><th>Completed</th><th>Certificate</th></tr></thead>
   <tbody>
@@ -33,4 +34,5 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

@@ -15,6 +15,23 @@ from .queries import assignment_metrics, overdue_assignments
 
 
 class EmptyDashboardTests(TestCase):
+	def test_skip_target_and_assignment_table_are_keyboard_accessible(self):
+		user = get_user_model().objects.create_user(username="accessible-report")
+		Group.objects.get(name="Training Coordinator").user_set.add(user)
+		client = Client()
+		client.force_login(user)
+
+		dashboard = client.get("/")
+		self.assertContains(dashboard, '<main id="main-content" class="page-content" tabindex="-1">', html=False)
+
+		report = client.get("/reports/assignments/")
+		self.assertContains(
+			report,
+			'<div class="table-scroll" role="region" aria-label="Assignment report results" tabindex="0">',
+			html=False,
+		)
+		self.assertContains(report, "<table>", html=False)
+
 	def test_company_dashboard_and_report_with_no_assignments(self):
 		user = get_user_model().objects.create_user(username="empty-dashboard")
 		Group.objects.get(name="Training Coordinator").user_set.add(user)
