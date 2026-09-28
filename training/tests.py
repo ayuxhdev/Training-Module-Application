@@ -13,7 +13,8 @@ from django.test import Client, TestCase
 
 from audit.models import AuditLog
 from config.model_test_utils import CurriculumTestCase
-from organization.models import Employee
+from organization.models import Employee, JobRole
+from .forms import TrainingForm
 from .models import Lesson, LessonProgress, Module, RoleTrainingRequirement, Training, TrainingAssignment, TrainingVersion, VideoWatchSession
 
 
@@ -149,6 +150,24 @@ class ContentManagementViewTests(CurriculumTestCase):
         self.assertContains(response, "already has that version number")
         self.assertEqual(response.context["form"]["version_number"].value(), str(self.version.version_number))
         self.assertFalse(TrainingVersion.objects.filter(title="Duplicate version").exists())
+
+    def test_training_create_handles_duplicate_saved_after_form_validation(self):
+        save_form = TrainingForm.save
+
+        def save_after_competing_create(form, *args, **kwargs):
+            Training.objects.create(code="RACE-TRAINING", catalog_title="Winner", created_by=self.coordinator)
+            return save_form(form, *args, **kwargs)
+
+        with patch.object(TrainingForm, "save", save_after_competing_create):
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client_for(self.coordinator).post("/trainings/new/", {
+                    "code": "RACE-TRAINING", "catalog_title": "Loser",
+                })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["form"].errors)
+        self.assertEqual(Training.objects.filter(code="RACE-TRAINING").count(), 1)
+        self.assertEqual(Training.objects.get(code="RACE-TRAINING").catalog_title, "Winner")
+        self.assertFalse(AuditLog.objects.filter(action="training.training.created").exists())
 
     def test_version_create_uses_url_training_not_posted_training(self):
         other_training = Training.objects.create(code="OTHER", catalog_title="Other", created_by=self.user)
@@ -491,6 +510,110 @@ class AssignmentViewTests(CurriculumTestCase):
         self.assertFalse(TrainingAssignment.objects.filter(employee=inactive, training_version=self.version).exists())
         self.assertEqual(TrainingAssignment.objects.filter(training_version=self.version).count(), 4)
 
+    def test_role_assignment_due_today_uses_the_assignment_start_time(self):
+        requirement = RoleTrainingRequirement.objects.create(
+            job_role=self.role, training_version=self.version,
+            created_by=self.coordinator, due_in_days=0,
+        )
+        response = self.client_for(self.coordinator).post(
+            "/assignments/role/new/", {"role_requirement": requirement.pk},
+        )
+        self.assertEqual(response.status_code, 302)
+        created = TrainingAssignment.objects.get(employee=self.report, training_version=self.version)
+        self.assertEqual(created.due_at, created.assigned_at)
+
+    def test_role_assignment_with_no_matching_employees_creates_nothing(self):
+        vacant_role = JobRole.objects.create(code="VACANT", name="Vacant role")
+        requirement = RoleTrainingRequirement.objects.create(
+            job_role=vacant_role, training_version=self.version,
+            created_by=self.coordinator, due_in_days=14,
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client_for(self.coordinator).post(
+                "/assignments/role/new/", {"role_requirement": requirement.pk},
+            )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(TrainingAssignment.objects.filter(role_requirement=requirement).count(), 0)
+        self.assertFalse(AuditLog.objects.filter(
+            action="training.role_assignment.batch_created", entity_id=str(requirement.pk),
+        ).exists())
+
+    def test_role_assignment_skips_a_duplicate_created_after_initial_lookup(self):
+        requirement = RoleTrainingRequirement.objects.create(
+            job_role=self.role, training_version=self.version,
+            created_by=self.coordinator, due_in_days=14,
+        )
+        create_assignment = TrainingAssignment.objects.create
+        raced = False
+
+        def create_with_competing_assignment(**values):
+            nonlocal raced
+            if values["employee"].pk == self.report.pk and not raced:
+                raced = True
+                create_assignment(**values)
+            return create_assignment(**values)
+
+        with patch.object(TrainingAssignment.objects, "create", side_effect=create_with_competing_assignment):
+            response = self.client_for(self.coordinator).post(
+                "/assignments/role/new/", {"role_requirement": requirement.pk},
+            )
+        self.assertTrue(raced)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(TrainingAssignment.objects.filter(
+            employee=self.report, training_version=self.version,
+        ).count(), 1)
+
+    def test_role_assignment_recovers_from_database_duplicate_after_initial_lookup(self):
+        requirement = RoleTrainingRequirement.objects.create(
+            job_role=self.role, training_version=self.version,
+            created_by=self.coordinator, due_in_days=14,
+        )
+        create_assignment = TrainingAssignment.objects.create
+        raced = False
+
+        def create_with_competing_assignment(**values):
+            nonlocal raced
+            if values["employee"].pk == self.report.pk and not raced:
+                raced = True
+                create_assignment(**values)
+            return create_assignment(**values)
+
+        with patch.object(TrainingAssignment, "full_clean", return_value=None), patch.object(
+            TrainingAssignment.objects, "create", side_effect=create_with_competing_assignment,
+        ):
+            response = self.client_for(self.coordinator).post(
+                "/assignments/role/new/", {"role_requirement": requirement.pk},
+            )
+        self.assertTrue(raced)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(TrainingAssignment.objects.filter(
+            employee=self.report, training_version=self.version,
+        ).count(), 1)
+
+    def test_role_assignment_rejects_due_period_outside_supported_dates(self):
+        requirement = RoleTrainingRequirement.objects.create(
+            job_role=self.role, training_version=self.version,
+            created_by=self.coordinator, due_in_days=1_000_000_000,
+        )
+        response = self.client_for(self.coordinator).post(
+            "/assignments/role/new/", {"role_requirement": requirement.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("role_requirement", response.context["form"].errors)
+        self.assertFalse(TrainingAssignment.objects.filter(role_requirement=requirement).exists())
+
+    def test_manual_assignment_rejects_retired_version(self):
+        self.version.status = TrainingVersion.Status.RETIRED
+        self.version.save()
+        response = self.client_for(self.coordinator).post("/assignments/new/", {
+            "employee": self.other.pk, "training_version": self.version.pk, "due_date": "",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Assignments require a published training version")
+        self.assertFalse(TrainingAssignment.objects.filter(
+            employee=self.other, training_version=self.version,
+        ).exists())
+
     def test_invalid_submission_returns_form_response_not_server_error(self):
         response = self.client_for(self.coordinator).post("/assignments/new/", {
             "employee": self.employee.pk, "training_version": self.new_version().pk, "due_date": "not-a-date",
@@ -609,6 +732,16 @@ class PlaybackViewTests(CurriculumTestCase):
                 self.assertEqual(response.status_code, 400)
         response = self.post_json(self.url(), {"session_id": session_id + 1000, "position": 0})
         self.assertEqual(response.status_code, 404)
+
+    def test_heartbeat_after_session_end_is_rejected_without_changing_progress(self):
+        session_id = self.start().json()["session_id"]
+        self.assertEqual(self.post_json(self.url(f"sessions/{session_id}/end"), {
+            "position": 0, "completed_normally": True,
+        }).status_code, 200)
+        response = self.post_json(self.url(), {"session_id": session_id, "position": 20})
+        self.assertEqual(response.status_code, 404)
+        progress = LessonProgress.objects.get(assignment=self.assignment, lesson=self.video_lesson)
+        self.assertEqual(progress.watched_seconds, 0)
 
     def test_forward_seek_does_not_count_skipped_time(self):
         start_time = self.now + timedelta(minutes=1)
@@ -821,6 +954,20 @@ class PlaybackViewTests(CurriculumTestCase):
         self.assertEqual(AuditLog.objects.filter(
             action="training.lessonprogress.completed", entity_id=str(progress.pk),
         ).count(), 1)
+
+    def test_video_completion_changes_at_exact_watch_threshold(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        for position in (30, 60, 89.99):
+            with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=position)):
+                response = self.post_json(self.url(), {"session_id": session_id, "position": position})
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertFalse(response.json()["completed"])
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=90)):
+            response = self.post_json(self.url(), {"session_id": session_id, "position": 90})
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertTrue(response.json()["completed"])
 
     def test_seeking_near_end_does_not_complete_lesson(self):
         start_time = self.now + timedelta(minutes=1)

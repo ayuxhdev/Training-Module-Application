@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
 from threading import Event
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -15,6 +16,7 @@ from django.utils import timezone
 from config.model_test_utils import CurriculumTestCase
 from organization.models import Employee
 from training.models import LessonProgress, Module, TrainingAssignment
+from .forms import QuestionForm
 from .models import Assessment, AssessmentAttempt, AssessmentQuestion, AttemptAnswer, Question, QuestionOption, QuestionRevision
 
 
@@ -367,6 +369,22 @@ class AssessmentEndpointTests(CurriculumTestCase):
         self.assertEqual(question.revisions.count(), 2)
         self.assertEqual(client.get(response["Location"]).status_code, 200)
 
+    def test_question_create_race_returns_form_error_without_orphan_revision(self):
+        save_form = QuestionForm.save
+
+        def save_after_competing_create(form, *args, **kwargs):
+            Question.objects.create(code="RACE-QUESTION", topic="Winner", created_by=self.coordinator)
+            return save_form(form, *args, **kwargs)
+
+        with patch.object(QuestionForm, "save", save_after_competing_create):
+            response = self.client_for(self.coordinator).post("/questions/new/", {
+                "code": "RACE-QUESTION", "topic": "Loser", "is_active": "on",
+            })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("code", response.context["form"].errors)
+        self.assertEqual(Question.objects.filter(code="RACE-QUESTION").count(), 1)
+        self.assertFalse(QuestionRevision.objects.filter(question__code="RACE-QUESTION").exists())
+
     def test_score_pass_and_client_grade_fields_are_server_controlled(self):
         self.complete_lessons()
         self.start()
@@ -404,6 +422,25 @@ class AssessmentEndpointTests(CurriculumTestCase):
             self.finish_attempt(correct=False)
         response = self.start()
         self.assertEqual(response.status_code, 409)
+
+    def test_submission_at_deadline_passes_and_after_deadline_expires(self):
+        self.complete_lessons()
+        at_deadline = self.start_attempt()
+        with patch("assessments.views.timezone.now", return_value=at_deadline.deadline_at):
+            response = self.submit(at_deadline, self.quiz_item, self.correct_option)
+        self.assertEqual(response.status_code, 302)
+        at_deadline.refresh_from_db()
+        self.assertEqual(at_deadline.status, AssessmentAttempt.Status.SUBMITTED)
+        self.assertTrue(at_deadline.passed)
+
+        late = self.start_attempt()
+        with patch("assessments.views.timezone.now", return_value=late.deadline_at + timedelta(microseconds=1)):
+            response = self.submit(late, self.quiz_item, self.correct_option)
+        self.assertEqual(response.status_code, 302)
+        late.refresh_from_db()
+        self.assertEqual(late.status, AssessmentAttempt.Status.EXPIRED)
+        self.assertFalse(late.passed)
+        self.assertEqual(late.score_points, 0)
 
     def test_final_assessment_requires_all_lesson_and_quiz_prerequisites(self):
         self.assertEqual(self.start(self.final).status_code, 409)

@@ -1,7 +1,8 @@
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import PermissionDenied
-from django.http import Http404
+from django.db import transaction
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
@@ -97,28 +98,31 @@ class EmployeeUpdateView(ManageEmployeeMixin, UpdateView):
 def deactivate_employee(request, pk):
 	if request.method != "POST":
 		raise Http404
-	employee = get_object_or_404(Employee, pk=pk)
-	if employee.user_id and not may_manage_linked_user(request.user, employee.user):
-		raise PermissionDenied
-	form = EmployeeDeactivateForm(request.POST)
-	if not form.is_valid():
-		return render(
-			request,
-			"organization/employee_detail.html",
-			{"employee": employee, "form": form},
-			status=400,
+	with transaction.atomic():
+		employee = get_object_or_404(Employee.objects.select_for_update(), pk=pk)
+		if employee.user_id and not may_manage_linked_user(request.user, employee.user):
+			raise PermissionDenied
+		if not employee.is_active:
+			return HttpResponse("This employee is already inactive.", status=409)
+		form = EmployeeDeactivateForm(request.POST)
+		if not form.is_valid():
+			return render(
+				request,
+				"organization/employee_detail.html",
+				{"employee": employee, "form": form},
+				status=400,
+			)
+		before = audit_snapshot(employee)
+		employee.is_active = False
+		employee.deactivation_reason = form.cleaned_data["reason"]
+		employee.save()
+		record_event(
+			request.user,
+			"organization.employee.deactivated",
+			employee,
+			before=before,
+			after=audit_snapshot(employee),
 		)
-	before = audit_snapshot(employee)
-	employee.is_active = False
-	employee.deactivation_reason = form.cleaned_data["reason"]
-	employee.save()
-	record_event(
-		request.user,
-		"organization.employee.deactivated",
-		employee,
-		before=before,
-		after=audit_snapshot(employee),
-	)
 	return redirect("organization:employee-detail", pk=employee.pk)
 
 

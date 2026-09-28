@@ -8,7 +8,7 @@ from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ImproperlyConfigured
-from django.test import SimpleTestCase, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 
 
 class ProductionSettingsTests(SimpleTestCase):
@@ -45,6 +45,19 @@ class ProductionSettingsTests(SimpleTestCase):
 		self.assertTrue(values["SECURE_HSTS_INCLUDE_SUBDOMAINS"])
 		self.assertTrue(values["SECURE_HSTS_PRELOAD"])
 		self.assertEqual(values["ALLOWED_HOSTS"], ["training.example.test"])
+
+
+class AuthenticationWorkflowTests(TestCase):
+	def test_login_and_post_only_logout(self):
+		get_user_model().objects.create_user(username="auth-workflow", password="test-password")
+		client = Client()
+		self.assertEqual(client.post("/accounts/login/", {
+			"username": "auth-workflow", "password": "test-password",
+		}).status_code, 302)
+		self.assertEqual(client.get("/accounts/logout/").status_code, 405)
+		self.assertEqual(client.get("/").status_code, 200)
+		self.assertEqual(client.post("/accounts/logout/").status_code, 302)
+		self.assertEqual(client.get("/").status_code, 302)
 
 
 class RoleBootstrapTests(TestCase):

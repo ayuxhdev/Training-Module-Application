@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.test import Client
+from django.test import Client, TestCase
 from django.utils import timezone
 
 from certifications.services import issue_completed_assignment_certificate
@@ -12,6 +12,21 @@ from organization.models import Department, Employee, JobRole
 from training.models import Training, TrainingAssignment
 
 from .queries import assignment_metrics, overdue_assignments
+
+
+class EmptyDashboardTests(TestCase):
+	def test_company_dashboard_and_report_with_no_assignments(self):
+		user = get_user_model().objects.create_user(username="empty-dashboard")
+		Group.objects.get(name="Training Coordinator").user_set.add(user)
+		client = Client()
+		client.force_login(user)
+		response = client.get("/")
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.context["metrics"]["total"], 0)
+		self.assertEqual(response.context["metrics"]["completion_percent"], 0)
+		response = client.get("/reports/assignments/?status=COMPLETED")
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(len(response.context["assignments"]), 0)
 
 
 class ReportingTests(CurriculumTestCase):

@@ -63,6 +63,8 @@ class QuestionCreateView(AssessmentPermissionMixin, CreateView):
 		with transaction.atomic():
 			form.instance.created_by = self.request.user
 			response = super().form_valid(form)
+			if form.errors:
+				return response
 			revision = QuestionRevision.objects.create(
 				question=self.object,
 				revision_number=1,

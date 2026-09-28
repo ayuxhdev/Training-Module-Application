@@ -8,6 +8,7 @@ from django.test import Client
 from django.utils import timezone
 
 from assessments.views import _try_complete_assignment
+from audit.models import AuditLog
 from config.model_test_utils import CurriculumTestCase
 from organization.models import Employee
 from training.models import TrainingAssignment
@@ -222,6 +223,23 @@ class CertificateWorkflowTests(CurriculumTestCase):
         self.assertIsNotNone(certificate.revoked_at)
         self.assertEqual(certificate.revoked_by, coordinator)
         self.assertEqual(certificate.revocation_reason, "Issued in error")
+
+    def test_repeated_revocation_preserves_reason_and_one_event(self):
+        certificate = self.certificate(self.complete_assignment())
+        certificate.save()
+        coordinator = get_user_model().objects.create_user(username="revocation-retry")
+        Group.objects.get(name="Training Coordinator").user_set.add(coordinator)
+        client = self.client_for(coordinator)
+        path = f"/certificates/{certificate.pk}/revoke/"
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(client.post(path, {"reason": "Issued in error"}).status_code, 302)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(client.post(path, {"reason": "Retry changed reason"}).status_code, 409)
+        certificate.refresh_from_db()
+        self.assertEqual(certificate.revocation_reason, "Issued in error")
+        self.assertEqual(AuditLog.objects.filter(
+            action="certifications.certificate.revoked", entity_id=str(certificate.pk),
+        ).count(), 1)
 
     def test_manager_cannot_submit_another_employees_final_assessment(self):
         self.complete_lessons()

@@ -226,6 +226,19 @@ class OrganizationViewTests(TestCase):
             response = client.get(path)
             self.assertEqual(response.status_code, 200)
 
+    def test_duplicate_department_and_job_role_codes_are_form_errors(self):
+        client = Client()
+        client.force_login(self.coordinator_user)
+        for path, data, model, code in (
+            ("/departments/new/", {"code": self.department.code, "name": "Duplicate department"}, Department, self.department.code),
+            ("/job-roles/new/", {"code": self.role.code, "name": "Duplicate role"}, JobRole, self.role.code),
+        ):
+            with self.subTest(path=path):
+                response = client.post(path, data)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("code", response.context["form"].errors)
+                self.assertEqual(model.objects.filter(code=code).count(), 1)
+
     def employee_data(self, code, user=None):
         return {
             "employee_code": code,

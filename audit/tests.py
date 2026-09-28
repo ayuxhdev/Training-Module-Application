@@ -90,6 +90,17 @@ class AuditWorkflowTests(CurriculumTestCase):
             "date_joined": self.now.date().isoformat(),
         }
 
+    def test_repeated_employee_deactivation_keeps_original_reason_and_one_event(self):
+        client = self.client_for(self.user)
+        path = f"/employees/{self.employee.pk}/deactivate/"
+        self.assertEqual(self.audited_post(client, path, {"reason": "Employment ended"}).status_code, 302)
+        self.assertEqual(self.audited_post(client, path, {"reason": "Retry changed reason"}).status_code, 409)
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.deactivation_reason, "Employment ended")
+        self.assertEqual(AuditLog.objects.filter(
+            action="organization.employee.deactivated", entity_id=str(self.employee.pk),
+        ).count(), 1)
+
     def test_employee_department_and_assignment_mutations_are_audited_safely(self):
         client = self.client_for(self.user)
         payload = self.employee_data("GN-AUDIT-1", "Audit employee")
@@ -218,12 +229,20 @@ class AuditWorkflowTests(CurriculumTestCase):
             before_data__status=TrainingVersion.Status.DRAFT,
             after_data__status=TrainingVersion.Status.PUBLISHED,
         ).exists())
+        self.assertEqual(self.audited_post(client, f"/versions/{version.pk}/publish/").status_code, 404)
+        self.assertEqual(AuditLog.objects.filter(
+            action="training.trainingversion.published", entity_id=str(version.pk),
+        ).count(), 1)
         self.assertEqual(self.audited_post(client, f"/versions/{version.pk}/retire/").status_code, 302)
         self.assertTrue(AuditLog.objects.filter(
             action="training.trainingversion.retired", entity_id=str(version.pk),
             before_data__status=TrainingVersion.Status.PUBLISHED,
             after_data__status=TrainingVersion.Status.RETIRED,
         ).exists())
+        self.assertEqual(self.audited_post(client, f"/versions/{version.pk}/retire/").status_code, 404)
+        self.assertEqual(AuditLog.objects.filter(
+            action="training.trainingversion.retired", entity_id=str(version.pk),
+        ).count(), 1)
 
     def test_attempt_completion_and_certificate_lifecycle_are_audited_once(self):
         self.complete_lessons()

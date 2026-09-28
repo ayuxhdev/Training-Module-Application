@@ -428,6 +428,12 @@ class RoleTrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMix
 
 	def form_valid(self, form):
 		requirement = form.cleaned_data["role_requirement"]
+		try:
+			assigned_at = timezone.now()
+			due_at = assigned_at + timedelta(days=requirement.due_in_days)
+		except OverflowError:
+			form.add_error("role_requirement", "The due period is outside the supported date range.")
+			return self.form_invalid(form)
 		matching_employees = Employee.objects.filter(job_role=requirement.job_role)
 		employees = matching_employees.filter(is_active=True).select_related("department", "job_role")
 		existing_ids = set(TrainingAssignment.objects.filter(
@@ -447,11 +453,17 @@ class RoleTrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMix
 						department_at_assignment=employee.department,
 						job_role_at_assignment=employee.job_role,
 						assigned_by=self.request.user,
-						due_at=timezone.now() + timedelta(days=requirement.due_in_days),
+						assigned_at=assigned_at,
+						due_at=due_at,
 					)
 					created += 1
-				except IntegrityError:
-					existing_ids.add(employee.pk)
+				except (IntegrityError, ValidationError):
+					if TrainingAssignment.objects.filter(
+						employee=employee, training_version=requirement.training_version,
+					).exists():
+						existing_ids.add(employee.pk)
+					else:
+						raise
 			skipped = matching_employees.count() - created
 			if created:
 				record_event(
