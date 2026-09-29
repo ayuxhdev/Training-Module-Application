@@ -74,7 +74,11 @@ class LessonForm(forms.ModelForm):
 
 
 class TrainingAssignmentForm(forms.ModelForm):
-    due_date = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
+    due_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}),
+        help_text="Optional. Due at the end of the selected day.",
+    )
 
     class Meta:
         model = TrainingAssignment
@@ -82,8 +86,16 @@ class TrainingAssignmentForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["employee"].queryset = Employee.objects.all().select_related("department", "job_role")
-        self.fields["training_version"].queryset = TrainingVersion.objects.all().select_related("training")
+        self.fields["employee"].queryset = Employee.objects.filter(is_active=True).select_related("department", "job_role")
+        self.fields["employee"].empty_label = "Select an employee"
+        self.fields["training_version"].queryset = TrainingVersion.objects.filter(
+            status=TrainingVersion.Status.PUBLISHED,
+        ).select_related("training")
+        self.fields["training_version"].empty_label = "Select a training version"
+        self.fields["training_version"].label_from_instance = lambda version: (
+            f"{version.training.catalog_title} — {version.title} "
+            f"(v{version.version_number}, {version.get_status_display()})"
+        )
 
     def _post_clean(self):
         if self._errors:
@@ -128,7 +140,7 @@ class TrainingAssignmentForm(forms.ModelForm):
 class RoleTrainingAssignmentForm(forms.Form):
     role_requirement = forms.ModelChoiceField(
         queryset=RoleTrainingRequirement.objects.none(),
-        empty_label=None,
+        empty_label="Select a job-role requirement",
     )
 
     def __init__(self, *args, **kwargs):
@@ -137,3 +149,9 @@ class RoleTrainingAssignmentForm(forms.Form):
             is_active=True,
             training_version__status=TrainingVersion.Status.PUBLISHED,
         ).select_related("job_role", "training_version__training")
+        self.fields["role_requirement"].label_from_instance = lambda requirement: (
+            f"{requirement.job_role.name} → "
+            f"{requirement.training_version.training.catalog_title} / "
+            f"{requirement.training_version.title} (v{requirement.training_version.version_number}, "
+            f"due in {requirement.due_in_days} days)"
+        )

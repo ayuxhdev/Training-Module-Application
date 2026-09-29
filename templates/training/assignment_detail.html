@@ -1,18 +1,40 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>{{ assignment.training_version }}</h1>
-<p>Employee: {{ assignment.employee }}</p>
-<p>Status: {{ assignment.get_status_display }}</p>
-<p>Source: {{ assignment.get_source_display }}</p>
-<p>Due: {{ assignment.due_at|default:"Not set" }}</p>
-<p>Department snapshot: {{ assignment.department_at_assignment }}</p>
-<p>Job role snapshot: {{ assignment.job_role_at_assignment }}</p>
-<a href="{% url 'training:assignment-list' %}">Back to assignments</a>
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-list' %}">Assignments</a></li><li>Assignment detail</li></ol></nav>
+<header class="page-heading">
+  <div>
+    <h1>{{ assignment.training_version.training.catalog_title }}</h1>
+    <p class="muted">{{ assignment.training_version.title }} · Version {{ assignment.training_version.version_number }}</p>
+  </div>
+  <div><span class="status-badge status-{{ assignment.status|lower }}">{{ assignment.get_status_display }}</span>{% if assignment.is_overdue %} <span class="status-badge status-overdue">Overdue</span>{% endif %}</div>
+</header>
+<dl class="detail-list">
+  <div><dt>Employee</dt><dd>{{ assignment.employee }}</dd></div>
+  <div><dt>Assigned</dt><dd>{{ assignment.assigned_at|date:"Y-m-d H:i" }}</dd></div>
+  <div><dt>Due</dt><dd{% if assignment.is_overdue %} class="due-overdue"{% endif %}>{{ assignment.due_at|date:"Y-m-d H:i"|default:"Not set" }}</dd></div>
+  <div><dt>Status</dt><dd>{{ assignment.get_status_display }}</dd></div>
+  {% if assignment.started_at %}<div><dt>Started</dt><dd>{{ assignment.started_at|date:"Y-m-d H:i" }}</dd></div>{% endif %}
+  {% if assignment.completed_at %}<div><dt>Completed</dt><dd>{{ assignment.completed_at|date:"Y-m-d H:i" }}</dd></div>{% endif %}
+  {% if assignment.cancelled_at %}<div><dt>Cancelled</dt><dd>{{ assignment.cancelled_at|date:"Y-m-d H:i" }}</dd></div>{% endif %}
+  <div><dt>Assignment source</dt><dd>{{ assignment.get_source_display }}</dd></div>
+  <div><dt>Department at assignment</dt><dd>{{ assignment.department_at_assignment.name }}</dd></div>
+  <div><dt>Job role at assignment</dt><dd>{{ assignment.job_role_at_assignment.name }}</dd></div>
+</dl>
+{% if assignment.role_requirement %}<p>Job-role requirement: {{ assignment.role_requirement.job_role.name }} → {{ assignment.training_version.training.catalog_title }} / {{ assignment.training_version.title }}</p>{% endif %}
+{% if perms.training.view_trainingversion %}<p><a href="{% url 'training:version-detail' assignment.training_version_id %}">View training version</a></p>{% endif %}
 {% if assignment.employee.user == user and assignment.employee.is_active and assignment.status != 'COMPLETED' and assignment.status != 'CANCELLED' %}
-<h2>Assessments</h2>
-{% for assessment in assignment.training_version.assessments.all %}
-	<p>{{ assessment.title }} ({{ assessment.get_kind_display }})
-	<form method="post" action="{% url 'assessments:attempt-start' assignment.pk assessment.pk %}">{% csrf_token %}<button type="submit">Start assessment</button></form></p>
-{% endfor %}
+  <section class="form-section">
+    <h2>Assessments</h2>
+    <p>Assessment prerequisites and attempt limits are checked when you start.</p>
+    {% for assessment in assignment.training_version.assessments.all %}
+      <div class="assignment-assessment">
+        <strong>{{ assessment.title }}</strong> ({{ assessment.get_kind_display }})
+        <form method="post" action="{% url 'assessments:attempt-start' assignment.pk assessment.pk %}">{% csrf_token %}<button type="submit">Start assessment</button></form>
+      </div>
+    {% empty %}
+      <p class="empty-state">No assessments are available for this training version.</p>
+    {% endfor %}
+  </section>
 {% endif %}
+<p><a href="{% url 'training:assignment-list' %}">Back to assignments</a></p>
 {% endblock %}

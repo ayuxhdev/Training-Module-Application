@@ -588,6 +588,143 @@ class AssignmentViewTests(CurriculumTestCase):
             assigned_by=self.coordinator)
         self.assertEqual(manager_client.get(f"/assignments/{outside.pk}/").status_code, 404)
 
+    def test_administrator_assignment_pages_show_relationships_and_real_actions(self):
+        client = self.client_for(self.admin)
+        response = client.get("/assignments/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.training.catalog_title)
+        self.assertContains(response, self.version.title)
+        self.assertContains(response, self.employee.display_name)
+        self.assertContains(response, f'/assignments/{self.assignment.pk}/')
+        self.assertContains(response, 'href="/assignments/new/"')
+        self.assertContains(response, 'href="/assignments/role/new/"')
+        detail = client.get(f"/assignments/{self.assignment.pk}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "Department at assignment")
+        self.assertContains(detail, 'href="/versions/')
+        self.assertEqual(client.get("/assignments/new/").status_code, 200)
+        role_form = client.get("/assignments/role/new/")
+        self.assertEqual(role_form.status_code, 200)
+        self.assertContains(role_form, "No active job-role requirements are available.")
+        self.assertNotContains(role_form, "<button type=\"submit\">Create missing assignments</button>")
+
+    def test_manager_and_employee_assignment_pages_keep_scope_and_hide_management(self):
+        report_assignment = TrainingAssignment.objects.create(
+            employee=self.report, training_version=self.version,
+            department_at_assignment=self.department, job_role_at_assignment=self.role,
+            assigned_by=self.coordinator,
+        )
+        outside = TrainingAssignment.objects.create(
+            employee=self.other, training_version=self.version,
+            department_at_assignment=self.department, job_role_at_assignment=self.role,
+            assigned_by=self.coordinator,
+        )
+        manager = self.client_for(self.manager_user)
+        manager_list = manager.get("/assignments/")
+        self.assertEqual(manager_list.status_code, 200)
+        self.assertContains(manager_list, "Team assignments")
+        self.assertIn(report_assignment, manager_list.context["assignments"])
+        self.assertNotIn(outside, manager_list.context["assignments"])
+        self.assertNotContains(manager_list, 'href="/assignments/new/"')
+        self.assertEqual(manager.get(f"/assignments/{report_assignment.pk}/").status_code, 200)
+        self.assertEqual(manager.get(f"/assignments/{outside.pk}/").status_code, 404)
+        self.assertEqual(manager.get("/assignments/new/").status_code, 403)
+        self.assertEqual(manager.get("/assignments/role/new/").status_code, 403)
+
+        employee = self.client_for(self.employee_user)
+        employee_list = employee.get("/assignments/")
+        self.assertEqual(employee_list.status_code, 200)
+        self.assertContains(employee_list, "My assignments")
+        self.assertEqual(list(employee_list.context["assignments"]), [self.assignment])
+        self.assertNotContains(employee_list, 'href="/assignments/new/"')
+        self.assertNotContains(employee_list, 'href="/assignments/role/new/"')
+        self.assertEqual(employee.get(f"/assignments/{outside.pk}/").status_code, 404)
+        self.assertEqual(employee.get("/assignments/new/").status_code, 403)
+
+    def test_assignment_empty_state_and_server_derived_overdue_status(self):
+        Group.objects.get(name="Employee").user_set.add(self.other_user)
+        empty = self.client_for(self.other_user).get("/assignments/")
+        self.assertEqual(empty.status_code, 200)
+        self.assertContains(empty, "You have no training assignments yet.")
+
+        self.assignment.due_at = self.now + timedelta(minutes=1)
+        self.assignment.save()
+        client = self.client_for(self.employee_user)
+        self.assertContains(client.get("/assignments/"), "Overdue")
+        self.assertContains(client.get(f"/assignments/{self.assignment.pk}/"), "Overdue")
+        self.complete_assignment()
+        self.assertNotContains(client.get(f"/assignments/{self.assignment.pk}/"), "Overdue")
+        self.assertContains(client.get(f"/assignments/{self.assignment.pk}/"), "Completed")
+
+    def test_assignment_forms_label_choices_and_render_validation_errors(self):
+        client = self.client_for(self.admin)
+        manual = client.get("/assignments/new/")
+        self.assertContains(manual, "Select an employee")
+        self.assertContains(manual, "Select a training version")
+        self.assertContains(manual, self.training.catalog_title)
+        self.assertContains(manual, "Due at the end of the selected day")
+
+        requirement = RoleTrainingRequirement.objects.create(
+            job_role=self.role, training_version=self.version,
+            created_by=self.admin, due_in_days=14,
+        )
+        role_form = client.get("/assignments/role/new/")
+        self.assertContains(role_form, "Select a job-role requirement")
+        self.assertContains(role_form, self.role.name)
+        self.assertContains(role_form, self.training.catalog_title)
+        self.assertContains(role_form, "due in 14 days")
+        self.assertContains(role_form, f'value="{requirement.pk}"')
+        empty_role = client.post("/assignments/role/new/", {"role_requirement": ""})
+        self.assertEqual(empty_role.status_code, 200)
+        self.assertContains(empty_role, "This field is required")
+
+        duplicate = client.post("/assignments/new/", {
+            "employee": self.employee.pk, "training_version": self.version.pk, "due_date": "",
+        })
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertContains(duplicate, "already has an assignment")
+        past_due = client.post("/assignments/new/", {
+            "employee": self.other.pk, "training_version": self.version.pk, "due_date": "2000-01-01",
+        })
+        self.assertEqual(past_due.status_code, 200)
+        self.assertContains(past_due, "due date cannot be in the past")
+        self.assertFalse(TrainingAssignment.objects.filter(employee=self.other).exists())
+
+    def test_manual_assignment_choices_exclude_inactive_employees_and_unpublished_versions(self):
+        inactive = Employee.objects.create(
+            employee_code="GN-INELIGIBLE", display_name="Inactive choice",
+            department=self.department, job_role=self.role, date_joined=self.now.date(),
+        )
+        inactive.is_active = False
+        inactive.deactivation_reason = "No longer employed"
+        inactive.save()
+        draft = self.new_version()
+        client = self.client_for(self.admin)
+
+        response = client.get("/assignments/new/")
+        self.assertEqual(response.status_code, 200)
+        employee_choices = response.context["form"].fields["employee"].queryset
+        version_choices = response.context["form"].fields["training_version"].queryset
+        self.assertIn(self.other, employee_choices)
+        self.assertNotIn(inactive, employee_choices)
+        self.assertIn(self.version, version_choices)
+        self.assertNotIn(draft, version_choices)
+        self.assertNotContains(response, str(inactive))
+        self.assertNotContains(response, draft.title)
+
+        inactive_post = client.post("/assignments/new/", {
+            "employee": inactive.pk, "training_version": self.version.pk, "due_date": "",
+        })
+        self.assertEqual(inactive_post.status_code, 200)
+        self.assertIn("employee", inactive_post.context["form"].errors)
+        self.assertFalse(TrainingAssignment.objects.filter(employee=inactive).exists())
+        draft_post = client.post("/assignments/new/", {
+            "employee": self.other.pk, "training_version": draft.pk, "due_date": "",
+        })
+        self.assertEqual(draft_post.status_code, 200)
+        self.assertIn("training_version", draft_post.context["form"].errors)
+        self.assertFalse(TrainingAssignment.objects.filter(employee=self.other, training_version=draft).exists())
+
     def test_duplicate_and_inactive_manual_submissions_are_form_errors(self):
         client = self.client_for(self.coordinator)
         duplicate = client.post("/assignments/new/", {
@@ -603,7 +740,9 @@ class AssignmentViewTests(CurriculumTestCase):
             "employee": self.other.pk, "training_version": self.version.pk, "due_date": "2026-12-31",
         })
         self.assertEqual(inactive.status_code, 200)
-        self.assertContains(inactive, "Inactive employees")
+        self.assertIn("employee", inactive.context["form"].errors)
+        self.assertContains(inactive, "Select a valid choice")
+        self.assertFalse(TrainingAssignment.objects.filter(employee=self.other).exists())
 
     def test_role_assignment_creates_missing_skips_inactive_and_preserves_origin(self):
         inactive = Employee.objects.create(employee_code="GN-013", display_name="Inactive",
@@ -720,7 +859,8 @@ class AssignmentViewTests(CurriculumTestCase):
             "employee": self.other.pk, "training_version": self.version.pk, "due_date": "",
         })
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Assignments require a published training version")
+        self.assertIn("training_version", response.context["form"].errors)
+        self.assertContains(response, "Select a valid choice")
         self.assertFalse(TrainingAssignment.objects.filter(
             employee=self.other, training_version=self.version,
         ).exists())
@@ -730,7 +870,8 @@ class AssignmentViewTests(CurriculumTestCase):
             "employee": self.employee.pk, "training_version": self.new_version().pk, "due_date": "not-a-date",
         })
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Assignments require a published training version")
+        self.assertIn("training_version", response.context["form"].errors)
+        self.assertContains(response, "Select a valid choice")
         self.assertContains(response, "Enter a valid date")
 
 

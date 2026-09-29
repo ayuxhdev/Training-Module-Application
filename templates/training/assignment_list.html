@@ -1,6 +1,35 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Training assignments</h1>
-{% if perms.training.add_trainingassignment %}<a href="{% url 'training:assignment-create' %}">Manual assignment</a> <a href="{% url 'training:role-assignment-create' %}">Assign by job role</a>{% endif %}
-<ul>{% for assignment in assignments %}<li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.employee }} - {{ assignment.training_version }}</a> ({{ assignment.get_status_display }})</li>{% empty %}<li>No assignments found.</li>{% endfor %}</ul>
+<header class="page-heading">
+  <h1>{% if shell_role == 'manager' %}Team assignments{% elif shell_role == 'employee' %}My assignments{% else %}Training assignments{% endif %}</h1>
+  {% if perms.training.add_trainingassignment %}
+    <nav aria-label="Assignment actions">
+      <ul class="action-list">
+        <li><a class="action-link" href="{% url 'training:assignment-create' %}">Assign one employee</a></li>
+        <li><a class="action-link" href="{% url 'training:role-assignment-create' %}">Assign by job role</a></li>
+      </ul>
+    </nav>
+  {% endif %}
+</header>
+<div class="table-scroll" role="region" aria-label="Training assignments" tabindex="0">
+  <table>
+    <thead><tr><th scope="col">Employee</th><th scope="col">Training</th><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Assigned</th><th scope="col">Due</th><th scope="col">Completed</th><th scope="col">Details</th></tr></thead>
+    <tbody>
+    {% for assignment in assignments %}
+      <tr>
+        <td>{{ assignment.employee }}</td>
+        <td>{{ assignment.training_version.training.catalog_title }}</td>
+        <td>{{ assignment.training_version.title }} (v{{ assignment.training_version.version_number }})</td>
+        <td><span class="status-badge status-{{ assignment.status|lower }}">{{ assignment.get_status_display }}</span>{% if assignment.is_overdue %} <span class="status-badge status-overdue">Overdue</span>{% endif %}</td>
+        <td>{{ assignment.assigned_at|date:"Y-m-d H:i" }}</td>
+        <td{% if assignment.is_overdue %} class="due-overdue"{% endif %}>{{ assignment.due_at|date:"Y-m-d H:i"|default:"Not set" }}</td>
+        <td>{{ assignment.completed_at|date:"Y-m-d H:i"|default:"—" }}</td>
+        <td><a href="{% url 'training:assignment-detail' assignment.pk %}">View assignment</a></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="8" class="empty-state">{% if shell_role == 'manager' %}No assignments for your reporting team.{% elif shell_role == 'employee' %}You have no training assignments yet.{% else %}No training assignments found.{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

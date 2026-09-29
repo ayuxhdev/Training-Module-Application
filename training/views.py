@@ -7,7 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Prefetch
+from django.db.models import BooleanField, Case, Prefetch, Value, When
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
@@ -377,15 +377,26 @@ def end_video_session(request, assignment_pk, lesson_pk, session_pk):
 		return JsonResponse({"error": str(exc)}, status=400)
 
 
+def _with_assignment_overdue(queryset):
+	from reports.queries import overdue_condition
+
+	return queryset.annotate(is_overdue=Case(
+		When(overdue_condition(timezone.now()), then=Value(True)),
+		default=Value(False),
+		output_field=BooleanField(),
+	))
+
+
 class TrainingAssignmentListView(AssignmentAccessMixin, ListView):
 	model = TrainingAssignment
 	template_name = "training/assignment_list.html"
 	context_object_name = "assignments"
 
 	def get_queryset(self):
-		return TrainingAssignment.objects.select_related(
+		queryset = TrainingAssignment.objects.select_related(
 			"employee", "training_version__training", "department_at_assignment", "job_role_at_assignment"
 		).filter(employee__in=assignment_scope(self.request.user)).order_by("due_at", "pk")
+		return _with_assignment_overdue(queryset)
 
 
 class TrainingAssignmentDetailView(AssignmentAccessMixin, DetailView):
@@ -394,10 +405,11 @@ class TrainingAssignmentDetailView(AssignmentAccessMixin, DetailView):
 	context_object_name = "assignment"
 
 	def get_queryset(self):
-		return TrainingAssignment.objects.select_related(
+		queryset = TrainingAssignment.objects.select_related(
 			"employee", "training_version__training", "department_at_assignment", "job_role_at_assignment",
 			"role_requirement", "assigned_by"
 		).filter(employee__in=assignment_scope(self.request.user))
+		return _with_assignment_overdue(queryset)
 
 
 class TrainingAssignmentCreateView(AuditedFormMixin, LoginRequiredMixin, PermissionRequiredMixin, CreateView):
@@ -426,6 +438,11 @@ class RoleTrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMix
 	raise_exception = True
 	form_class = RoleTrainingAssignmentForm
 	template_name = "training/role_assignment_form.html"
+
+	def get_context_data(self, **kwargs):
+		context = super().get_context_data(**kwargs)
+		context["has_role_requirements"] = context["form"].fields["role_requirement"].queryset.exists()
+		return context
 
 	def form_valid(self, form):
 		requirement = form.cleaned_data["role_requirement"]
