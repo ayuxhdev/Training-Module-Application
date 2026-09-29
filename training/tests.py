@@ -1,4 +1,6 @@
 import json
+import tempfile
+from io import BytesIO
 from datetime import timedelta
 from decimal import Decimal
 from importlib import import_module
@@ -8,6 +10,8 @@ from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile
+from django.core.files.storage import FileSystemStorage
 from django.db import IntegrityError, models, transaction
 from django.test import Client, TestCase
 
@@ -875,6 +879,410 @@ class AssignmentViewTests(CurriculumTestCase):
         self.assertContains(response, "Enter a valid date")
 
 
+class LearnerFrontendTests(CurriculumTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        Group.objects.get(name="Employee").user_set.add(cls.employee_user)
+        cls.manager_user = get_user_model().objects.create_user(username="learner-manager")
+        Group.objects.get(name="Manager").user_set.add(cls.manager_user)
+        cls.manager = Employee.objects.create(
+            employee_code="GN-LEARN-MGR", display_name="Learning Manager",
+            department=cls.department, job_role=cls.role, date_joined=cls.now.date(), user=cls.manager_user,
+        )
+        cls.employee.reporting_manager = cls.manager
+        cls.employee.save()
+        cls.admin_user = get_user_model().objects.create_user(username="learner-admin")
+        Group.objects.get(name="Administrator").user_set.add(cls.admin_user)
+
+    def page(self, lesson=None):
+        url = f"/assignments/{self.assignment.pk}/"
+        return f"{url}?lesson={lesson.pk}" if lesson else url
+
+    def test_employee_sees_ordered_lessons_and_text_content_without_builder_controls(self):
+        self.client.force_login(self.employee_user)
+        response = self.client.get(self.page())
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Safety instructions")
+        self.assertContains(response, "Mark lesson complete")
+        self.assertContains(response, self.page(self.video_lesson))
+        self.assertContains(response, "Next: Watch")
+        self.assertNotContains(response, "Edit lesson")
+        self.assertNotContains(response, "Add lesson")
+        self.assertNotContains(response, 'id="lesson-video"')
+
+    def test_video_page_uses_only_assigned_lesson_and_server_progress(self):
+        LessonProgress.objects.create(
+            assignment=self.assignment, lesson=self.video_lesson, started_at=self.now,
+            last_accessed_at=self.now + timedelta(seconds=20),
+            last_position_seconds=20, watched_ranges=[[0, 20]],
+        )
+        self.client.force_login(self.employee_user)
+        response = self.client.get(self.page(self.video_lesson))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="lesson-video"')
+        self.assertContains(response, f'/assignments/{self.assignment.pk}/lessons/{self.video_lesson.pk}/progress/')
+        self.assertContains(response, 'value="20')
+        self.assertContains(response, "Resume position: 20 seconds")
+        self.assertContains(response, "Previous: Read")
+        self.assertNotContains(response, "Edit lesson")
+
+    def test_completed_text_and_video_use_persisted_completion(self):
+        self.complete_lessons()
+        self.client.force_login(self.employee_user)
+        text_response = self.client.get(self.page(self.text_lesson))
+        video_response = self.client.get(self.page(self.video_lesson))
+        self.assertContains(text_response, 'id="lesson-completion">Completed')
+        self.assertContains(video_response, 'id="lesson-completion">Completed')
+        self.assertContains(video_response, 'value="95')
+
+    def test_completed_text_detail_matches_curriculum_when_later_video_is_incomplete(self):
+        self.client.force_login(self.employee_user)
+        completion_url = (
+            f"/assignments/{self.assignment.pk}/lessons/{self.text_lesson.pk}/complete/"
+        )
+        response = self.client.post(completion_url)
+        self.assertRedirects(response, self.page(self.text_lesson))
+        progress = LessonProgress.objects.get(assignment=self.assignment, lesson=self.text_lesson)
+        self.assertIsNotNone(progress.completed_at)
+        self.assertFalse(LessonProgress.objects.filter(
+            assignment=self.assignment, lesson=self.video_lesson,
+        ).exists())
+
+        for _ in range(2):
+            page = self.client.get(self.page(self.text_lesson))
+            self.assertEqual(page.status_code, 200)
+            self.assertEqual(page.context["selected_progress"].pk, progress.pk)
+            self.assertContains(page, 'id="lesson-completion">Completed')
+            self.assertNotContains(page, "Mark lesson complete")
+            text_entry = page.context["module_items"][0]["lessons"][0]
+            self.assertEqual(text_entry["progress"].pk, progress.pk)
+
+        self.assertRedirects(self.client.post(completion_url), self.page(self.text_lesson))
+        progress.refresh_from_db()
+        self.assertEqual(LessonProgress.objects.filter(
+            assignment=self.assignment, lesson=self.text_lesson,
+        ).count(), 1)
+        self.assertIsNotNone(progress.completed_at)
+
+    def test_direct_lesson_selection_rejects_other_versions_and_malformed_ids(self):
+        draft = self.new_version()
+        module = Module.objects.create(training_version=draft, title="Other module", position=1)
+        other_lesson = Lesson.objects.create(
+            module=module, title="Other lesson", position=1, content_type="TEXT", body="Private text",
+        )
+        self.client.force_login(self.employee_user)
+        for selector in (str(other_lesson.pk), "invalid", "", "-1"):
+            with self.subTest(selector=selector):
+                response = self.client.get(f"/assignments/{self.assignment.pk}/?lesson={selector}")
+                self.assertEqual(response.status_code, 404)
+
+    def test_employee_cannot_open_another_employees_assignment_or_lesson(self):
+        other_user = get_user_model().objects.create_user(username="learner-other")
+        other = Employee.objects.create(
+            employee_code="GN-LEARN-OTHER", display_name="Other employee",
+            department=self.department, job_role=self.role, date_joined=self.now.date(), user=other_user,
+        )
+        other_assignment = TrainingAssignment.objects.create(
+            employee=other, training_version=self.version,
+            department_at_assignment=self.department, job_role_at_assignment=self.role, assigned_by=self.user,
+        )
+        self.client.force_login(self.employee_user)
+        response = self.client.get(f"/assignments/{other_assignment.pk}/?lesson={self.text_lesson.pk}")
+        self.assertEqual(response.status_code, 404)
+
+    def test_manager_and_admin_keep_assignment_scope_without_employee_player(self):
+        for user in (self.manager_user, self.admin_user):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                response = self.client.get(self.page())
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, 'id="lesson-video"')
+                self.assertNotContains(response, "Safety instructions")
+                self.assertEqual(self.client.get(self.page(self.video_lesson)).status_code, 404)
+
+    def test_inactive_cancelled_and_retired_assignments_cannot_open_lesson(self):
+        self.client.force_login(self.employee_user)
+        self.employee.is_active = False
+        self.employee.deactivation_reason = "Inactive for test"
+        self.employee.save()
+        # Simulate a stale account whose login was re-enabled independently.
+        get_user_model().objects.filter(pk=self.employee_user.pk).update(is_active=True)
+        self.client.force_login(self.employee_user)
+        self.assertEqual(self.client.get(self.page(self.video_lesson)).status_code, 404)
+        self.employee.is_active = True
+        self.employee.deactivated_at = None
+        self.employee.deactivation_reason = ""
+        self.employee.save()
+        self.assignment.status = TrainingAssignment.Status.CANCELLED
+        self.assignment.cancelled_at = self.now + timedelta(seconds=1)
+        self.assignment.cancellation_reason = "Cancelled for test"
+        self.assignment.save()
+        self.assertEqual(self.client.get(self.page(self.video_lesson)).status_code, 404)
+        self.assignment.status = TrainingAssignment.Status.IN_PROGRESS
+        self.assignment.cancelled_at = None
+        self.assignment.cancellation_reason = ""
+        self.assignment.save()
+        self.version.status = TrainingVersion.Status.RETIRED
+        self.version.save()
+        self.assertEqual(self.client.get(self.page(self.video_lesson)).status_code, 404)
+
+    def test_empty_assignment_list_renders_normally(self):
+        other_user = get_user_model().objects.create_user(username="learner-empty")
+        Group.objects.get(name="Employee").user_set.add(other_user)
+        Employee.objects.create(
+            employee_code="GN-LEARN-EMPTY", display_name="New employee",
+            department=self.department, job_role=self.role, date_joined=self.now.date(), user=other_user,
+        )
+        self.client.force_login(other_user)
+        response = self.client.get("/assignments/")
+        self.assertContains(response, "You have no training assignments yet.")
+
+
+class ProtectedVideoTests(CurriculumTestCase):
+    video_bytes = b"0123456789video-content"
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        Group.objects.get(name="Employee").user_set.add(cls.employee_user)
+
+    def setUp(self):
+        size_patch = patch.object(FileSystemStorage, "size", return_value=len(self.video_bytes))
+        open_patch = patch.object(FileSystemStorage, "open", side_effect=lambda name, mode: BytesIO(self.video_bytes))
+        size_patch.start()
+        open_patch.start()
+        self.addCleanup(size_patch.stop)
+        self.addCleanup(open_patch.stop)
+        self.client.force_login(self.employee_user)
+
+    def start(self):
+        response = self.client.post(
+            f"/assignments/{self.assignment.pk}/lessons/{self.video_lesson.pk}/sessions/start/",
+            data="{}", content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content.decode())
+        return response.json()["session_id"]
+
+    def media_url(self, session_id, assignment=None, lesson=None):
+        assignment = assignment or self.assignment
+        lesson = lesson or self.video_lesson
+        return f"/assignments/{assignment.pk}/lessons/{lesson.pk}/sessions/{session_id}/media/"
+
+    def test_authorized_employee_can_stream_video_with_byte_ranges(self):
+        session_id = self.start()
+        response = self.client.get(self.media_url(session_id))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), self.video_bytes)
+        self.assertEqual(response["Content-Type"], "video/mp4")
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        self.assertEqual(response["Accept-Ranges"], "bytes")
+        partial = self.client.get(self.media_url(session_id), HTTP_RANGE="bytes=2-5")
+        self.assertEqual(partial.status_code, 206)
+        self.assertEqual(partial["Content-Range"], f"bytes 2-5/{len(self.video_bytes)}")
+        self.assertEqual(b"".join(partial.streaming_content), self.video_bytes[2:6])
+        suffix = self.client.get(self.media_url(session_id), HTTP_RANGE="bytes=-4")
+        self.assertEqual(b"".join(suffix.streaming_content), self.video_bytes[-4:])
+        head = self.client.head(self.media_url(session_id))
+        self.assertEqual(head.status_code, 200)
+        self.assertEqual(head["Content-Length"], str(len(self.video_bytes)))
+        with patch("training.views.mimetypes.guess_type", return_value=("text/html", None)):
+            fallback = self.client.get(self.media_url(session_id))
+        self.assertEqual(fallback["Content-Type"], "application/octet-stream")
+        self.assertEqual(b"".join(fallback.streaming_content), self.video_bytes)
+
+    def test_media_requires_authentication_and_matching_assignment_lesson_session(self):
+        session_id = self.start()
+        self.client.logout()
+        self.assertEqual(self.client.get(self.media_url(session_id)).status_code, 302)
+        other_user = get_user_model().objects.create_user(username="video-other")
+        other = Employee.objects.create(
+            employee_code="GN-MEDIA-OTHER", display_name="Other viewer",
+            department=self.department, job_role=self.role, date_joined=self.now.date(), user=other_user,
+        )
+        other_assignment = TrainingAssignment.objects.create(
+            employee=other, training_version=self.version,
+            department_at_assignment=self.department, job_role_at_assignment=self.role, assigned_by=self.user,
+        )
+        self.client.force_login(other_user)
+        self.assertEqual(self.client.get(self.media_url(session_id)).status_code, 404)
+        self.assertEqual(self.client.get(self.media_url(session_id, assignment=other_assignment)).status_code, 404)
+        self.client.force_login(self.employee_user)
+        self.assertEqual(self.client.get(self.media_url(session_id + 9999)).status_code, 404)
+        self.assertEqual(self.client.get(self.media_url(session_id, lesson=self.text_lesson)).status_code, 400)
+        draft = self.new_version()
+        module = Module.objects.create(training_version=draft, title="Other module", position=1)
+        other_video = Lesson.objects.create(
+            module=module, title="Other video", position=1, content_type="VIDEO",
+            video_file="training/videos/other.mp4", video_duration_seconds=30, video_checksum="b" * 64,
+        )
+        self.assertEqual(self.client.get(self.media_url(session_id, lesson=other_video)).status_code, 404)
+
+    def test_ended_and_idle_sessions_cannot_fetch_video(self):
+        session_id = self.start()
+        session = VideoWatchSession.objects.get(pk=session_id)
+        with patch("training.views.timezone.now", return_value=session.updated_at + timedelta(seconds=31)):
+            self.assertEqual(self.client.get(self.media_url(session_id)).status_code, 404)
+        response = self.client.post(
+            f"/assignments/{self.assignment.pk}/lessons/{self.video_lesson.pk}/sessions/{session_id}/end/",
+            data=json.dumps({"position": 0}), content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.get(self.media_url(session_id)).status_code, 404)
+
+    def test_bad_ranges_and_missing_video_are_controlled(self):
+        session_id = self.start()
+        for header in ("bytes=999-", "bytes=5-2", "bytes=0-1,3-4", "invalid"):
+            with self.subTest(header=header):
+                response = self.client.get(self.media_url(session_id), HTTP_RANGE=header)
+                self.assertEqual(response.status_code, 416)
+        with patch.object(FileSystemStorage, "open", side_effect=FileNotFoundError):
+            self.assertEqual(self.client.get(self.media_url(session_id)).status_code, 404)
+
+    def test_learner_page_does_not_expose_direct_storage_url(self):
+        response = self.client.get(f"/assignments/{self.assignment.pk}/?lesson={self.video_lesson.pk}")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Start or resume video")
+        self.assertNotContains(response, "/training/videos/")
+        self.assertNotContains(response, self.video_lesson.video_file.name)
+        self.assertEqual(self.client.get(f"/{self.video_lesson.video_file.name}").status_code, 404)
+
+
+class ProtectedVideoDiskTests(CurriculumTestCase):
+    def test_authorized_range_reads_private_local_file(self):
+        with tempfile.TemporaryDirectory() as media_directory:
+            storage = FileSystemStorage(location=media_directory)
+            storage.save(self.video_lesson.video_file.name, ContentFile(b"local-video-bytes"))
+            field = Lesson._meta.get_field("video_file")
+            with patch.object(field, "storage", storage):
+                self.client.force_login(self.employee_user)
+                start = self.client.post(
+                    f"/assignments/{self.assignment.pk}/lessons/{self.video_lesson.pk}/sessions/start/",
+                    data="{}", content_type="application/json",
+                )
+                self.assertEqual(start.status_code, 201)
+                session_id = start.json()["session_id"]
+                response = self.client.get(
+                    f"/assignments/{self.assignment.pk}/lessons/{self.video_lesson.pk}/sessions/{session_id}/media/",
+                    HTTP_RANGE="bytes=6-10",
+                )
+                self.assertEqual(response.status_code, 206)
+                self.assertEqual(b"".join(response.streaming_content), b"video")
+
+
+class TextCompletionTests(CurriculumTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        Group.objects.get(name="Employee").user_set.add(cls.employee_user)
+
+    def setUp(self):
+        self.client.force_login(self.employee_user)
+
+    def url(self, assignment=None, lesson=None):
+        assignment = assignment or self.assignment
+        lesson = lesson or self.text_lesson
+        return f"/assignments/{assignment.pk}/lessons/{lesson.pk}/complete/"
+
+    def test_own_text_completion_is_idempotent_and_unlocks_required_lesson(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.url(), {"completed": False, "score": 100})
+        self.assertEqual(response.status_code, 302)
+        progress = LessonProgress.objects.get(assignment=self.assignment, lesson=self.text_lesson)
+        self.assertIsNotNone(progress.completed_at)
+        self.assertEqual(progress.progress_percent, 100)
+        completed_at = progress.completed_at
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.client.post(self.url()).status_code, 302)
+        progress.refresh_from_db()
+        self.assertEqual(progress.completed_at, completed_at)
+        self.assertEqual(AuditLog.objects.filter(
+            action="training.lessonprogress.completed", entity_id=str(progress.pk),
+        ).count(), 1)
+        self.assignment.refresh_from_db()
+        self.assertNotEqual(self.assignment.status, TrainingAssignment.Status.COMPLETED)
+
+    def test_first_text_completion_starts_assigned_training(self):
+        self.assignment.status = TrainingAssignment.Status.ASSIGNED
+        self.assignment.started_at = None
+        self.assignment.save()
+        self.assertEqual(self.client.post(self.url()).status_code, 302)
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.status, TrainingAssignment.Status.IN_PROGRESS)
+        self.assertIsNotNone(self.assignment.started_at)
+
+    def test_text_completion_can_finish_assignment_only_after_server_prerequisites(self):
+        self.assertEqual(self.client.post(self.url()).status_code, 302)
+        completed = self.now + timedelta(seconds=110)
+        LessonProgress.objects.create(
+            assignment=self.assignment, lesson=self.video_lesson,
+            started_at=self.now, last_accessed_at=completed, completed_at=completed,
+            watched_ranges=[[0, 95]],
+        )
+        self.finish_attempt(self.quiz)
+        self.finish_attempt(self.final)
+        from assessments.views import _try_complete_assignment
+        _try_complete_assignment(self.assignment, actor=self.employee_user)
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.status, TrainingAssignment.Status.COMPLETED)
+        self.assertIsNotNone(self.assignment.completed_at)
+        self.assertEqual(self.client.post(self.url()).status_code, 302)
+
+    def test_other_employee_manager_and_wrong_lesson_cannot_complete(self):
+        other_user = get_user_model().objects.create_user(username="text-other")
+        other = Employee.objects.create(
+            employee_code="GN-TEXT-OTHER", display_name="Other learner",
+            department=self.department, job_role=self.role, date_joined=self.now.date(), user=other_user,
+        )
+        other_assignment = TrainingAssignment.objects.create(
+            employee=other, training_version=self.version,
+            department_at_assignment=self.department, job_role_at_assignment=self.role, assigned_by=self.user,
+        )
+        self.client.force_login(other_user)
+        self.assertEqual(self.client.post(self.url()).status_code, 404)
+        manager_user = get_user_model().objects.create_user(username="text-manager")
+        Group.objects.get(name="Manager").user_set.add(manager_user)
+        manager = Employee.objects.create(
+            employee_code="GN-TEXT-MGR", display_name="Text manager",
+            department=self.department, job_role=self.role, date_joined=self.now.date(), user=manager_user,
+        )
+        self.employee.reporting_manager = manager
+        self.employee.save()
+        self.client.force_login(manager_user)
+        self.assertEqual(self.client.get(f"/assignments/{self.assignment.pk}/").status_code, 200)
+        self.assertEqual(self.client.post(self.url()).status_code, 404)
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.post(self.url()).status_code, 404)
+        self.client.force_login(self.employee_user)
+        self.assertEqual(self.client.post(self.url(assignment=other_assignment)).status_code, 404)
+        self.assertEqual(self.client.post(self.url(lesson=self.video_lesson)).status_code, 404)
+        draft = self.new_version()
+        module = Module.objects.create(training_version=draft, title="Other module", position=1)
+        other_text = Lesson.objects.create(
+            module=module, title="Other text", position=1, content_type="TEXT", body="Other content",
+        )
+        self.assertEqual(self.client.post(self.url(lesson=other_text)).status_code, 404)
+        self.assertFalse(LessonProgress.objects.filter(lesson=self.text_lesson).exists())
+
+    def test_text_completion_requires_post_and_csrf(self):
+        self.assertEqual(self.client.get(self.url()).status_code, 405)
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.employee_user)
+        self.assertEqual(client.post(self.url()).status_code, 403)
+        page = client.get(f"/assignments/{self.assignment.pk}/?lesson={self.text_lesson.pk}")
+        self.assertEqual(page.status_code, 200)
+        token = client.cookies["csrftoken"].value
+        self.assertEqual(client.post(self.url(), {"csrfmiddlewaretoken": token}).status_code, 302)
+
+    def test_cancelled_assignment_rejects_text_completion(self):
+        self.assignment.status = TrainingAssignment.Status.CANCELLED
+        self.assignment.cancelled_at = self.now + timedelta(seconds=1)
+        self.assignment.cancellation_reason = "Cancelled for test"
+        self.assignment.save()
+        self.assertEqual(self.client.post(self.url()).status_code, 409)
+        self.assertFalse(LessonProgress.objects.filter(assignment=self.assignment, lesson=self.text_lesson).exists())
+
+
 class PlaybackViewTests(CurriculumTestCase):
     @classmethod
     def setUpTestData(cls):
@@ -904,7 +1312,7 @@ class PlaybackViewTests(CurriculumTestCase):
         progress = LessonProgress.objects.get(assignment=self.assignment, lesson=self.video_lesson)
         self.assertEqual(progress.last_position_seconds, 10)
 
-        self.assertEqual(self.client.get(self.url()).json()["resume_position"], 10.0)
+        self.assertEqual(self.client.get(self.url()).json()["resume_position"], 0.0)
         end_time = start_time + timedelta(seconds=10)
         with patch("training.views.timezone.now", return_value=end_time):
             response = self.post_json(self.url(f"sessions/{session_id}/end"), {
@@ -916,6 +1324,126 @@ class PlaybackViewTests(CurriculumTestCase):
         self.assertEqual(session.ending_position_seconds, 20)
         self.assertTrue(session.completed_normally)
         self.assertEqual(session.active_watch_seconds, 10)
+
+    def test_browser_precision_first_and_second_heartbeats_record_watch_time(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=10)):
+            first = self.post_json(self.url(), {
+                "session_id": session_id, "position": 9.812345678,
+            })
+        self.assertEqual(first.status_code, 200, first.content.decode())
+        self.assertEqual(first.json()["watched_ranges"], [[0.0, 9.812]])
+
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=20)):
+            second = self.post_json(self.url(), {
+                "session_id": session_id, "position": 19.73456789,
+            })
+        self.assertEqual(second.status_code, 200, second.content.decode())
+        self.assertEqual(second.json()["watched_ranges"], [[0.0, 19.734]])
+        self.assertFalse(second.json()["completed"])
+        self.assertEqual(VideoWatchSession.objects.get(pk=session_id).active_watch_seconds, Decimal("19.734"))
+
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=21)):
+            beyond_duration = self.post_json(self.url(), {
+                "session_id": session_id, "position": 100.0001,
+            })
+        self.assertEqual(beyond_duration.status_code, 400)
+        self.assertEqual(
+            LessonProgress.objects.get(assignment=self.assignment, lesson=self.video_lesson).watched_seconds,
+            Decimal("19.734"),
+        )
+
+    def test_several_heartbeats_then_pause_and_resume(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        for seconds, position in ((10, 9.501234), (20, 19.002345), (30, 28.503456)):
+            with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=seconds)):
+                response = self.post_json(self.url(), {"session_id": session_id, "position": position})
+            self.assertEqual(response.status_code, 200, response.content.decode())
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=35)):
+            paused = self.post_json(self.url(f"sessions/{session_id}/end"), {
+                "position": 33.253456, "completed_normally": False,
+            })
+        self.assertEqual(paused.status_code, 200, paused.content.decode())
+        self.assertEqual(paused.json()["watched_ranges"], [[0.0, 33.253]])
+        self.assertIsNotNone(VideoWatchSession.objects.get(pk=session_id).ended_at)
+
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=40)):
+            resumed = self.post_json(self.url("sessions/start"), {})
+        self.assertEqual(resumed.status_code, 201, resumed.content.decode())
+        self.assertEqual(resumed.json()["resume_position"], 33.253)
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=50)):
+            response = self.post_json(self.url(), {
+                "session_id": resumed.json()["session_id"], "position": 42.754321,
+            })
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual(response.json()["watched_ranges"], [[0.0, 42.754]])
+
+    def test_pause_just_after_jitter_assisted_heartbeat_closes_session(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=10)):
+            heartbeat = self.post_json(self.url(), {"session_id": session_id, "position": 11.5})
+        self.assertEqual(heartbeat.status_code, 200, heartbeat.content.decode())
+        accepted_active_seconds = VideoWatchSession.objects.get(pk=session_id).active_watch_seconds
+        accepted_watched_ranges = heartbeat.json()["watched_ranges"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=10.1)):
+            paused = self.post_json(self.url(f"sessions/{session_id}/end"), {
+                "position": 11.5, "completed_normally": False,
+            })
+        self.assertEqual(paused.status_code, 200, paused.content.decode())
+        session = VideoWatchSession.objects.get(pk=session_id)
+        self.assertIsNotNone(session.ended_at)
+        self.assertEqual(session.active_watch_seconds, accepted_active_seconds)
+        self.assertEqual(paused.json()["watched_ranges"], accepted_watched_ranges)
+
+    def test_backward_seek_and_unwatched_forward_seek_keep_safe_resume(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=20)):
+            watched = self.post_json(self.url(), {"session_id": session_id, "position": 20})
+        self.assertEqual(watched.json()["watched_ranges"], [[0.0, 20.0]])
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=21)):
+            backward = self.post_json(self.url(), {"session_id": session_id, "position": 5})
+        self.assertEqual(backward.status_code, 200, backward.content.decode())
+        self.assertEqual(backward.json()["resume_position"], 5)
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=31)):
+            replay = self.post_json(self.url(), {"session_id": session_id, "position": 15})
+        self.assertEqual(replay.json()["watched_seconds"], 20.0)
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=32)):
+            skipped = self.post_json(self.url(), {"session_id": session_id, "position": 99})
+        self.assertEqual(skipped.status_code, 200, skipped.content.decode())
+        self.assertEqual(skipped.json()["watched_seconds"], 20.0)
+        self.assertLessEqual(skipped.json()["resume_position"], 20)
+        self.assertFalse(skipped.json()["completed"])
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=33)):
+            ended = self.post_json(self.url(f"sessions/{session_id}/end"), {
+                "position": 99, "completed_normally": True,
+            })
+        self.assertEqual(ended.status_code, 200, ended.content.decode())
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=34)):
+            resumed = self.post_json(self.url("sessions/start"), {})
+        self.assertEqual(resumed.json()["resume_position"], 20.0)
+
+    def test_conservative_continuous_playback_reaches_completion(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        for seconds in range(10, 101, 10):
+            with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=seconds)):
+                response = self.post_json(self.url(), {
+                    "session_id": session_id, "position": seconds * 0.99,
+                })
+            self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertGreaterEqual(response.json()["watched_seconds"], 90)
+        self.assertTrue(response.json()["completed"])
+        self.assertLessEqual(VideoWatchSession.objects.get(pk=session_id).active_watch_seconds, 100)
 
     def test_employee_cannot_update_another_employees_assignment(self):
         other_user = get_user_model().objects.create_user(username="playback-other", password="password")
@@ -1304,7 +1832,7 @@ class VideoWatchSessionTests(CurriculumTestCase):
     def test_invalid_session_measurements_rejected(self):
         invalid = [dict(active_watch_seconds=-1), dict(starting_position_seconds=101),
                    dict(ended_at=self.now - timedelta(seconds=1), ending_position_seconds=1),
-                   dict(ended_at=self.now + timedelta(seconds=10), ending_position_seconds=90, active_watch_seconds=11),
+                  dict(ended_at=self.now + timedelta(seconds=10), ending_position_seconds=90, active_watch_seconds=13),
                    dict(completed_normally=True), dict(ended_at=self.now + timedelta(seconds=10)),
                    dict(lesson=self.text_lesson)]
         for values in invalid:

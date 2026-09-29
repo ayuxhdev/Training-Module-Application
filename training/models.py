@@ -9,6 +9,9 @@ from django.utils import timezone
 from config.model_utils import TimestampedModel, protect_delete, require
 
 
+VIDEO_HEARTBEAT_TOLERANCE = Decimal("2.0")
+
+
 class Training(TimestampedModel):
     code = models.CharField(max_length=40, unique=True)
     catalog_title = models.CharField(max_length=200)
@@ -387,5 +390,8 @@ class VideoWatchSession(AssignmentLessonRecord):
             require(0 <= self.ending_position_seconds <= duration, "Ending position must fall within the video.")
         if self.ended_at:
             elapsed = Decimal(str((self.ended_at - self.started_at).total_seconds()))
-            require(0 <= self.active_watch_seconds <= elapsed, "Active watch time cannot exceed elapsed session time.")
+            require(
+                0 <= self.active_watch_seconds <= elapsed + VIDEO_HEARTBEAT_TOLERANCE,
+                "Active watch time cannot exceed elapsed session time and heartbeat tolerance.",
+            )
         # Seeking backwards is allowed. Session duration is not unique content coverage.

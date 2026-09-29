@@ -1,6 +1,8 @@
 import json
+import mimetypes
+import re
 from datetime import timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -8,7 +10,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMix
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import BooleanField, Case, Prefetch, Value, When
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -23,7 +25,7 @@ from organization.views import employee_scope
 from .forms import (LessonForm, ModuleForm, RoleTrainingAssignmentForm, TrainingAssignmentForm,
 					TrainingForm, TrainingVersionForm)
 from .models import (Lesson, LessonProgress, Module, Training, TrainingAssignment,
-					 TrainingVersion, VideoWatchSession)
+						 TrainingVersion, VideoWatchSession, VIDEO_HEARTBEAT_TOLERANCE)
 
 
 class ContentPermissionMixin(AuditedFormMixin, LoginRequiredMixin, PermissionRequiredMixin):
@@ -52,7 +54,6 @@ def assignment_scope(user):
 	return employee_scope(user)
 
 
-VIDEO_HEARTBEAT_TOLERANCE = Decimal("2.0")
 # Longer gaps cannot establish continuous playback; the next observation only
 # resets the position baseline. Clients must report progress at least every 30s.
 VIDEO_HEARTBEAT_MAX_GAP = Decimal("30.0")
@@ -78,6 +79,12 @@ def _position(value, field_name="position"):
 	if not position.is_finite():
 		raise ValidationError(f"{field_name} must be finite.")
 	return position
+
+
+def _bounded_position(position, duration):
+	if position < 0 or position > duration:
+		raise ValidationError("Position must be within the video duration.")
+	return position.quantize(Decimal("0.001"), rounding=ROUND_DOWN)
 
 
 def _merge_ranges(ranges, new_interval=None):
@@ -114,6 +121,81 @@ def _playback_context(request, assignment_pk, lesson_pk):
 	return assignment, lesson, None
 
 
+@require_http_methods(["GET", "HEAD"])
+@login_required
+def video_media(request, assignment_pk, lesson_pk, session_pk):
+	assignment, lesson, error = _playback_context(request, assignment_pk, lesson_pk)
+	if error:
+		return error
+	get_object_or_404(
+		VideoWatchSession,
+		pk=session_pk,
+		assignment=assignment,
+		lesson=lesson,
+		ended_at__isnull=True,
+		updated_at__gte=timezone.now() - timedelta(seconds=float(VIDEO_HEARTBEAT_MAX_GAP)),
+	)
+	if not lesson.video_file:
+		raise Http404
+	try:
+		size = lesson.video_file.size
+		media = lesson.video_file.open("rb")
+	except (OSError, ValueError):
+		raise Http404 from None
+	if size <= 0:
+		media.close()
+		raise Http404
+
+	start, end = 0, size - 1
+	range_header = request.headers.get("Range")
+	if range_header is not None:
+		match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header) if len(range_header) <= 100 else None
+		if match and (match.group(1) or match.group(2)):
+			try:
+				if match.group(1):
+					start = int(match.group(1))
+					end = min(int(match.group(2)), size - 1) if match.group(2) else size - 1
+				else:
+					start = max(0, size - int(match.group(2)))
+			except ValueError:
+				match = None
+		if not match or start >= size or end < start:
+			media.close()
+			response = HttpResponse(status=416)
+			response["Content-Range"] = f"bytes */{size}"
+			response["Cache-Control"] = "private, no-store"
+			return response
+
+	content_type = mimetypes.guess_type(lesson.video_file.name)[0] or "application/octet-stream"
+	if not content_type.startswith("video/"):
+		content_type = "application/octet-stream"
+	if request.method == "HEAD":
+		media.close()
+		response = HttpResponse(content_type=content_type, status=206 if range_header else 200)
+	else:
+		def chunks():
+			try:
+				media.seek(start)
+				remaining = end - start + 1
+				while remaining:
+					chunk = media.read(min(64 * 1024, remaining))
+					if not chunk:
+						break
+					remaining -= len(chunk)
+					yield chunk
+			finally:
+				media.close()
+
+		response = StreamingHttpResponse(chunks(), content_type=content_type, status=206 if range_header else 200)
+		response._resource_closers.append(media.close)
+	response["Accept-Ranges"] = "bytes"
+	response["Content-Length"] = str(end - start + 1)
+	response["Cache-Control"] = "private, no-store"
+	if range_header:
+		response["Content-Range"] = f"bytes {start}-{end}/{size}"
+	return response
+
+
 def _lock_playback_assignment(assignment):
 	# Match TrainingAssignment.save() lock order before serializing progress writes.
 	employee = Employee.objects.select_for_update().get(pk=assignment.employee_id)
@@ -127,7 +209,7 @@ def _lock_playback_assignment(assignment):
 def _progress_response(progress, session=None):
 	return {
 		"progress_id": progress.pk,
-		"resume_position": float(progress.last_position_seconds),
+		"resume_position": float(_verified_resume_position(progress)),
 		"watched_ranges": progress.watched_ranges,
 		"watched_seconds": float(progress.watched_seconds),
 		"progress_percent": float(progress.progress_percent),
@@ -137,13 +219,25 @@ def _progress_response(progress, session=None):
 	}
 
 
+def _verified_resume_position(progress):
+	if progress.completed_at:
+		return progress.last_position_seconds
+	verified_end = Decimal("0")
+	for start, end in progress.watched_ranges:
+		if Decimal(str(start)) > verified_end:
+			break
+		verified_end = max(verified_end, Decimal(str(end)))
+	return min(progress.last_position_seconds, verified_end)
+
+
 def _apply_observed_position(progress, session, position, now):
 	duration = Decimal(str(progress.lesson.video_duration_seconds))
-	if position < 0 or position > duration:
-		raise ValidationError("Position must be within the video duration.")
+	position = _bounded_position(position, duration)
 	previous_position = Decimal(str(session.ending_position_seconds if session.ending_position_seconds is not None
 		else session.starting_position_seconds))
-	elapsed = max(Decimal("0"), Decimal(str((now - session.updated_at).total_seconds())))
+	# updated_at is written after the observed position was captured.
+	last_observed_at = min(session.updated_at, progress.last_accessed_at)
+	elapsed = max(Decimal("0"), Decimal(str((now - last_observed_at).total_seconds())))
 	session_elapsed = max(Decimal("0"), Decimal(str((now - session.started_at).total_seconds())))
 	# Accepted movement spends the session's one-time jitter allowance, including replay.
 	remaining_budget = max(Decimal("0"), session_elapsed + VIDEO_HEARTBEAT_TOLERANCE - session.active_watch_seconds)
@@ -278,11 +372,10 @@ def start_video_session(request, assignment_pk, lesson_pk):
 			progress = LessonProgress.objects.select_for_update().filter(
 				assignment=assignment, lesson=lesson).first()
 			if requested_position is None:
-				requested_position = progress.last_position_seconds if progress else 0
+				requested_position = _verified_resume_position(progress) if progress else 0
 			position = _position(requested_position, "position")
 			duration = Decimal(str(lesson.video_duration_seconds))
-			if position < 0 or position > duration:
-				raise ValidationError("Position must be within the video duration.")
+			position = _bounded_position(position, duration)
 			now = timezone.now()
 			session = VideoWatchSession(
 				assignment=assignment,
@@ -355,11 +448,7 @@ def end_video_session(request, assignment_pk, lesson_pk, session_pk):
 			_apply_observed_position(progress, session, position, now)
 			progress.save()
 			session.ended_at = now
-			session.ending_position_seconds = position
 			session.completed_normally = completed_normally
-			session.active_watch_seconds = min(
-				session.active_watch_seconds, Decimal(str((now - session.started_at).total_seconds()))
-			)
 			session.save()
 			if not was_completed and progress.completed_at:
 				record_event(
@@ -375,6 +464,57 @@ def end_video_session(request, assignment_pk, lesson_pk, session_pk):
 		return JsonResponse(_progress_response(progress, session))
 	except (ValidationError, IntegrityError, ValueError) as exc:
 		return JsonResponse({"error": str(exc)}, status=400)
+
+
+@require_http_methods(["POST"])
+@login_required
+def complete_text_lesson(request, assignment_pk, lesson_pk):
+	assignment = get_object_or_404(
+		TrainingAssignment.objects.select_related("employee", "training_version"),
+		pk=assignment_pk,
+		employee__user=request.user,
+	)
+	lesson = get_object_or_404(
+		Lesson,
+		pk=lesson_pk,
+		module__training_version_id=assignment.training_version_id,
+		content_type=Lesson.ContentType.TEXT,
+	)
+	try:
+		with transaction.atomic():
+			assignment = _lock_playback_assignment(assignment)
+			progress = LessonProgress.objects.select_for_update().filter(
+				assignment=assignment, lesson=lesson,
+			).first()
+			if assignment.status == TrainingAssignment.Status.COMPLETED and progress and progress.completed_at:
+				return redirect(reverse("training:assignment-detail", kwargs={"pk": assignment.pk}) + f"?lesson={lesson.pk}")
+			if assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
+				return HttpResponse("This assignment does not accept progress.", status=409)
+			if not progress or not progress.completed_at:
+				now = timezone.now()
+				if progress is None:
+					progress = LessonProgress(
+						assignment=assignment, lesson=lesson,
+						started_at=now, last_accessed_at=now, completed_at=now,
+					)
+				else:
+					progress.last_accessed_at = now
+					progress.completed_at = now
+				progress.save()
+				record_event(
+					request.user, "training.lessonprogress.completed", progress,
+					after={"assignment_id": assignment.pk, "lesson_id": lesson.pk,
+						"completed_at": progress.completed_at.isoformat()},
+				)
+			if assignment.status == TrainingAssignment.Status.ASSIGNED:
+				assignment.status = TrainingAssignment.Status.IN_PROGRESS
+				assignment.started_at = timezone.now()
+				assignment.save()
+			from assessments.views import _try_complete_assignment
+			_try_complete_assignment(assignment, actor=request.user)
+	except (ValidationError, IntegrityError, ValueError) as exc:
+		return HttpResponse(str(exc), status=400)
+	return redirect(reverse("training:assignment-detail", kwargs={"pk": assignment.pk}) + f"?lesson={lesson.pk}")
 
 
 def _with_assignment_overdue(queryset):
@@ -410,6 +550,66 @@ class TrainingAssignmentDetailView(AssignmentAccessMixin, DetailView):
 			"role_requirement", "assigned_by"
 		).filter(employee__in=assignment_scope(self.request.user))
 		return _with_assignment_overdue(queryset)
+
+	def get_context_data(self, **kwargs):
+		context = super().get_context_data(**kwargs)
+		assignment = self.object
+		lesson_id = self.request.GET.get("lesson")
+		can_learn = (
+			assignment.employee.user_id == self.request.user.pk
+			and assignment.employee.is_active
+			and assignment.training_version.status == TrainingVersion.Status.PUBLISHED
+			and assignment.status != TrainingAssignment.Status.CANCELLED
+		)
+		if not can_learn:
+			if lesson_id is not None:
+				raise Http404
+			return context
+		context["can_learn"] = True
+
+		modules = list(Module.objects.filter(training_version=assignment.training_version).prefetch_related("lessons"))
+		lessons = [lesson for module in modules for lesson in module.lessons.all()]
+		progress_by_lesson = {
+			progress.lesson_id: progress
+			for progress in LessonProgress.objects.filter(assignment=assignment).select_related("lesson")
+		}
+		if lesson_id is not None:
+			try:
+				selected_id = int(lesson_id)
+			except (TypeError, ValueError):
+				raise Http404 from None
+			if not any(lesson.pk == selected_id for lesson in lessons):
+				raise Http404
+		else:
+			selected_id = lessons[0].pk if lessons else None
+
+		module_items = []
+		selected_lesson = None
+		previous_lesson = None
+		next_lesson = None
+		for module in modules:
+			items = []
+			for lesson in module.lessons.all():
+				progress = progress_by_lesson.get(lesson.pk)
+				items.append({"lesson": lesson, "progress": progress})
+				if lesson.pk == selected_id:
+					selected_lesson = lesson
+					context["selected_progress"] = progress
+			module_items.append({"module": module, "lessons": items})
+		if selected_lesson:
+			index = next(index for index, lesson in enumerate(lessons) if lesson.pk == selected_lesson.pk)
+			previous_lesson = lessons[index - 1] if index else None
+			next_lesson = lessons[index + 1] if index + 1 < len(lessons) else None
+		context.update({
+			"module_items": module_items,
+			"selected_lesson": selected_lesson,
+			"previous_lesson": previous_lesson,
+			"next_lesson": next_lesson,
+			"can_record_progress": assignment.status in (
+				TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS,
+			),
+		})
+		return context
 
 
 class TrainingAssignmentCreateView(AuditedFormMixin, LoginRequiredMixin, PermissionRequiredMixin, CreateView):

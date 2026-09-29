@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block content %}
 <nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-list' %}">Assignments</a></li><li>Assignment detail</li></ol></nav>
 <header class="page-heading">
@@ -22,6 +23,78 @@
 </dl>
 {% if assignment.role_requirement %}<p>Job-role requirement: {{ assignment.role_requirement.job_role.name }} → {{ assignment.training_version.training.catalog_title }} / {{ assignment.training_version.title }}</p>{% endif %}
 {% if perms.training.view_trainingversion %}<p><a href="{% url 'training:version-detail' assignment.training_version_id %}">View training version</a></p>{% endif %}
+{% if can_learn %}
+<section class="learning-section" aria-label="Assigned lessons">
+  <h2>Lessons</h2>
+  {% if module_items %}
+  <div class="learning-layout">
+    <nav class="learning-curriculum" aria-label="Lesson navigation">
+      {% for item in module_items %}
+        <h3>{{ item.module.title }}</h3>
+        {% if item.module.description %}<p class="muted">{{ item.module.description }}</p>{% endif %}
+        <ol>
+          {% for entry in item.lessons %}
+            <li>
+              <a href="{% url 'training:assignment-detail' assignment.pk %}?lesson={{ entry.lesson.pk }}"{% if entry.lesson.pk == selected_lesson.pk %} aria-current="page"{% endif %}>{{ entry.lesson.title }}</a>
+              <span class="muted">{{ entry.lesson.get_content_type_display }} · {% if entry.lesson.is_required %}Required{% else %}Optional{% endif %}</span>
+              {% if entry.progress.completed_at %}<span class="status-badge status-completed">Completed</span>{% else %}<span class="status-badge">Incomplete</span>{% endif %}
+            </li>
+          {% empty %}
+            <li class="empty-state">No lessons in this module.</li>
+          {% endfor %}
+        </ol>
+      {% endfor %}
+    </nav>
+    {% if selected_lesson %}
+    <article class="learning-lesson">
+      <p class="muted">{{ selected_lesson.module.title }} · Lesson {{ selected_lesson.position }}</p>
+      <h2>{{ selected_lesson.title }}</h2>
+      <p>{{ selected_lesson.get_content_type_display }} · {% if selected_lesson.is_required %}Required{% else %}Optional{% endif %}</p>
+      <p id="lesson-completion">{% if selected_progress.completed_at %}Completed{% else %}Incomplete{% endif %}</p>
+      {% if selected_lesson.content_type == 'TEXT' %}
+        <div class="lesson-text">{{ selected_lesson.body|linebreaks }}</div>
+        {% if can_record_progress and not selected_progress.completed_at %}
+          <form method="post" action="{% url 'training:text-lesson-complete' assignment.pk selected_lesson.pk %}">
+            {% csrf_token %}<button type="submit">Mark lesson complete</button>
+          </form>
+        {% endif %}
+      {% elif selected_lesson.content_type == 'VIDEO' %}
+        <p>Watch at least {{ selected_lesson.minimum_watch_percent }}% of this video to complete it. Progress is recorded by the server.</p>
+        <label for="lesson-progress">Unique video coverage</label>
+        <progress id="lesson-progress" max="100" value="{{ selected_progress.progress_percent|default:0 }}">{{ selected_progress.progress_percent|default:0 }}%</progress>
+        <span id="lesson-progress-label">{{ selected_progress.progress_percent|default:0|floatformat:0 }}%</span>
+        <p id="lesson-resume">Resume position: {{ selected_progress.last_position_seconds|default:0|floatformat:0 }} seconds</p>
+        {% if selected_lesson.video_file %}
+          {% if can_record_progress %}
+            <button type="button" id="start-video">Start or resume video</button>
+            <video id="lesson-video" controls preload="metadata" playsinline
+              data-progress-url="{% url 'training:video-progress' assignment.pk selected_lesson.pk %}"
+              data-start-url="{% url 'training:video-session-start' assignment.pk selected_lesson.pk %}"
+              data-csrf-token="{{ csrf_token }}"
+              aria-label="{{ selected_lesson.title }} video">
+              Your browser does not support video playback.
+            </video>
+            <p id="playback-status" role="status" aria-live="polite">Ready to play.</p>
+            <script src="{% static 'training/playback.js' %}" defer></script>
+          {% else %}
+            <p class="muted">This assignment no longer accepts video progress.</p>
+          {% endif %}
+        {% else %}
+          <p role="alert">Video is unavailable.</p>
+        {% endif %}
+      {% endif %}
+      <nav class="lesson-steps" aria-label="Previous and next lessons">
+        {% if previous_lesson %}<a href="{% url 'training:assignment-detail' assignment.pk %}?lesson={{ previous_lesson.pk }}">Previous: {{ previous_lesson.title }}</a>{% endif %}
+        {% if next_lesson %}<a href="{% url 'training:assignment-detail' assignment.pk %}?lesson={{ next_lesson.pk }}">Next: {{ next_lesson.title }}</a>{% endif %}
+      </nav>
+    </article>
+    {% endif %}
+  </div>
+  {% else %}
+    <p class="empty-state">No lessons are available for this assignment.</p>
+  {% endif %}
+</section>
+{% endif %}
 {% if assignment.employee.user == user and assignment.employee.is_active and assignment.status != 'COMPLETED' and assignment.status != 'CANCELLED' %}
   <section class="form-section">
     <h2>Assessments</h2>

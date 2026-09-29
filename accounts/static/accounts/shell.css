@@ -96,3 +96,18 @@ a { color: #24513a; }
 }
 
 .table-scroll table { min-width: 46rem; }
+
+.learning-layout { display: grid; grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr); gap: 1.5rem; }
+.learning-curriculum, .learning-lesson { min-width: 0; }
+.learning-curriculum ol { padding-left: 1.4rem; }
+.learning-curriculum li { margin-bottom: 0.65rem; overflow-wrap: anywhere; }
+.learning-curriculum li span { display: block; }
+.learning-lesson { border: 1px solid #d5dcd5; padding: 1rem; }
+.lesson-text { overflow-wrap: anywhere; }
+.learning-lesson video { display: block; width: 100%; max-width: 100%; max-height: 70vh; margin: 1rem 0; background: #17231c; }
+.learning-lesson progress { max-width: 100%; }
+.lesson-steps { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.75rem; margin-top: 1.5rem; }
+
+@media (max-width: 48rem) {
+  .learning-layout { grid-template-columns: minmax(0, 1fr); }
+}

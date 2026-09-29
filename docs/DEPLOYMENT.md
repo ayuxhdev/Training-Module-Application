@@ -326,6 +326,14 @@ Internal training media must not be assumed safe simply because the file URL is 
 
 The final deployment should evaluate authenticated or controlled access to training media.
 
+The application now has an authenticated Django video endpoint for local playback. It checks the
+employee's assignment, the exact video lesson, and a recent open watch session for each request,
+including byte-range requests. It reads the file through Django storage and does not publish a
+general media URL. Keep training media outside any public static or web-server alias. For production
+traffic, evaluate a protected reverse-proxy or private object-storage delivery path that preserves
+these checks before handing off the bytes; direct Django streaming may be inefficient for large videos.
+The current endpoint requires storage that supports seeking for byte-range playback.
+
 Possible approaches may include:
 
 - authenticated Django access
