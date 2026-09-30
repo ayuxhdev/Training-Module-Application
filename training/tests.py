@@ -1402,6 +1402,49 @@ class PlaybackViewTests(CurriculumTestCase):
         self.assertEqual(session.active_watch_seconds, accepted_active_seconds)
         self.assertEqual(paused.json()["watched_ranges"], accepted_watched_ranges)
 
+    def test_rapid_rejected_seek_then_small_valid_progress_and_pause(self):
+        start_time = self.now + timedelta(minutes=1)
+        with patch("training.views.timezone.now", return_value=start_time):
+            session_id = self.start().json()["session_id"]
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=0.1)):
+            skipped = self.post_json(self.url(), {"session_id": session_id, "position": 99})
+        self.assertEqual(skipped.status_code, 200, skipped.content.decode())
+        self.assertEqual(skipped.json()["watched_seconds"], 0.0)
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=0.2)):
+            corrected = self.post_json(self.url(), {"session_id": session_id, "position": 0})
+        self.assertEqual(corrected.status_code, 200, corrected.content.decode())
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=0.323456)):
+            observed = self.post_json(self.url(), {"session_id": session_id, "position": 0.5})
+        self.assertEqual(observed.status_code, 200, observed.content.decode())
+        self.assertEqual(observed.json()["watched_ranges"], [[0.0, 0.5]])
+        self.assertEqual(VideoWatchSession.objects.get(pk=session_id).active_watch_seconds, Decimal("0.123"))
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=0.4)):
+            skipped_again = self.post_json(self.url(), {"session_id": session_id, "position": 99})
+        self.assertEqual(skipped_again.status_code, 200, skipped_again.content.decode())
+        self.assertEqual(skipped_again.json()["watched_seconds"], 0.5)
+        with patch("training.views.timezone.now", return_value=start_time + timedelta(seconds=0.5)):
+            paused = self.post_json(self.url(f"sessions/{session_id}/end"), {
+                "position": 0.5, "completed_normally": False,
+            })
+        self.assertEqual(paused.status_code, 200, paused.content.decode())
+        self.assertIsNotNone(VideoWatchSession.objects.get(pk=session_id).ended_at)
+        self.assertEqual(paused.json()["watched_seconds"], 0.5)
+        self.assertFalse(paused.json()["completed"])
+
+    def test_failed_heartbeat_can_close_without_crediting_unwatched_time(self):
+        session_id = self.start().json()["session_id"]
+        invalid = self.post_json(self.url(), {"session_id": session_id, "position": 101})
+        self.assertEqual(invalid.status_code, 400)
+        self.assertIsNone(VideoWatchSession.objects.get(pk=session_id).ended_at)
+
+        closed = self.post_json(self.url(f"sessions/{session_id}/end"), {
+            "position": 0, "completed_normally": False,
+        })
+        self.assertEqual(closed.status_code, 200, closed.content.decode())
+        self.assertIsNotNone(VideoWatchSession.objects.get(pk=session_id).ended_at)
+        self.assertEqual(closed.json()["watched_seconds"], 0.0)
+        self.assertFalse(closed.json()["completed"])
+
     def test_backward_seek_and_unwatched_forward_seek_keep_safe_resume(self):
         start_time = self.now + timedelta(minutes=1)
         with patch("training.views.timezone.now", return_value=start_time):

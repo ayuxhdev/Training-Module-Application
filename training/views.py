@@ -264,7 +264,9 @@ def _apply_observed_position(progress, session, position, now):
 		)
 		if new_unique_seconds <= remaining_unique_budget:
 			interval = (previous_position, position)
-			session.active_watch_seconds += advance
+			session.active_watch_seconds += min(advance, elapsed).quantize(
+				Decimal("0.001"), rounding=ROUND_DOWN,
+			)
 	progress.watched_ranges = _merge_ranges(progress.watched_ranges, interval)
 	progress.last_position_seconds = position
 	progress.last_accessed_at = now

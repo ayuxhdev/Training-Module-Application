@@ -112,15 +112,15 @@
     } catch (error) {
       if (sessionId !== id) return;
       stopTimer();
-      sessionId = null;
+      await endSession(false, approvedPosition);
       video.pause();
       video.controls = false;
-      startButton.disabled = false;
+      startButton.disabled = sessionId !== null;
       showStatus(error.message);
     }
   }
 
-  async function endSession(completedNormally) {
+  async function endSession(completedNormally, position = reportedPosition()) {
     if (sessionId === null || ending) return;
     ending = true;
     stopTimer();
@@ -128,17 +128,18 @@
     sessionId = null;
     try {
       const data = await post(`${endBaseUrl}${id}/end/`, {
-        position: reportedPosition(),
+        position,
         completed_normally: completedNormally,
       });
       updateProgress(data);
       if (completedNormally) showStatus("Video ended. Your recorded progress is shown above.");
     } catch (error) {
+      sessionId = id; // Keep the ID so pagehide can retry a failed close.
       showStatus(error.message);
     } finally {
       ending = false;
       video.controls = false;
-      startButton.disabled = false;
+      startButton.disabled = sessionId !== null;
     }
   }
 
