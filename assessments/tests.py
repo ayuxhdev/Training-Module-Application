@@ -283,7 +283,8 @@ class AssessmentEndpointTests(CurriculumTestCase):
         attempt_page = self.client_for(self.employee_user).get(response["Location"])
         self.assertContains(attempt_page, "Wear PPE?")
         assignment_page = self.client_for(self.employee_user).get(f"/assignments/{self.assignment.pk}/")
-        self.assertContains(assignment_page, "Start assessment")
+        self.assertContains(assignment_page, "View assessment")
+        self.assertContains(assignment_page, f"/assignments/{self.assignment.pk}/assessments/{self.quiz.pk}/")
 
     def test_text_completion_cannot_bypass_required_video_completion_for_quiz(self):
         LessonProgress.objects.create(
@@ -549,6 +550,127 @@ class AssessmentEndpointTests(CurriculumTestCase):
         self.assertEqual(client.post(f"/assessments/{second.pk}/edit/", data).status_code, 302)
         second.refresh_from_db()
         self.assertEqual((second.title, second.sequence, second.training_version_id), ("Edited", 2, version.pk))
+
+
+    def test_overview_shows_prerequisites_and_denies_foreign_access(self):
+        url = f"/assignments/{self.assignment.pk}/assessments/{self.quiz.pk}/"
+        client = self.client_for(self.employee_user)
+        response = client.get(url)
+        self.assertContains(response, "Complete the required module lessons")
+        self.assertNotContains(response, "<button type=\"submit\">Start assessment")
+        self.assertEqual(self.client.get(url).status_code, 302)
+        self.assertEqual(self.client_for(self.other_user).get(url).status_code, 404)
+        self.assertEqual(self.client_for(self.coordinator).get(url).status_code, 404)
+        self.assertEqual(client.get(f"/assignments/{self.other_assignment.pk}/assessments/{self.quiz.pk}/").status_code, 404)
+        other_version = self.new_version()
+        other = Assessment.objects.create(training_version=other_version, kind="FINAL", title="Other final")
+        self.assertEqual(client.get(f"/assignments/{self.assignment.pk}/assessments/{other.pk}/").status_code, 404)
+        self.assertEqual(client.post(url).status_code, 405)
+        self.employee.is_active = False
+        self.employee.deactivation_reason = "Inactive QA learner"
+        self.employee.save()
+        self.assertEqual(client.get(url).status_code, 302)
+
+    def test_overview_and_attempt_show_quiz_then_final_prerequisites(self):
+        client = self.client_for(self.employee_user)
+        final_url = f"/assignments/{self.assignment.pk}/assessments/{self.final.pk}/"
+        self.assertContains(client.get(final_url), "Complete required lessons")
+        self.complete_lessons()
+        self.assertContains(client.get(final_url), "Pass required quizzes")
+        quiz_url = f"/assignments/{self.assignment.pk}/assessments/{self.quiz.pk}/"
+        self.assertContains(client.get(quiz_url), "Start assessment")
+        response = self.start()
+        self.assertEqual(response.status_code, 302)
+        attempt = AssessmentAttempt.objects.get(assignment=self.assignment, assessment=self.quiz)
+        self.assertContains(client.get(quiz_url), f"Resume attempt {attempt.attempt_number}")
+        page = client.get(response["Location"])
+        self.assertContains(page, "Wear PPE?")
+        self.assertContains(page, f'name="answer_{self.quiz_item.pk}"')
+        self.assertContains(page, 'name="csrfmiddlewaretoken"')
+        self.assertEqual(client.get(f"/attempts/{attempt.pk}/submit/").status_code, 404)
+
+    def test_failed_result_retry_pass_and_history_survive_reload(self):
+        self.complete_lessons()
+        client = self.client_for(self.employee_user)
+        overview = f"/assignments/{self.assignment.pk}/assessments/{self.quiz.pk}/"
+        self.start()
+        first = AssessmentAttempt.objects.get(assignment=self.assignment, assessment=self.quiz)
+        self.submit(first, self.quiz_item, self.wrong_option)
+        self.assertContains(client.get(f"/attempts/{first.pk}/"), "Not passed")
+        page = client.get(overview)
+        self.assertContains(page, "Start another attempt")
+        self.assertContains(page, "Attempt 1")
+        self.start()
+        second = AssessmentAttempt.objects.get(assignment=self.assignment, assessment=self.quiz, attempt_number=2)
+        self.submit(second, self.quiz_item, self.correct_option)
+        self.assertContains(client.get(f"/attempts/{second.pk}/"), "Passed")
+        page = client.get(overview)
+        self.assertContains(page, "You have already passed")
+        self.assertNotContains(page, "Start another attempt")
+        self.assertContains(page, "Attempt 1")
+        self.assertContains(page, "Attempt 2")
+        self.assertEqual(client.post(f"/attempts/{second.pk}/submit/", {}).status_code, 409)
+
+    def test_attempt_limit_is_clear_in_overview(self):
+        self.complete_lessons()
+        client = self.client_for(self.employee_user)
+        for _ in range(self.quiz.max_attempts):
+            self.finish_attempt(correct=False)
+        overview = f"/assignments/{self.assignment.pk}/assessments/{self.quiz.pk}/"
+        self.assertContains(client.get(overview), "The attempt limit has been reached")
+        self.assertNotContains(client.get(overview), "Start another attempt")
+        self.assertEqual(self.start().status_code, 409)
+
+    def test_invalid_html_submission_shows_error_and_preserves_answer(self):
+        self.complete_lessons()
+        self.start()
+        attempt = AssessmentAttempt.objects.get(assignment=self.assignment, assessment=self.quiz)
+        client = self.client_for(self.employee_user)
+        response = client.post(f"/attempts/{attempt.pk}/submit/", {
+            f"answer_{self.quiz_item.pk}": str(self.correct_option.pk),
+            f"answer_{self.final_item.pk}": str(self.correct_option.pk),
+        }, HTTP_ACCEPT="text/html")
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "outside this assessment", status_code=400)
+        self.assertContains(response, f'value="{self.correct_option.pk}" checked', status_code=400)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, AssessmentAttempt.Status.IN_PROGRESS)
+        self.assertFalse(attempt.answers.exists())
+
+    def test_browser_start_and_submit_require_csrf(self):
+        self.complete_lessons()
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.employee_user)
+        start_url = f"/assignments/{self.assignment.pk}/assessments/{self.quiz.pk}/start/"
+        self.assertEqual(client.post(start_url).status_code, 403)
+        client.get(f"/assignments/{self.assignment.pk}/assessments/{self.quiz.pk}/")
+        token = client.cookies["csrftoken"].value
+        response = client.post(start_url, {"csrfmiddlewaretoken": token})
+        self.assertEqual(response.status_code, 302)
+        attempt = AssessmentAttempt.objects.get(assignment=self.assignment, assessment=self.quiz)
+        submit_url = f"/attempts/{attempt.pk}/submit/"
+        self.assertEqual(client.post(submit_url, {f"answer_{self.quiz_item.pk}": self.correct_option.pk}).status_code, 403)
+        response = client.post(submit_url, {
+            "csrfmiddlewaretoken": token,
+            f"answer_{self.quiz_item.pk}": self.correct_option.pk,
+        })
+        self.assertEqual(response.status_code, 302)
+
+    def test_passing_final_updates_assignment_and_result_links(self):
+        self.complete_lessons()
+        self.finish_attempt(self.quiz)
+        client = self.client_for(self.employee_user)
+        final_url = f"/assignments/{self.assignment.pk}/assessments/{self.final.pk}/"
+        self.assertContains(client.get(final_url), "Start assessment")
+        self.start(self.final)
+        attempt = AssessmentAttempt.objects.get(assignment=self.assignment, assessment=self.final)
+        self.submit(attempt, self.final_item, self.correct_option)
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.status, TrainingAssignment.Status.COMPLETED)
+        self.assertContains(client.get(final_url), "You have already passed")
+        assignment_page = client.get(f"/assignments/{self.assignment.pk}/")
+        self.assertContains(assignment_page, "View assessment")
+        self.assertContains(client.get(f"/attempts/{attempt.pk}/"), "View attempts and next steps")
 
 
 class AssessmentLockingTests(TransactionTestCase):

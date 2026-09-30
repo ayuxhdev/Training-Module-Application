@@ -95,14 +95,14 @@
   {% endif %}
 </section>
 {% endif %}
-{% if assignment.employee.user == user and assignment.employee.is_active and assignment.status != 'COMPLETED' and assignment.status != 'CANCELLED' %}
+{% if assignment.employee.user == user and assignment.employee.is_active and assignment.training_version.status != 'DRAFT' %}
   <section class="form-section">
     <h2>Assessments</h2>
-    <p>Assessment prerequisites and attempt limits are checked when you start.</p>
+    <p>Review prerequisites, results, and available attempts for each assessment.</p>
     {% for assessment in assignment.training_version.assessments.all %}
       <div class="assignment-assessment">
         <strong>{{ assessment.title }}</strong> ({{ assessment.get_kind_display }})
-        <form method="post" action="{% url 'assessments:attempt-start' assignment.pk assessment.pk %}">{% csrf_token %}<button type="submit">Start assessment</button></form>
+        <a class="action-link" href="{% url 'assessments:learner-overview' assignment.pk assessment.pk %}">View assessment</a>
       </div>
     {% empty %}
       <p class="empty-state">No assessments are available for this training version.</p>

@@ -73,6 +73,10 @@ a { color: #24513a; }
 .due-overdue { color: #8b2d24; font-weight: 700; }
 .assignment-assessment { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 1rem; margin: 0.75rem 0; }
 .assignment-assessment form { margin: 0; }
+.assessment-question { min-width: 0; max-width: 42rem; margin: 1rem 0; border: 1px solid #d5dcd5; }
+.assessment-question legend { max-width: 100%; overflow-wrap: anywhere; }
+.assessment-option { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0.6rem 0; overflow-wrap: anywhere; }
+.assessment-option input { flex: none; margin-top: 0.35rem; }
 .muted { color: #59645c; }
 .empty-state { color: #59645c; }
 .form-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.6rem; max-width: 42rem; min-width: 0; }

@@ -1,2 +1,10 @@
 {% extends "base.html" %}
-{% block content %}<h1>{{ attempt.assessment.title }} result</h1><p>Status: {{ attempt.get_status_display }}</p><p>Score: {{ attempt.score_points }} / {{ attempt.maximum_points }}</p><p>Pass threshold: {{ attempt.pass_percentage_snapshot }}%</p><p>{% if attempt.passed %}Passed{% else %}Not passed{% endif %}</p><ol>{% for answer in attempt.answers.all %}<li>{{ answer.assessment_question.question_revision.prompt }}: {% if answer.selected_option %}{{ answer.selected_option.text }}{% else %}No answer{% endif %} ({{ answer.points_awarded }} / {{ answer.points_possible }})</li>{% endfor %}</ol>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-detail' attempt.assignment_id %}">Assignment</a></li><li><a href="{% url 'assessments:learner-overview' attempt.assignment_id attempt.assessment_id %}">{{ attempt.assessment.title }}</a></li><li>Attempt {{ attempt.attempt_number }} result</li></ol></nav>
+<header class="page-heading"><div><h1>{{ attempt.assessment.title }} result</h1><p class="muted">Attempt {{ attempt.attempt_number }} · {{ attempt.get_status_display }}</p></div><span class="status-badge {% if attempt.passed %}status-completed{% else %}status-inactive{% endif %}">{% if attempt.passed %}Passed{% else %}Not passed{% endif %}</span></header>
+<dl class="detail-list"><div><dt>Score</dt><dd>{{ attempt.score_points }} / {{ attempt.maximum_points }}</dd></div><div><dt>Pass threshold</dt><dd>{{ attempt.pass_percentage_snapshot }}%</dd></div><div><dt>Submitted</dt><dd>{{ attempt.submitted_at|date:"Y-m-d H:i"|default:"Not submitted" }}</dd></div></dl>
+{% if attempt.status == 'EXPIRED' %}<p role="status">This attempt expired before it was submitted in time.</p>{% endif %}
+<h2>Answers</h2>
+<ol>{% for answer in attempt.answers.all %}<li><strong>{{ answer.assessment_question.question_revision.prompt }}</strong><br>Your answer: {% if answer.selected_option %}{{ answer.selected_option.text }}{% else %}No answer{% endif %} · {{ answer.points_awarded }} / {{ answer.points_possible }} points</li>{% empty %}<li>No answers were recorded.</li>{% endfor %}</ol>
+<p><a class="action-link" href="{% url 'assessments:learner-overview' attempt.assignment_id attempt.assessment_id %}">View attempts and next steps</a></p>
+{% endblock %}

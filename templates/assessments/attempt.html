@@ -1,2 +1,22 @@
 {% extends "base.html" %}
-{% block content %}<h1>{{ attempt.assessment.title }}</h1><p>Attempt {{ attempt.attempt_number }}</p><form method="post" action="{% url 'assessments:attempt-submit' attempt.pk %}">{% csrf_token %}{% for item in questions %}<fieldset><legend>{{ item.position }}. {{ item.question_revision.prompt }} ({{ item.points }} points)</legend>{% for option in item.question_revision.options.all %}<label><input type="radio" name="answer_{{ item.pk }}" value="{{ option.pk }}">{{ option.text }}</label><br>{% endfor %}</fieldset>{% endfor %}<button type="submit">Submit answers</button></form>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-detail' attempt.assignment_id %}">Assignment</a></li><li><a href="{% url 'assessments:learner-overview' attempt.assignment_id attempt.assessment_id %}">{{ attempt.assessment.title }}</a></li><li>Attempt {{ attempt.attempt_number }}</li></ol></nav>
+<header class="page-heading"><div><h1>{{ attempt.assessment.title }}</h1><p class="muted">Attempt {{ attempt.attempt_number }} of {{ attempt.assessment.max_attempts }} · {{ attempt.assessment.get_kind_display }}</p></div></header>
+{% if attempt.deadline_at %}<p>Submit by {{ attempt.deadline_at|date:"Y-m-d H:i:s" }}. Answers submitted after this time are recorded as expired.</p>{% endif %}
+<p>Pass threshold: {{ attempt.pass_percentage_snapshot }}%. Unanswered questions receive no points.</p>
+{% if form_error %}<p class="form-errors" role="alert">{{ form_error }}</p>{% endif %}
+{% if can_submit %}
+<form method="post" action="{% url 'assessments:attempt-submit' attempt.pk %}">
+  {% csrf_token %}
+  {% for item in questions %}
+    <fieldset class="assessment-question">
+      <legend>{{ item.position }}. {{ item.question_revision.prompt }} ({{ item.points }} points)</legend>
+      {% for option in item.question_revision.options.all %}
+        <label class="assessment-option"><input type="radio" name="answer_{{ item.pk }}" value="{{ option.pk }}"{% if item.selected_option_id == option.pk|stringformat:'s' %} checked{% endif %}> <span>{{ option.text }}</span></label>
+      {% endfor %}
+    </fieldset>
+  {% endfor %}
+  <button type="submit">Submit answers</button>
+</form>
+{% else %}<p role="status">This assignment no longer accepts answers.</p>{% endif %}
+{% endblock %}

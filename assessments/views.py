@@ -10,6 +10,7 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_GET
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
 from audit.mixins import AuditedFormMixin
@@ -332,6 +333,61 @@ def _attempt_total(assessment):
 	return sum(assessment.questions.values_list("points", flat=True), Decimal("0"))
 
 
+@login_required
+@require_GET
+def assessment_overview(request, assignment_pk, assessment_pk):
+	assignment = get_object_or_404(
+		TrainingAssignment.objects.select_related("training_version__training", "employee"),
+		pk=assignment_pk, employee=_active_employee(request),
+	)
+	assessment = get_object_or_404(
+		Assessment.objects.select_related("module"),
+		pk=assessment_pk, training_version_id=assignment.training_version_id,
+		training_version__status__in=(TrainingVersion.Status.PUBLISHED, TrainingVersion.Status.RETIRED),
+	)
+	attempts = list(AssessmentAttempt.objects.filter(
+		assignment=assignment, assessment=assessment,
+	).order_by("-attempt_number"))
+	ongoing = next((attempt for attempt in attempts if attempt.status == AssessmentAttempt.Status.IN_PROGRESS), None)
+	passed = any(attempt.status == AssessmentAttempt.Status.SUBMITTED and attempt.passed for attempt in attempts)
+	reason = None
+	if passed:
+		reason = "You have already passed this assessment."
+	elif assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
+		reason = "This assignment no longer accepts attempts."
+	elif ongoing:
+		reason = "An attempt is already in progress."
+	elif len(attempts) >= assessment.max_attempts:
+		reason = "The attempt limit has been reached."
+	elif _attempt_total(assessment) <= 0:
+		reason = "This assessment has no scorable questions."
+	elif assessment.kind == Assessment.Kind.QUIZ and not _module_lessons_complete(assignment, assessment.module):
+		reason = "Complete the required module lessons before starting this quiz."
+	elif assessment.kind == Assessment.Kind.FINAL:
+		required_lessons = Lesson.objects.filter(module__training_version=assignment.training_version, is_required=True)
+		completed_lessons = LessonProgress.objects.filter(
+			assignment=assignment, completed_at__isnull=False,
+		).values("lesson_id")
+		if required_lessons.exclude(pk__in=completed_lessons).exists():
+			reason = "Complete required lessons before the final assessment."
+		else:
+			required_quizzes = Assessment.objects.filter(
+			training_version=assignment.training_version, kind=Assessment.Kind.QUIZ, is_required=True,
+		)
+			passed_quizzes = AssessmentAttempt.objects.filter(
+				assignment=assignment, status=AssessmentAttempt.Status.SUBMITTED, passed=True,
+			).values("assessment_id")
+			if required_quizzes.exclude(pk__in=passed_quizzes).exists():
+				reason = "Pass required quizzes before the final assessment."
+	return render(request, "assessments/learner_overview.html", {
+		"assignment": assignment, "assessment": assessment, "attempts": attempts,
+		"ongoing": ongoing, "passed": passed, "unavailable_reason": reason,
+		"can_resume": bool(ongoing and assignment.status in (
+			TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS,
+		)),
+	})
+
+
 @transaction.atomic
 def _try_complete_assignment(assignment, actor=None):
 	from certifications.services import issue_completed_assignment_certificate
@@ -420,6 +476,7 @@ def start_attempt(request, assignment_pk, assessment_pk):
 
 
 @login_required
+@require_GET
 def attempt_detail(request, pk):
 	attempt = get_object_or_404(
 		AssessmentAttempt.objects.select_related("assessment", "assignment__employee"),
@@ -428,9 +485,20 @@ def attempt_detail(request, pk):
 		assignment__employee__is_active=True,
 	)
 	if attempt.status == AssessmentAttempt.Status.IN_PROGRESS:
-		questions = attempt.assessment.questions.select_related("question_revision").prefetch_related("question_revision__options")
-		return render(request, "assessments/attempt.html", {"attempt": attempt, "questions": questions})
+		return _render_attempt(request, attempt)
 	return render(request, "assessments/result.html", {"attempt": attempt})
+
+
+def _render_attempt(request, attempt, *, error=None, status=200):
+	questions = list(attempt.assessment.questions.select_related("question_revision").prefetch_related("question_revision__options"))
+	for item in questions:
+		item.selected_option_id = request.POST.get(f"answer_{item.pk}") if error else None
+	return render(request, "assessments/attempt.html", {
+		"attempt": attempt, "questions": questions, "form_error": error,
+		"can_submit": attempt.assignment.status in (
+			TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS,
+		),
+	}, status=status)
 
 
 def _posted_answers(request):
@@ -554,4 +622,11 @@ def submit_attempt(request, pk):
 				_try_complete_assignment(assignment, actor=request.user)
 		return redirect("assessments:attempt-detail", pk=attempt.pk)
 	except (ValidationError, IntegrityError, InvalidOperation, ValueError) as exc:
+		if "text/html" in request.headers.get("Accept", "") and request.content_type != "application/json":
+			attempt = get_object_or_404(
+				AssessmentAttempt.objects.select_related("assessment", "assignment__employee"),
+				pk=pk, assignment__employee__user=request.user, assignment__employee__is_active=True,
+			)
+			if attempt.status == AssessmentAttempt.Status.IN_PROGRESS:
+				return _render_attempt(request, attempt, error=str(exc), status=400)
 		return JsonResponse({"error": str(exc)}, status=400)

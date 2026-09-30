@@ -11,6 +11,7 @@ from .views import (
     QuestionListView,
     QuestionUpdateView,
     VersionAssessmentListView,
+    assessment_overview,
     attempt_detail,
     create_question_revision,
     edit_question_revision,
@@ -38,6 +39,7 @@ urlpatterns = [
     path("assessments/<int:assessment_pk>/questions/new/", AssessmentQuestionCreateView.as_view(), name="assessment-question-create"),
     path("assessment-questions/<int:pk>/edit/", AssessmentQuestionUpdateView.as_view(), name="assessment-question-update"),
     path("assignments/<int:assignment_pk>/assessments/<int:assessment_pk>/start/", start_attempt, name="attempt-start"),
+    path("assignments/<int:assignment_pk>/assessments/<int:assessment_pk>/", assessment_overview, name="learner-overview"),
     path("attempts/<int:pk>/", attempt_detail, name="attempt-detail"),
     path("attempts/<int:pk>/submit/", submit_attempt, name="attempt-submit"),
 ]
