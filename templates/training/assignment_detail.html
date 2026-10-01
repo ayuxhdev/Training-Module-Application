@@ -21,6 +21,13 @@
   <div><dt>Department at assignment</dt><dd>{{ assignment.department_at_assignment.name }}</dd></div>
   <div><dt>Job role at assignment</dt><dd>{{ assignment.job_role_at_assignment.name }}</dd></div>
 </dl>
+{% if assignment.certificate %}
+  {% if perms.certifications.view_certificate %}
+    <p><a class="action-link" href="{% url 'certifications:certificate-detail' assignment.certificate.pk %}">View {% if assignment.certificate.revoked_at %}revoked {% endif %}certificate</a></p>
+  {% elif assignment.employee.user == user and assignment.employee.is_active %}
+    <p><a class="action-link" href="{% url 'certifications:certificate-detail' assignment.certificate.pk %}">View {% if assignment.certificate.revoked_at %}revoked {% endif %}certificate</a></p>
+  {% endif %}
+{% endif %}
 {% if assignment.role_requirement %}<p>Job-role requirement: {{ assignment.role_requirement.job_role.name }} → {{ assignment.training_version.training.catalog_title }} / {{ assignment.training_version.title }}</p>{% endif %}
 {% if perms.training.view_trainingversion %}<p><a href="{% url 'training:version-detail' assignment.training_version_id %}">View training version</a></p>{% endif %}
 {% if can_learn %}

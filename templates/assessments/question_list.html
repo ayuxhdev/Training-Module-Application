@@ -1,2 +1,12 @@
 {% extends "base.html" %}
-{% block content %}<h1>Question bank</h1><a href="{% url 'assessments:question-create' %}">Add question</a><ul>{% for question in questions %}<li><a href="{% url 'assessments:question-detail' question.pk %}">{{ question.code }} - {{ question.topic }}</a> {% if not question.is_active %}(inactive){% endif %}</li>{% empty %}<li>No questions available.</li>{% endfor %}</ul>{% endblock %}
+{% block content %}
+<header class="page-heading"><h1>Question bank</h1>{% if perms.assessments.add_question %}<a class="action-link" href="{% url 'assessments:question-create' %}">Add question</a>{% endif %}</header>
+<div class="table-scroll" role="region" aria-label="Question bank" tabindex="0">
+  <table>
+    <thead><tr><th scope="col">Code</th><th scope="col">Topic</th><th scope="col">Status</th></tr></thead>
+    <tbody>{% for question in questions %}
+      <tr><td><a href="{% url 'assessments:question-detail' question.pk %}">{{ question.code }}</a></td><td>{{ question.topic|default:"-" }}</td><td><span class="status-badge{% if not question.is_active %} status-inactive{% endif %}">{% if question.is_active %}Active{% else %}Inactive{% endif %}</span></td></tr>
+    {% empty %}<tr><td colspan="3" class="empty-state">No questions available.</td></tr>{% endfor %}</tbody>
+  </table>
+</div>
+{% endblock %}

@@ -104,7 +104,7 @@
   <h2>In progress</h2>
   <ul>{% for assignment in in_progress_training %}<li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.title }}</a> - due {{ assignment.due_at|date:"Y-m-d"|default:"Not set" }}</li>{% empty %}<li class="empty-state">No training in progress.</li>{% endfor %}</ul>
   <h2>Completed</h2>
-  <ul>{% for assignment in completed_training %}<li>{{ assignment.training_version.title }} - completed {{ assignment.completed_at|date:"Y-m-d" }}</li>{% empty %}<li class="empty-state">No completed training yet.</li>{% endfor %}</ul>
+  <ul>{% for assignment in completed_training %}<li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.title }}</a> - completed {{ assignment.completed_at|date:"Y-m-d" }}</li>{% empty %}<li class="empty-state">No completed training yet.</li>{% endfor %}</ul>
   <h2>Overdue assignments</h2>
   <ul>{% for assignment in overdue_assignments %}<li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.title }}</a> - due {{ assignment.due_at|date:"Y-m-d" }}</li>{% empty %}<li class="empty-state">No overdue assignments.</li>{% endfor %}</ul>
   <h2>Certificates</h2>

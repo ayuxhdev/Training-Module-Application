@@ -1,2 +1,13 @@
 {% extends "base.html" %}
-{% block content %}<h1>{{ version }} assessments</h1>{% if version.status == 'DRAFT' %}<a href="{% url 'assessments:assessment-create' version.pk %}">Add assessment</a>{% endif %}<ul>{% for assessment in assessments %}<li><a href="{% url 'assessments:assessment-detail' assessment.pk %}">{{ assessment.get_kind_display }}: {{ assessment.title }}</a> ({{ assessment.questions.count }} questions)</li>{% empty %}<li>No assessments.</li>{% endfor %}</ul>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li>{% if perms.training.view_training %}<a href="{% url 'training:training-list' %}">Training</a>{% else %}Training{% endif %}</li><li>{% if perms.training.view_trainingversion %}<a href="{% url 'training:version-detail' version.pk %}">{{ version.title }}</a>{% else %}{{ version.title }}{% endif %}</li><li>Assessments</li></ol></nav>
+<header class="page-heading"><h1>{{ version.title }} assessments</h1>{% if version.status == 'DRAFT' and perms.assessments.add_assessment %}<a class="action-link" href="{% url 'assessments:assessment-create' version.pk %}">Add assessment</a>{% endif %}</header>
+<div class="table-scroll" role="region" aria-label="Version assessments" tabindex="0">
+  <table>
+    <thead><tr><th scope="col">Assessment</th><th scope="col">Type</th><th scope="col">Module</th><th scope="col">Sequence</th><th scope="col">Questions</th></tr></thead>
+    <tbody>{% for assessment in assessments %}
+      <tr><td><a href="{% url 'assessments:assessment-detail' assessment.pk %}">{{ assessment.title }}</a></td><td>{{ assessment.get_kind_display }}</td><td>{{ assessment.module.title|default:"-" }}</td><td>{{ assessment.sequence }}</td><td>{{ assessment.questions.count }}</td></tr>
+    {% empty %}<tr><td colspan="5" class="empty-state">No assessments in this version.</td></tr>{% endfor %}</tbody>
+  </table>
+</div>
+{% endblock %}

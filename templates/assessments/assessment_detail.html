@@ -1,2 +1,16 @@
 {% extends "base.html" %}
-{% block content %}<h1>{{ assessment.title }}</h1><p>{{ assessment.get_kind_display }} | Pass: {{ assessment.pass_percentage }}% | Attempts: {{ assessment.max_attempts }}</p><p>Version: {{ assessment.training_version }}</p>{% if assessment.training_version.status == 'DRAFT' %}<a href="{% url 'assessments:assessment-update' assessment.pk %}">Edit</a> <a href="{% url 'assessments:assessment-question-create' assessment.pk %}">Add question</a>{% endif %}<ol>{% for item in assessment.questions.all %}<li>{{ item.position }}. {{ item.question_revision.prompt }} ({{ item.points }} points){% if assessment.training_version.status == 'DRAFT' %} <a href="{% url 'assessments:assessment-question-update' item.pk %}">Edit</a>{% endif %}</li>{% empty %}<li>No questions.</li>{% endfor %}</ol>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li>{% if perms.training.view_trainingversion %}<a href="{% url 'training:version-detail' assessment.training_version_id %}">{{ assessment.training_version.title }}</a>{% else %}{{ assessment.training_version.title }}{% endif %}</li><li><a href="{% url 'assessments:assessment-list' assessment.training_version_id %}">Assessments</a></li><li>{{ assessment.title }}</li></ol></nav>
+<header class="page-heading">
+  <div><h1>{{ assessment.title }}</h1><p class="muted">{{ assessment.get_kind_display }}{% if assessment.module %} · {{ assessment.module.title }}{% endif %}</p></div>
+  <div class="action-list">
+    {% if assessment.training_version.status == 'DRAFT' and perms.assessments.change_assessment %}<a class="action-link" href="{% url 'assessments:assessment-update' assessment.pk %}">Edit assessment</a>{% endif %}
+    {% if assessment.training_version.status == 'DRAFT' and perms.assessments.add_assessmentquestion %}<a class="action-link" href="{% url 'assessments:assessment-question-create' assessment.pk %}">Add question</a>{% endif %}
+  </div>
+</header>
+<dl class="detail-list"><div><dt>Version</dt><dd>{{ assessment.training_version.title }}</dd></div><div><dt>Pass threshold</dt><dd>{{ assessment.pass_percentage }}%</dd></div><div><dt>Attempt limit</dt><dd>{{ assessment.max_attempts }}</dd></div><div><dt>Time limit</dt><dd>{{ assessment.time_limit_minutes|default:"None" }}</dd></div><div><dt>Required</dt><dd>{% if assessment.is_required %}Yes{% else %}No{% endif %}</dd></div></dl>
+<h2>Questions</h2>
+<ol>{% for item in assessment.questions.all %}
+  <li>{{ item.question_revision.prompt }} ({{ item.points }} points){% if assessment.training_version.status == 'DRAFT' and perms.assessments.change_assessmentquestion %} <a href="{% url 'assessments:assessment-question-update' item.pk %}">Edit</a>{% endif %}</li>
+{% empty %}<li class="empty-state">No questions have been added.</li>{% endfor %}</ol>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-list' %}">Assignments</a></li><li>Job-role requirements</li></ol></nav>
+<header class="page-heading"><h1>Job-role training requirements</h1><a class="action-link" href="{% url 'training:role-requirement-create' %}">Add requirement</a></header>
+<p>Active requirements can be used to assign published training to employees in a job role.</p>
+<div class="table-scroll" role="region" aria-label="Job-role training requirements" tabindex="0">
+  <table>
+    <thead><tr><th scope="col">Job role</th><th scope="col">Training version</th><th scope="col">Due period</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+    <tbody>{% for requirement in requirements %}
+      <tr>
+        <td>{{ requirement.job_role.name }}</td>
+        <td>{{ requirement.training_version.training.catalog_title }} · {{ requirement.training_version.title }} (v{{ requirement.training_version.version_number }})</td>
+        <td>{{ requirement.due_in_days }} days</td>
+        <td>
+          <span class="status-badge{% if not requirement.is_active %} status-inactive{% endif %}">{% if requirement.is_active %}Active{% else %}Inactive{% endif %}</span>
+          {% if requirement.is_active %}{% if requirement.training_version.status != 'PUBLISHED' or not requirement.job_role.is_active %}<span class="muted">Unavailable for new assignments</span>{% endif %}{% endif %}
+        </td>
+        <td><a href="{% url 'training:role-requirement-update' requirement.pk %}">Edit</a></td>
+      </tr>
+    {% empty %}<tr><td colspan="5" class="empty-state">No job-role requirements have been created.</td></tr>{% endfor %}</tbody>
+  </table>
+</div>
+<p><a href="{% url 'training:role-assignment-create' %}">Assign by job role</a></p>
+{% endblock %}

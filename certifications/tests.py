@@ -199,6 +199,55 @@ class CertificateWorkflowTests(CurriculumTestCase):
         self.assertEqual(client.get("/certificates/not-an-id/").status_code, 404)
         self.assertNotContains(client.get("/certificates/"), other_certificate.certificate_number)
 
+    def test_learner_certificate_pages_and_completed_assignment_link(self):
+        Group.objects.get(name="Employee").user_set.add(self.employee_user)
+        certificate = self.certificate(self.complete_assignment())
+        certificate.save()
+        client = self.client_for(self.employee_user)
+
+        listing = client.get("/certificates/")
+        self.assertContains(listing, certificate.certificate_number)
+        self.assertContains(listing, 'aria-label="Certificates"')
+        assignment_page = client.get(f"/assignments/{self.assignment.pk}/")
+        self.assertContains(assignment_page, f"/certificates/{certificate.pk}/")
+        detail = client.get(f"/certificates/{certificate.pk}/")
+        self.assertContains(detail, certificate.employee_name_snapshot)
+        self.assertContains(detail, certificate.training_title_snapshot)
+        self.assertContains(detail, "Valid")
+        self.assertNotContains(detail, "Revoke certificate")
+        self.assertContains(client.get(f"/certificates/{certificate.pk}/"), certificate.certificate_number)
+
+        coordinator = get_user_model().objects.create_user(username="certificate-frontend-coordinator")
+        Group.objects.get(name="Training Coordinator").user_set.add(coordinator)
+        coordinator_client = self.client_for(coordinator)
+        self.assertContains(coordinator_client.get(f"/certificates/{certificate.pk}/"), "Revoke certificate")
+        self.assertEqual(coordinator_client.post(
+            f"/certificates/{certificate.pk}/revoke/", {"reason": "Issued in error"},
+        ).status_code, 302)
+        revoked = client.get(f"/certificates/{certificate.pk}/")
+        self.assertContains(revoked, "Revoked")
+        self.assertContains(revoked, "Issued in error")
+        self.assertContains(client.get("/certificates/"), "Revoked")
+        self.assertNotContains(coordinator_client.get(f"/certificates/{certificate.pk}/"), "Revoke certificate")
+
+    def test_manager_team_assignment_does_not_link_to_private_certificate(self):
+        certificate = self.certificate(self.complete_assignment())
+        certificate.save()
+        manager_user = get_user_model().objects.create_user(username="certificate-team-manager")
+        Group.objects.get(name="Manager").user_set.add(manager_user)
+        manager_employee = Employee.objects.create(
+            employee_code="GN-MGR", display_name="Team manager", user=manager_user,
+            department=self.department, job_role=self.role, date_joined=self.now.date(),
+        )
+        self.employee.reporting_manager = manager_employee
+        self.employee.save()
+        client = self.client_for(manager_user)
+        assignment_page = client.get(f"/assignments/{self.assignment.pk}/")
+        self.assertEqual(assignment_page.status_code, 200)
+        self.assertNotContains(assignment_page, f"/certificates/{certificate.pk}/")
+        self.assertNotContains(client.get("/certificates/"), certificate.certificate_number)
+        self.assertEqual(client.get(f"/certificates/{certificate.pk}/").status_code, 404)
+
     def test_only_administrator_and_coordinator_can_revoke(self):
         certificate = self.certificate(self.complete_assignment())
         certificate.save()

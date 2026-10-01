@@ -296,7 +296,11 @@ class AuditWorkflowTests(CurriculumTestCase):
             entity_type="training.trainingversion", entity_id=str(self.version.pk),
             after_data={"status": "PUBLISHED"},
         )
-        self.assertEqual(self.client_for(self.user).get("/audit/?action=test.event").status_code, 200)
+        filtered = self.client_for(self.user).get("/audit/?action=test.event")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertContains(filtered, '<form method="get" class="form-stack">', html=False)
+        self.assertContains(filtered, 'aria-label="Audit history results"')
+        self.assertContains(filtered, "Clear filters")
         coordinator = get_user_model().objects.create_user(username="audit-coordinator")
         Group.objects.get(name="Training Coordinator").user_set.add(coordinator)
         self.assertEqual(self.client_for(coordinator).get("/audit/").status_code, 200)

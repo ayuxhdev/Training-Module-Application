@@ -1,2 +1,11 @@
 {% extends "base.html" %}
-{% block content %}<h1>Assessment question</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save</button></form>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li>{% if perms.training.view_trainingversion %}<a href="{% url 'training:version-detail' form.instance.assessment.training_version_id %}">{{ form.instance.assessment.training_version.title }}</a>{% else %}{{ form.instance.assessment.training_version.title }}{% endif %}</li><li>{% if perms.assessments.view_assessment %}<a href="{% url 'assessments:assessment-detail' form.instance.assessment_id %}">{{ form.instance.assessment.title }}</a>{% else %}{{ form.instance.assessment.title }}{% endif %}</li>{% if form.instance.pk %}<li>Edit question</li>{% else %}<li>Add question</li>{% endif %}</ol></nav>
+<header class="page-heading"><h1>{% if form.instance.pk %}Edit assessment question{% else %}Add assessment question{% endif %}</h1></header>
+<form method="post" class="form-stack">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  {{ form.as_p }}
+  <div class="action-list"><button type="submit">Save</button><a href="{% if perms.assessments.view_assessment %}{% url 'assessments:assessment-detail' form.instance.assessment_id %}{% else %}{% url 'reports:dashboard' %}{% endif %}">Cancel</a></div>
+</form>
+{% endblock %}

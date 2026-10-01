@@ -7,7 +7,7 @@ from threading import Event
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, models, transaction
 from django.test import Client, TransactionTestCase
@@ -671,6 +671,53 @@ class AssessmentEndpointTests(CurriculumTestCase):
         assignment_page = client.get(f"/assignments/{self.assignment.pk}/")
         self.assertContains(assignment_page, "View assessment")
         self.assertContains(client.get(f"/attempts/{attempt.pk}/"), "View attempts and next steps")
+
+    def test_management_pages_show_only_permitted_actions(self):
+        viewer = get_user_model().objects.create_user(username="assessment-view-only")
+        viewer.user_permissions.add(*Permission.objects.filter(
+            content_type__app_label="assessments",
+            codename__in=("view_question", "view_questionrevision", "view_assessment"),
+        ))
+        client = self.client_for(viewer)
+        question_list = client.get("/questions/")
+        self.assertContains(question_list, 'aria-label="Question bank"')
+        self.assertNotContains(question_list, "Add question")
+        question_detail = client.get(f"/questions/{self.question.pk}/")
+        self.assertNotContains(question_detail, "Edit metadata")
+        self.assertNotContains(question_detail, "New revision")
+        draft_revision = QuestionRevision.objects.create(
+            question=self.question, revision_number=2, prompt="Draft prompt", created_by=self.user,
+        )
+        revision_detail = client.get(f"/revisions/{draft_revision.pk}/")
+        self.assertNotContains(revision_detail, "Freeze revision")
+        self.assertNotContains(revision_detail, "Edit draft")
+
+        draft_version = self.new_version()
+        draft_assessment = Assessment.objects.create(
+            training_version=draft_version, kind=Assessment.Kind.FINAL, title="Draft final",
+        )
+        assessment_list = client.get(f"/versions/{draft_version.pk}/assessments/")
+        self.assertContains(assessment_list, 'aria-label="Version assessments"')
+        self.assertNotContains(assessment_list, "Add assessment")
+        self.assertNotContains(assessment_list, f'href="/versions/{draft_version.pk}/"')
+        assessment_detail = client.get(f"/assessments/{draft_assessment.pk}/")
+        self.assertNotContains(assessment_detail, "Edit assessment")
+        self.assertNotContains(assessment_detail, "Add question")
+        self.assertNotContains(assessment_detail, f'href="/versions/{draft_version.pk}/"')
+        self.assertEqual(client.get(f"/assessments/{draft_assessment.pk}/edit/").status_code, 403)
+
+    def test_management_forms_use_shared_layout_and_show_errors(self):
+        client = self.client_for(self.coordinator)
+        question_form = client.get("/questions/new/")
+        self.assertContains(question_form, 'class="form-stack"')
+        self.assertContains(question_form, "Cancel")
+        draft_version = self.new_version()
+        assessment_form = client.get(f"/versions/{draft_version.pk}/assessments/new/")
+        self.assertContains(assessment_form, 'class="form-stack"')
+        self.assertContains(assessment_form, "Cancel")
+        invalid = client.post(f"/versions/{draft_version.pk}/assessments/new/", {})
+        self.assertEqual(invalid.status_code, 200)
+        self.assertContains(invalid, "This field is required")
 
 
 class AssessmentLockingTests(TransactionTestCase):

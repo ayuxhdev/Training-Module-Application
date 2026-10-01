@@ -1,2 +1,14 @@
 {% extends "base.html" %}
-{% block content %}<h1>{{ revision.question }} revision {{ revision.revision_number }}</h1><p>Status: {{ revision.get_status_display }}</p><h2>{{ revision.prompt }}</h2><p>{{ revision.explanation }}</p><ol>{% for option in revision.options.all %}<li>{{ option.text }}{% if option.is_correct %} (correct){% endif %}</li>{% endfor %}</ol>{% if errors %}<p>{{ errors }}</p>{% endif %}{% if revision.status == 'DRAFT' %}<a href="{% url 'assessments:revision-update' revision.pk %}">Edit draft</a><form method="post" action="{% url 'assessments:revision-freeze' revision.pk %}">{% csrf_token %}<button type="submit">Freeze revision</button></form>{% endif %}{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-list' %}">Question bank</a>{% else %}Question bank{% endif %}</li><li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-detail' revision.question_id %}">{{ revision.question.code }}</a>{% else %}{{ revision.question.code }}{% endif %}</li><li>Revision {{ revision.revision_number }}</li></ol></nav>
+<header class="page-heading">
+  <div><h1>{{ revision.question.code }} · Revision {{ revision.revision_number }}</h1><p class="muted"><span class="status-badge status-{{ revision.status|lower }}">{{ revision.get_status_display }}</span></p></div>
+  {% if revision.status == 'DRAFT' and perms.assessments.change_questionrevision %}<a class="action-link" href="{% url 'assessments:revision-update' revision.pk %}">Edit draft</a>{% endif %}
+</header>
+{% if errors %}<p class="form-errors" role="alert">{{ errors }}</p>{% endif %}
+<section><h2>Question</h2><p>{{ revision.prompt|linebreaksbr }}</p>{% if revision.explanation %}<p class="muted">Explanation: {{ revision.explanation|linebreaksbr }}</p>{% endif %}</section>
+<section><h2>Options</h2><ol>{% for option in revision.options.all %}<li>{{ option.text }}{% if option.is_correct %} <strong>(correct)</strong>{% endif %}</li>{% empty %}<li class="empty-state">No options yet.</li>{% endfor %}</ol></section>
+{% if revision.status == 'DRAFT' and perms.assessments.change_questionrevision %}
+  <form method="post" action="{% url 'assessments:revision-freeze' revision.pk %}">{% csrf_token %}<button type="submit">Freeze revision</button></form>
+{% endif %}
+{% endblock %}

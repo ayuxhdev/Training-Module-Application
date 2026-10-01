@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Assignment report</h1>
-<form method="get">
+<header class="page-heading"><h1>Assignment report</h1></header>
+<form method="get" class="form-stack">
   {{ filter_form.non_field_errors }}
   <p>{{ filter_form.status.label_tag }} {{ filter_form.status }} {{ filter_form.status.errors }}</p>
   <p>{{ filter_form.department.label_tag }} {{ filter_form.department }} {{ filter_form.department.errors }}</p>
@@ -9,7 +9,7 @@
   <p>{{ filter_form.training.label_tag }} {{ filter_form.training }} {{ filter_form.training.errors }}</p>
   <p>{{ filter_form.training_version.label_tag }} {{ filter_form.training_version }} {{ filter_form.training_version.errors }}</p>
   <p>{{ filter_form.overdue_only }} {{ filter_form.overdue_only.label_tag }} {{ filter_form.overdue_only.errors }}</p>
-  <button type="submit">Filter</button>
+  <div class="action-list"><button type="submit">Filter</button><a href="{% url 'reports:assignment-report' %}">Clear filters</a></div>
 </form>
 <div class="table-scroll" role="region" aria-label="Assignment report results" tabindex="0">
 <table>

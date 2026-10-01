@@ -1,15 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Certificates</h1>
-<ul>
-{% for certificate in certificates %}
-  <li>
-    <a href="{% url 'certifications:certificate-detail' certificate.pk %}">{{ certificate.training_title_snapshot }} v{{ certificate.version_number_snapshot }}</a>
-    for {{ certificate.employee_name_snapshot }} ({{ certificate.certificate_number }})
-    {% if certificate.revoked_at %}Revoked{% else %}Issued {{ certificate.issued_at|date:"Y-m-d" }}{% endif %}
-  </li>
-{% empty %}
-  <li>No certificates found.</li>
-{% endfor %}
-</ul>
+<header class="page-heading"><h1>Certificates</h1></header>
+<p class="muted">Issued certificates remain available here, including certificates later revoked.</p>
+<div class="table-scroll" role="region" aria-label="Certificates" tabindex="0">
+  <table>
+    <thead><tr><th scope="col">Certificate</th><th scope="col">Training</th><th scope="col">Employee</th><th scope="col">Issued</th><th scope="col">Status</th></tr></thead>
+    <tbody>
+    {% for certificate in certificates %}
+      <tr>
+        <td><a href="{% url 'certifications:certificate-detail' certificate.pk %}">{{ certificate.certificate_number }}</a></td>
+        <td>{{ certificate.training_title_snapshot }} · Version {{ certificate.version_number_snapshot }}</td>
+        <td>{{ certificate.employee_name_snapshot }}</td>
+        <td>{{ certificate.issued_at|date:"Y-m-d" }}</td>
+        <td><span class="status-badge {% if certificate.revoked_at %}status-inactive{% else %}status-completed{% endif %}">{% if certificate.revoked_at %}Revoked{% else %}Valid{% endif %}</span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="empty-state">No certificates found.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

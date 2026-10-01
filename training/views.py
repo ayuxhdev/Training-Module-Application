@@ -22,9 +22,10 @@ from audit.services import audit_snapshot, record_event
 from organization.models import Employee
 from organization.views import employee_scope
 
-from .forms import (LessonForm, ModuleForm, RoleTrainingAssignmentForm, TrainingAssignmentForm,
-					TrainingForm, TrainingVersionForm)
-from .models import (Lesson, LessonProgress, Module, Training, TrainingAssignment,
+from .forms import (LessonForm, ModuleForm, RoleTrainingAssignmentForm,
+					RoleTrainingRequirementCreateForm, RoleTrainingRequirementUpdateForm,
+					TrainingAssignmentForm, TrainingForm, TrainingVersionForm)
+from .models import (Lesson, LessonProgress, Module, RoleTrainingRequirement, Training, TrainingAssignment,
 						 TrainingVersion, VideoWatchSession, VIDEO_HEARTBEAT_TOLERANCE)
 
 
@@ -633,6 +634,54 @@ class TrainingAssignmentCreateView(AuditedFormMixin, LoginRequiredMixin, Permiss
 			after=audit_snapshot(self.object),
 		)
 		return redirect("training:assignment-detail", pk=self.object.pk)
+
+
+class RoleTrainingRequirementListView(ContentPermissionMixin, ListView):
+	permission_required = ASSIGNMENT_MANAGE_PERMISSION
+	model = RoleTrainingRequirement
+	template_name = "training/role_requirement_list.html"
+	context_object_name = "requirements"
+
+	def get_queryset(self):
+		return RoleTrainingRequirement.objects.select_related(
+			"job_role", "training_version__training",
+		).order_by("job_role__name", "training_version__training__catalog_title", "training_version__version_number")
+
+
+class RoleTrainingRequirementCreateView(ContentPermissionMixin, CreateView):
+	permission_required = ASSIGNMENT_MANAGE_PERMISSION
+	model = RoleTrainingRequirement
+	form_class = RoleTrainingRequirementCreateForm
+	template_name = "training/role_requirement_form.html"
+
+	def get_initial(self):
+		return {"is_active": True}
+
+	def get_context_data(self, **kwargs):
+		context = super().get_context_data(**kwargs)
+		form = context["form"]
+		context["can_create_requirement"] = (
+			form.fields["job_role"].queryset.exists()
+			and form.fields["training_version"].queryset.exists()
+		)
+		return context
+
+	def form_valid(self, form):
+		form.instance.created_by = self.request.user
+		return super().form_valid(form)
+
+	def get_success_url(self):
+		return reverse("training:role-requirement-list")
+
+
+class RoleTrainingRequirementUpdateView(ContentPermissionMixin, UpdateView):
+	permission_required = ASSIGNMENT_MANAGE_PERMISSION
+	model = RoleTrainingRequirement
+	form_class = RoleTrainingRequirementUpdateForm
+	template_name = "training/role_requirement_form.html"
+
+	def get_success_url(self):
+		return reverse("training:role-requirement-list")
 
 
 class RoleTrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMixin, FormView):

@@ -4,7 +4,7 @@ from django import forms
 from django.utils import timezone
 
 from .models import Lesson, Module, RoleTrainingRequirement, Training, TrainingAssignment, TrainingVersion
-from organization.models import Employee
+from organization.models import Employee, JobRole
 
 
 class TrainingForm(forms.ModelForm):
@@ -155,3 +155,30 @@ class RoleTrainingAssignmentForm(forms.Form):
             f"{requirement.training_version.title} (v{requirement.training_version.version_number}, "
             f"due in {requirement.due_in_days} days)"
         )
+
+
+class RoleTrainingRequirementCreateForm(forms.ModelForm):
+    class Meta:
+        model = RoleTrainingRequirement
+        fields = ["job_role", "training_version", "due_in_days", "is_active"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["job_role"].queryset = JobRole.objects.filter(is_active=True).order_by("name")
+        self.fields["training_version"].queryset = TrainingVersion.objects.filter(
+            status=TrainingVersion.Status.PUBLISHED,
+        ).select_related("training").order_by("training__catalog_title", "version_number")
+        self.fields["training_version"].label_from_instance = lambda version: (
+            f"{version.training.catalog_title} — {version.title} (v{version.version_number})"
+        )
+
+    def _post_clean(self):
+        if self._errors:
+            return
+        super()._post_clean()
+
+
+class RoleTrainingRequirementUpdateForm(forms.ModelForm):
+    class Meta:
+        model = RoleTrainingRequirement
+        fields = ["due_in_days", "is_active"]

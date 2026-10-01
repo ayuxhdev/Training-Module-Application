@@ -1,2 +1,11 @@
 {% extends "base.html" %}
-{% block content %}<h1>Assessment</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save draft</button></form>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li>{% if perms.training.view_trainingversion %}<a href="{% url 'training:version-detail' form.instance.training_version_id %}">{{ form.instance.training_version.title }}</a>{% else %}{{ form.instance.training_version.title }}{% endif %}</li><li>{% if perms.assessments.view_assessment %}<a href="{% url 'assessments:assessment-list' form.instance.training_version_id %}">Assessments</a>{% else %}Assessments{% endif %}</li>{% if form.instance.pk %}<li>Edit assessment</li>{% else %}<li>Add assessment</li>{% endif %}</ol></nav>
+<header class="page-heading"><h1>{% if form.instance.pk %}Edit draft assessment{% else %}Add draft assessment{% endif %}</h1></header>
+<form method="post" class="form-stack">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  {{ form.as_p }}
+  <div class="action-list"><button type="submit">Save draft</button><a href="{% if perms.assessments.view_assessment %}{% url 'assessments:assessment-list' form.instance.training_version_id %}{% else %}{% url 'reports:dashboard' %}{% endif %}">Cancel</a></div>
+</form>
+{% endblock %}

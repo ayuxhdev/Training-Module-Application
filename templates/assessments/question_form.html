@@ -1,2 +1,11 @@
 {% extends "base.html" %}
-{% block content %}<h1>Question bank entry</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save</button></form>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-list' %}">Question bank</a>{% else %}Question bank{% endif %}</li>{% if form.instance.pk %}<li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-detail' form.instance.pk %}">{{ form.instance.code }}</a>{% else %}{{ form.instance.code }}{% endif %}</li><li>Edit</li>{% else %}<li>Add question</li>{% endif %}</ol></nav>
+<header class="page-heading"><h1>{% if form.instance.pk %}Edit question metadata{% else %}Add question{% endif %}</h1></header>
+<form method="post" class="form-stack">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  {{ form.as_p }}
+  <div class="action-list"><button type="submit">Save</button><a href="{% if perms.assessments.view_question %}{% if form.instance.pk %}{% url 'assessments:question-detail' form.instance.pk %}{% else %}{% url 'assessments:question-list' %}{% endif %}{% else %}{% url 'reports:dashboard' %}{% endif %}">Cancel</a></div>
+</form>
+{% endblock %}

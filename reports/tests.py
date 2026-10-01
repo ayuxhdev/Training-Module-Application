@@ -25,6 +25,8 @@ class EmptyDashboardTests(TestCase):
 		self.assertContains(dashboard, '<main id="main-content" class="page-content" tabindex="-1">', html=False)
 
 		report = client.get("/reports/assignments/")
+		self.assertContains(report, '<form method="get" class="form-stack">', html=False)
+		self.assertContains(report, "Clear filters")
 		self.assertContains(
 			report,
 			'<div class="table-scroll" role="region" aria-label="Assignment report results" tabindex="0">',

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-list' %}">Assignments</a></li><li><a href="{% url 'training:role-requirement-list' %}">Job-role requirements</a></li><li>{% if form.instance.pk %}Edit requirement{% else %}Add requirement{% endif %}</li></ol></nav>
+<header class="page-heading"><h1>{% if form.instance.pk %}Edit job-role requirement{% else %}Add job-role requirement{% endif %}</h1></header>
+{% if form.instance.pk %}<p>Job role: {{ form.instance.job_role.name }} · Training: {{ form.instance.training_version.training.catalog_title }} / {{ form.instance.training_version.title }}. These relationships are fixed after creation.</p>{% elif not can_create_requirement %}<p class="empty-state">An active job role and a published training version are needed before a requirement can be created.</p>{% endif %}
+<form method="post" class="form-stack">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  {{ form.as_p }}
+  <div class="action-list">{% if form.instance.pk or can_create_requirement %}<button type="submit">Save requirement</button>{% endif %}<a href="{% url 'training:role-requirement-list' %}">Cancel</a></div>
+</form>
+{% endblock %}

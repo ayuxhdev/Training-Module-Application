@@ -1,2 +1,15 @@
 {% extends "base.html" %}
-{% block content %}<h1>{{ question.code }} - {{ question.topic }}</h1><p>{% if question.is_active %}Active{% else %}Inactive{% endif %}</p><a href="{% url 'assessments:question-update' question.pk %}">Edit metadata</a> <a href="{% url 'assessments:revision-create' question.pk %}">New revision</a><h2>Revisions</h2><ul>{% for revision in question.revisions.all %}<li><a href="{% url 'assessments:revision-detail' revision.pk %}">Revision {{ revision.revision_number }}: {{ revision.prompt }}</a> ({{ revision.get_status_display }})</li>{% empty %}<li>No revisions.</li>{% endfor %}</ul>{% endblock %}
+{% block content %}
+<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'assessments:question-list' %}">Question bank</a></li><li>{{ question.code }}</li></ol></nav>
+<header class="page-heading">
+  <div><h1>{{ question.code }}</h1><p class="muted">{{ question.topic|default:"No topic" }} · <span class="status-badge{% if not question.is_active %} status-inactive{% endif %}">{% if question.is_active %}Active{% else %}Inactive{% endif %}</span></p></div>
+  <div class="action-list">
+    {% if perms.assessments.change_question %}<a class="action-link" href="{% url 'assessments:question-update' question.pk %}">Edit metadata</a>{% endif %}
+    {% if perms.assessments.add_questionrevision %}<a class="action-link" href="{% url 'assessments:revision-create' question.pk %}">New revision</a>{% endif %}
+  </div>
+</header>
+<h2>Revisions</h2>
+<ol>{% for revision in question.revisions.all %}
+  <li>{% if perms.assessments.view_questionrevision %}<a href="{% url 'assessments:revision-detail' revision.pk %}">Revision {{ revision.revision_number }}: {{ revision.prompt }}</a>{% else %}Revision {{ revision.revision_number }}: {{ revision.prompt }}{% endif %} <span class="status-badge status-{{ revision.status|lower }}">{{ revision.get_status_display }}</span></li>
+{% empty %}<li class="empty-state">No revisions.</li>{% endfor %}</ol>
+{% endblock %}

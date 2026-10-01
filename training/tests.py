@@ -578,6 +578,98 @@ class AssignmentViewTests(CurriculumTestCase):
             self.assertEqual(assignment.department_at_assignment_id, self.department.pk)
             self.assertEqual(assignment.job_role_at_assignment_id, self.role.pk)
 
+    def test_role_requirement_management_uses_existing_assignment_permission(self):
+        for user in (self.admin, self.coordinator):
+            client = self.client_for(user)
+            self.assertContains(client.get("/assignments/"), "Manage job-role requirements")
+            self.assertEqual(client.get("/assignments/requirements/").status_code, 200)
+            self.assertContains(client.get("/assignments/requirements/new/"), 'class="form-stack"')
+        for user in (self.manager_user, self.employee_user):
+            client = self.client_for(user)
+            self.assertNotContains(client.get("/assignments/"), "Manage job-role requirements")
+            self.assertEqual(client.get("/assignments/requirements/").status_code, 403)
+            self.assertEqual(client.get("/assignments/requirements/new/").status_code, 403)
+            self.assertEqual(client.post("/assignments/requirements/new/", {
+                "job_role": self.role.pk, "training_version": self.version.pk,
+                "due_in_days": 14, "is_active": "on",
+            }).status_code, 403)
+        self.assertFalse(RoleTrainingRequirement.objects.exists())
+        requirement = RoleTrainingRequirement.objects.create(
+            job_role=self.role, training_version=self.version, created_by=self.admin,
+        )
+        manager = self.client_for(self.manager_user)
+        self.assertEqual(manager.get(f"/assignments/requirements/{requirement.pk}/edit/").status_code, 403)
+        self.assertEqual(manager.post(f"/assignments/requirements/{requirement.pk}/edit/", {
+            "due_in_days": 1, "is_active": "on",
+        }).status_code, 403)
+        requirement.refresh_from_db()
+        self.assertEqual(requirement.due_in_days, 30)
+
+    def test_role_requirement_create_edit_and_duplicate_are_controlled(self):
+        client = self.client_for(self.admin)
+        create_url = "/assignments/requirements/new/"
+        payload = {
+            "job_role": self.role.pk, "training_version": self.version.pk,
+            "due_in_days": 14, "is_active": "on", "created_by": self.manager_user.pk,
+        }
+        self.assertEqual(client.post(create_url, payload).status_code, 302)
+        requirement = RoleTrainingRequirement.objects.get(job_role=self.role, training_version=self.version)
+        self.assertEqual(requirement.created_by_id, self.admin.pk)
+        self.assertContains(client.get("/assignments/requirements/"), self.training.catalog_title)
+        self.assertContains(client.get("/assignments/role/new/"), "due in 14 days")
+        duplicate = client.post(create_url, payload)
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertTrue(duplicate.context["form"].errors)
+        self.assertEqual(RoleTrainingRequirement.objects.count(), 1)
+
+        other_role = JobRole.objects.create(code="OTHER-REQ", name="Other role")
+        other_version = self.new_version()
+        edit_url = f"/assignments/requirements/{requirement.pk}/edit/"
+        update = client.post(edit_url, {
+            "job_role": other_role.pk, "training_version": other_version.pk,
+            "due_in_days": 7, "is_active": "on", "created_by": self.manager_user.pk,
+        })
+        self.assertEqual(update.status_code, 302)
+        requirement.refresh_from_db()
+        self.assertEqual((requirement.job_role_id, requirement.training_version_id, requirement.created_by_id),
+                         (self.role.pk, self.version.pk, self.admin.pk))
+        self.assertEqual(requirement.due_in_days, 7)
+        self.assertEqual(client.post("/assignments/role/new/", {"role_requirement": requirement.pk}).status_code, 302)
+        historical_ids = set(TrainingAssignment.objects.filter(role_requirement=requirement).values_list("pk", flat=True))
+        self.assertTrue(historical_ids)
+        self.assertEqual(client.post(edit_url, {"due_in_days": 7}).status_code, 302)
+        requirement.refresh_from_db()
+        self.assertFalse(requirement.is_active)
+        self.assertEqual(set(TrainingAssignment.objects.filter(role_requirement=requirement).values_list("pk", flat=True)), historical_ids)
+        self.assertNotContains(client.get("/assignments/role/new/"), f'value="{requirement.pk}"')
+        self.assertContains(client.get("/assignments/requirements/"), "Inactive")
+
+    def test_role_requirement_choices_and_csrf_reject_ineligible_posts(self):
+        draft = self.new_version()
+        inactive_role = JobRole.objects.create(code="INACTIVE-REQ", name="Inactive role", is_active=False)
+        client = self.client_for(self.admin)
+        form = client.get("/assignments/requirements/new/").context["form"]
+        self.assertIn(self.role, form.fields["job_role"].queryset)
+        self.assertNotIn(inactive_role, form.fields["job_role"].queryset)
+        self.assertIn(self.version, form.fields["training_version"].queryset)
+        self.assertNotIn(draft, form.fields["training_version"].queryset)
+        for role_id, version_id in ((inactive_role.pk, self.version.pk), (self.role.pk, draft.pk)):
+            response = client.post("/assignments/requirements/new/", {
+                "job_role": role_id, "training_version": version_id,
+                "due_in_days": 14, "is_active": "on",
+            })
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.context["form"].errors)
+        self.assertFalse(RoleTrainingRequirement.objects.exists())
+
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.admin)
+        self.assertEqual(csrf_client.post("/assignments/requirements/new/", {
+            "job_role": self.role.pk, "training_version": self.version.pk,
+            "due_in_days": 14, "is_active": "on",
+        }).status_code, 403)
+        self.assertFalse(RoleTrainingRequirement.objects.exists())
+
     def test_employee_and_manager_assignment_scopes_are_enforced(self):
         employee_client = self.client_for(self.employee_user)
         response = employee_client.get("/assignments/")
