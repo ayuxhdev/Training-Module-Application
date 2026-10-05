@@ -256,6 +256,28 @@ class EmployeeDashboardAPITests(CurriculumTestCase):
         action_ids = [item["id"] for item in response.data["action_required"]]
         self.assertNotIn(assign_b.pk, action_ids)
 
+    def test_employee_a_cannot_see_employee_b_certificates(self):
+        user_b = User.objects.create_user(username="cert_b_user", password="password")
+        emp_b = Employee.objects.create(
+            employee_code="GN-B-CERT",
+            display_name="Employee B Cert",
+            department=self.department,
+            job_role=self.role,
+            date_joined=self.now.date(),
+            user=user_b,
+        )
+        assign_b = self.create_assignment(employee=emp_b, status=TrainingAssignment.Status.COMPLETED)
+        self.create_standalone_certificate(assign_b, "GN-B-CERT-001")
+
+        # Log in as Employee A (who has 0 certificates)
+        self.auth_as(self.employee_user)
+        response = self.client.get(self.dashboard_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        cert_numbers = [c["certificate_number"] for c in response.data["recent_certificates"]]
+        self.assertNotIn("GN-B-CERT-001", cert_numbers)
+        self.assertEqual(response.data["metrics"]["certificates_count"], 0)
+
     # ==========================================
     # 3. METRICS ACCURACY TESTS
     # ==========================================
@@ -512,11 +534,103 @@ class EmployeeDashboardAPITests(CurriculumTestCase):
         self.assertEqual(len(response.data["recent_certificates"]), 5)
         self.assertEqual(response.data["metrics"]["certificates_count"], 7)
 
+    def test_action_required_excludes_completed_and_cancelled_assignments(self):
+        filter_user = User.objects.create_user(username="filter_user", password="password")
+        filter_emp = Employee.objects.create(
+            employee_code="GN-FLT-EMP",
+            display_name="Filter Employee",
+            department=self.department,
+            job_role=self.role,
+            date_joined=self.now.date(),
+            user=filter_user,
+        )
+        a_assigned = self.create_assignment(employee=filter_emp, status=TrainingAssignment.Status.ASSIGNED)
+        a_inprog = self.create_assignment(employee=filter_emp, status=TrainingAssignment.Status.IN_PROGRESS)
+        a_completed = self.create_assignment(employee=filter_emp, status=TrainingAssignment.Status.COMPLETED)
+        a_cancelled = self.create_assignment(employee=filter_emp, status=TrainingAssignment.Status.CANCELLED)
+
+        self.auth_as(filter_user)
+        response = self.client.get(self.dashboard_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        action_ids = [item["id"] for item in response.data["action_required"]]
+        self.assertIn(a_assigned.pk, action_ids)
+        self.assertIn(a_inprog.pk, action_ids)
+        self.assertNotIn(a_completed.pk, action_ids)
+        self.assertNotIn(a_cancelled.pk, action_ids)
+        self.assertEqual(len(action_ids), 2)
+
+    def test_action_required_is_overdue_flag_accuracy(self):
+        od_user = User.objects.create_user(username="od_user", password="password")
+        od_emp = Employee.objects.create(
+            employee_code="GN-OD-EMP",
+            display_name="Overdue Flag Employee",
+            department=self.department,
+            job_role=self.role,
+            date_joined=self.now.date(),
+            user=od_user,
+        )
+        now = timezone.now()
+        a_overdue = self.create_assignment(
+            employee=od_emp,
+            status=TrainingAssignment.Status.ASSIGNED,
+            due_at=now - timedelta(days=2),
+        )
+        a_future = self.create_assignment(
+            employee=od_emp,
+            status=TrainingAssignment.Status.ASSIGNED,
+            due_at=now + timedelta(days=2),
+        )
+
+        self.auth_as(od_user)
+        response = self.client.get(self.dashboard_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        action_map = {item["id"]: item["is_overdue"] for item in response.data["action_required"]}
+        self.assertIs(action_map[a_overdue.pk], True)
+        self.assertIs(action_map[a_future.pk], False)
+
+    def test_deterministic_tie_breaker_ordering(self):
+        tie_user = User.objects.create_user(username="tie_user", password="password")
+        tie_emp = Employee.objects.create(
+            employee_code="GN-TIE-EMP",
+            display_name="Tie Employee",
+            department=self.department,
+            job_role=self.role,
+            date_joined=self.now.date(),
+            user=tie_user,
+        )
+        same_due = timezone.now() + timedelta(days=3)
+        # Create two assignments with identical due_at; lower pk must precede higher pk (due_at ASC, pk ASC)
+        a1 = self.create_assignment(employee=tie_emp, status=TrainingAssignment.Status.ASSIGNED, due_at=same_due)
+        a2 = self.create_assignment(employee=tie_emp, status=TrainingAssignment.Status.ASSIGNED, due_at=same_due)
+
+        same_issued = timezone.now() - timedelta(days=1)
+        # Create two certificates with identical issued_at; higher pk must precede lower pk (-issued_at, -pk)
+        c_assign1 = self.create_assignment(employee=tie_emp, status=TrainingAssignment.Status.COMPLETED)
+        c_assign2 = self.create_assignment(employee=tie_emp, status=TrainingAssignment.Status.COMPLETED)
+        c1 = self.create_standalone_certificate(c_assign1, "CERT-TIE-1", issued_at=same_issued)
+        c2 = self.create_standalone_certificate(c_assign2, "CERT-TIE-2", issued_at=same_issued)
+
+        self.auth_as(tie_user)
+        response = self.client.get(self.dashboard_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        action_ids = [item["id"] for item in response.data["action_required"]]
+        self.assertEqual(action_ids, [a1.pk, a2.pk])
+
+        cert_ids = [item["id"] for item in response.data["recent_certificates"]]
+        self.assertEqual(cert_ids, [c2.pk, c1.pk])
+
     # ==========================================
     # 5. DATA EXPOSURE TESTS
     # ==========================================
 
     def test_dashboard_response_contains_only_intended_fields(self):
+        # Create a completed assignment and certificate to populate recent_certificates
+        cert_assign = self.create_assignment(status=TrainingAssignment.Status.COMPLETED)
+        self.create_standalone_certificate(cert_assign, "GN-EXPOSURE-CERT")
+
         self.auth_as(self.employee_user)
         response = self.client.get(self.dashboard_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -553,6 +667,21 @@ class EmployeeDashboardAPITests(CurriculumTestCase):
             self.assertEqual(set(item.keys()), expected_action_keys)
             self.assertNotIn("assigned_by", item)
             self.assertNotIn("department_at_assignment", item)
+
+        # Check recent_certificates item keys
+        expected_cert_keys = {
+            "id",
+            "certificate_number",
+            "training_title",
+            "version_number",
+            "issued_at",
+        }
+        self.assertTrue(len(response.data["recent_certificates"]) > 0)
+        cert_item = response.data["recent_certificates"][0]
+        self.assertEqual(set(cert_item.keys()), expected_cert_keys)
+        self.assertNotIn("qualifying_final_attempt", cert_item)
+        self.assertNotIn("employee_code_snapshot", cert_item)
+        self.assertNotIn("revocation_reason", cert_item)
 
         # Ensure no sensitive user fields anywhere in content
         content_str = str(response.content)
