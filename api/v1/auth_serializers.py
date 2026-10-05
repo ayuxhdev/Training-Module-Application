@@ -43,9 +43,20 @@ class EmployeeMeSerializer(serializers.Serializer):
     employee_code = serializers.CharField()
     display_name = serializers.CharField()
     department = serializers.CharField(source="department.name")
+    department_code = serializers.CharField(source="department.code")
     job_role = serializers.CharField(source="job_role.name")
+    job_role_code = serializers.CharField(source="job_role.code")
+    reporting_manager = serializers.SerializerMethodField()
     is_active = serializers.BooleanField()
     date_joined = serializers.DateField()
+
+    def get_reporting_manager(self, obj):
+        if not obj.reporting_manager:
+            return None
+        return {
+            "employee_code": obj.reporting_manager.employee_code,
+            "display_name": obj.reporting_manager.display_name,
+        }
 
 
 class EmployeeTokenRefreshSerializer(TokenRefreshSerializer):

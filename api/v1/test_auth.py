@@ -305,8 +305,39 @@ class MobileAuthTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["username"], "active")
         self.assertEqual(response.data["employee_code"], "EMP001")
+        self.assertEqual(response.data["department"], "Engineering")
+        self.assertEqual(response.data["department_code"], "ENG")
+        self.assertEqual(response.data["job_role"], "Engineer")
+        self.assertEqual(response.data["job_role_code"], "ENG_ROLE")
+        self.assertIsNone(response.data["reporting_manager"])
         self.assertNotIn("password", response.data)
         self.assertNotIn("is_staff", response.data)
+
+    def test_me_returns_reporting_manager_when_assigned(self):
+        mgr_user = User.objects.create_user(username="mgr_usr", password="password")
+        manager = Employee.objects.create(
+            employee_code="MGR001",
+            display_name="Boss Person",
+            user=mgr_user,
+            department=self.dept,
+            job_role=self.role,
+            date_joined="2019-01-01",
+            is_active=True,
+        )
+        self.active_employee.reporting_manager = manager
+        self.active_employee.save()
+
+        access, _ = self.get_tokens()
+        self.client.credentials(HTTP_AUTHORIZATION="Bearer " + access)
+        response = self.client.get(self.me_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["reporting_manager"],
+            {
+                "employee_code": "MGR001",
+                "display_name": "Boss Person",
+            },
+        )
 
     # --- THROTTLING TESTS ---
     def test_repeated_failed_login_throttled(self):

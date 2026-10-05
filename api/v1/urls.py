@@ -2,6 +2,7 @@ from django.urls import path, re_path
 
 from .views import APINotFoundView, APIStatusView
 from .auth_views import EmployeeLoginView, EmployeeRefreshView, EmployeeLogoutView, EmployeeMeView
+from .dashboard_views import EmployeeDashboardView
 
 app_name = "v1"
 
@@ -11,5 +12,6 @@ urlpatterns = [
     path("auth/refresh/", EmployeeRefreshView.as_view(), name="auth-refresh"),
     path("auth/logout/", EmployeeLogoutView.as_view(), name="auth-logout"),
     path("auth/me/", EmployeeMeView.as_view(), name="auth-me"),
+    path("dashboard/", EmployeeDashboardView.as_view(), name="dashboard"),
     re_path(r"^.*$", APINotFoundView.as_view(), name="not-found"),
 ]
