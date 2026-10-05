@@ -8,7 +8,7 @@ def custom_exception_handler(exc, context):
     
     Expected format:
     {
-      "error": {
+        "error": {
         "code": "...",
         "message": "...",
         "fields": {...}
@@ -41,7 +41,14 @@ def custom_exception_handler(exc, context):
     if isinstance(response.data, dict):
         if "detail" in response.data:
             # Typically AuthenticationFailed, NotAuthenticated, PermissionDenied, NotFound, etc.
-            error_payload["message"] = str(response.data.get("detail"))
+            detail_obj = response.data.get("detail")
+            error_payload["message"] = str(detail_obj)
+
+            # Extract the code from the ErrorDetail object if it exists
+            if hasattr(detail_obj, "code"):
+                error_payload["code"] = str(detail_obj.code)
+            elif "code" in response.data:
+                error_payload["code"] = str(response.data.get("code"))
         else:
             # Typically ValidationError dict: {"field1": ["error1"], "field2": ["error2"]}
             error_payload["code"] = getattr(exc, "default_code", "validation_error")

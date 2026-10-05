@@ -56,8 +56,8 @@ class APIFoundationTests(TestCase):
 
     def test_api_v1_status_unauthenticated(self):
         response = self.client.get(reverse("api:v1:status"))
-        # SessionAuthentication returns 403 when unauthenticated under default permissions
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        # JWTAuthentication returns 401 when unauthenticated under default authentication classes
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         data = response.json()
         self.assertIn("error", data)
         self.assertEqual(data["error"]["code"], "not_authenticated")
