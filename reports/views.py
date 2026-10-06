@@ -22,10 +22,19 @@ from .queries import (
 )
 
 
-def _assignment_rows(queryset):
-	return queryset.select_related(
+def _assignment_rows(queryset, as_of=None):
+	rows = queryset.select_related(
 		"employee", "department_at_assignment", "job_role_at_assignment",
 		"training_version__training", "certificate",
+	)
+	if as_of is None:
+		return rows
+	return rows.annotate(
+		is_overdue=Case(
+			When(overdue_condition(as_of), then=Value(True)),
+			default=Value(False),
+			output_field=BooleanField(),
+		),
 	)
 
 
@@ -62,10 +71,10 @@ def dashboard(request):
 	else:
 		context.update({
 			"assigned_training": _assignment_rows(
-				assignments.filter(status=TrainingAssignment.Status.ASSIGNED).order_by("due_at", "pk")[:10]
+				assignments.filter(status=TrainingAssignment.Status.ASSIGNED).order_by("due_at", "pk")[:10], now
 			),
 			"in_progress_training": _assignment_rows(
-				assignments.filter(status=TrainingAssignment.Status.IN_PROGRESS).order_by("due_at", "pk")[:10]
+				assignments.filter(status=TrainingAssignment.Status.IN_PROGRESS).order_by("due_at", "pk")[:10], now
 			),
 			"completed_training": _assignment_rows(
 				assignments.filter(status=TrainingAssignment.Status.COMPLETED).order_by("-completed_at", "-pk")[:10]

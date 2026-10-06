@@ -61,18 +61,13 @@ Client-side state may improve usability, but it must not replace server-side aut
 
 ## 4. Authentication
 
-The project uses Django's built-in authentication system.
+The browser application uses Django authentication and session middleware. The web login uses Django's `LoginView`; logout uses Django's `LogoutView` and is a POST action. Authentication establishes identity, while views and querysets still apply permission, ownership, and lifecycle checks.
 
-Authentication requirements include:
+The mobile-facing API is path-versioned under `/api/v1/` and uses Simple JWT bearer access tokens, with Django session authentication also enabled by DRF. Implemented routes are `POST /api/v1/auth/login/`, `POST /api/v1/auth/refresh/`, `POST /api/v1/auth/logout/`, `GET /api/v1/auth/me/`, `GET /api/v1/status/`, and `GET /api/v1/dashboard/`. Login issues tokens only to a Django-authenticated user linked to an active Employee. Refresh rechecks Employee and Django-user active status before standard Simple JWT refresh behavior. Employee data API views require an authenticated user with an active Employee record.
 
-- protected views require authenticated users
-- login is handled through Django-backed authentication
-- logout uses the configured application flow
-- authentication does not automatically imply authorization
+Simple JWT currently issues 30-minute access tokens and 7-day refresh tokens. Refresh tokens rotate and rotated tokens are blacklisted. Logout requires the authenticated user's refresh token and blacklists it; it does not immediately revoke access tokens already issued, which remain valid until expiry. Protected API endpoints also check active Employee status on each request. API login is throttled at 5 requests/minute using DRF's anonymous throttle; refresh is throttled at 20/minute using its user throttle. These depend on Django's configured cache and do not replace infrastructure rate limiting.
 
-A valid login only establishes identity.
-
-Every protected action must still enforce the required permission and scope.
+The API currently exposes `v1` in the URL path; it does not negotiate a version through headers.
 
 ## 5. Role Model
 
@@ -123,62 +118,17 @@ A user should not be authorized solely because:
 
 ## 7. Direct URL Protection
 
-All protected objects must remain protected when accessed through a direct URL.
+Authorization is applied on direct requests as well as navigation links. The employee dashboard filters assignments and certificates by `request.user.employee`; certificate detail lookup is scoped to that Employee unless the user has certificate view permission. Out-of-scope certificate IDs return 404. Training, assessment, organization, and reporting views apply their relevant Django permissions, ownership, Manager scope, and lifecycle checks in the backend.
 
-The application must not rely only on navigation visibility.
-
-Examples:
-
-A Manager who cannot see an Employee in the interface must also be unable to open that Employee directly by changing the URL.
-
-An Employee who cannot see another Employee's certificate must also be unable to access it by guessing its identifier.
-
-Out-of-scope objects should return controlled responses such as:
-
-```text
-403 Forbidden
-404 Not Found
-```
-
-depending on the established application behavior.
+The API dashboard uses the authenticated user's linked Employee and does not accept a client-selected employee ID. Direct object access must be evaluated against each view's queryset and permission checks; hidden navigation links are not authorization controls.
 
 ## 8. Manager Scope
 
-Manager access is constrained by the recursive reporting hierarchy.
-
-A Manager may operate only within the authorized reporting subtree.
-
-Conceptually:
-
-```text
-Manager
- |
- +--> Direct Report
-       |
-       +--> Descendant
-```
-
-Manager scope must be calculated on the backend.
-
-The client must not define the Manager's authorized employee set.
-
-Filters, URL parameters, form fields, and crafted identifiers must never broaden this scope.
+Organization employee queries derive the Manager's own Employee record and recursive reporting descendants through `employee_scope()`. Report and assignment querysets apply this scope before user filters, so filters cannot expand those querysets beyond the computed hierarchy. Other routes use their own permission and scope checks; Manager membership alone is not a universal grant.
 
 ## 9. Employee Scope
 
-Employees should primarily access their own records.
-
-Examples include:
-
-- their own assignments
-- their own progress
-- their own assessment attempts
-- their own results
-- their own certificates
-
-The authenticated User-to-Employee relationship should be used as the trusted source of ownership where appropriate.
-
-The backend should not trust an arbitrary employee ID supplied by the browser when ownership can be derived from the authenticated user.
+The employee dashboard API derives the Employee from the authenticated User and filters assignments and certificates to that Employee. Web certificate list/detail access is similarly owner-scoped for users without certificate view permission. Learner progress and assessment attempts are tied to the assignment and its exact lesson/version or assessment. API views use `IsActiveEmployee`; relevant assignment and progress validations also reject inactive Employees.
 
 ## 10. Training Coordinator Restrictions
 
@@ -255,13 +205,7 @@ These actions should use POST or another appropriate mutation method.
 
 ## 14. CSRF Protection
 
-Django CSRF protection must remain enabled.
-
-State-changing forms and requests must include valid CSRF protection.
-
-Do not disable CSRF globally to simplify frontend implementation.
-
-Any API-like browser request using POST must follow the project's CSRF strategy.
+Django's `CsrfViewMiddleware` is enabled. Web forms and state-changing browser actions use Django CSRF protection; logout and certificate revocation are POST-only. DRF `SessionAuthentication` enforces CSRF for unsafe requests authenticated by a browser session. Bearer-token API requests do not rely on cookie authentication for identity. CSRF remains enabled globally.
 
 ## 15. Input Validation
 
@@ -403,122 +347,43 @@ The application now uses one authoritative timestamp where required.
 
 Extremely large due periods must also be rejected before Python date arithmetic can raise an uncontrolled `OverflowError`.
 
-## 22. Video Progress Security
+## 22. Video Progress and Delivery Security
 
-Video progress is server authoritative.
+Progress and completion are computed and stored by the backend. The browser submits playback observations, not authoritative watched duration, completion, or watched ranges. Playback requests resolve an assignment owned by the authenticated Employee and a VIDEO lesson in that assignment's exact TrainingVersion. Mutations lock Employee, TrainingVersion, and assignment in a consistent order before progress/session writes.
 
-The browser must not be allowed to declare:
+Video bytes are served through the authenticated `video_media` view, not a public `MEDIA_URL` route. It requires the owner's open watch session for that assignment and lesson, with a recent session update. It supports byte ranges and returns private, no-store responses. Filesystem paths are not returned. Production storage/CDN delivery must preserve this authorization boundary; a public object URL would bypass it.
 
-- authoritative watched duration
-- completion
-- valid watched ranges
-
-The backend validates playback observations.
-
-Current protections include:
-
-- session ownership
-- assignment validation
-- lesson validation
-- heartbeat tracking
-- watched ranges
-- anti-skip logic
-- idle-gap protection
-- position validation
-- concurrency-safe updates
+TEXT completion is a CSRF-protected POST for an owned assignment lesson. VIDEO completion depends on backend-validated watched coverage and the lesson's configured threshold.
 
 ## 23. Video Anti-Skip Boundary
 
-The anti-skip system is designed to prevent simple manipulation.
+The backend records watched intervals from successive server-timed observations. Unique intervals are merged, so replay does not increase unique coverage. Forward progress is bounded by observed playback advancement and elapsed server time; movement into unwatched content without a valid observation is rejected. Backward seeks are allowed, including into already watched content, without adding duplicate coverage.
 
-A previously reproduced vulnerability allowed idle time to contribute excessive playback credit.
-
-The hardened logic prevents credit across excessive idle gaps.
-
-It also prevents a client from repeatedly regenerating tolerance across sessions.
-
-Playback heartbeats should be sent frequently enough to remain within the server's accepted observation window.
+A heartbeat gap greater than 30 seconds resets the position baseline and does not establish continuous playback credit across that gap. The heartbeat tolerance is 2 seconds and is bounded across session/progress history. The client cannot submit trusted active-watch totals or set completion. Closed/stale sessions, ownership, lesson/version matching, position bounds, and assignment state are validated server-side. These controls cannot prevent screen recording or capture outside the application.
 
 ## 24. Playback Metadata
 
-Playback metadata must be validated.
-
-Unbounded or structured values should not be blindly converted to strings and stored.
-
-Session-related labels should remain controlled and length-limited.
-
-Malformed playback metadata should return controlled validation errors.
+Optional `session_identifier` and `device_identifier` values must be strings no longer than 128 characters. Invalid or structured values produce controlled validation responses. They are metadata only and do not establish identity or authorize playback.
 
 ## 25. Assessment Security
 
-Assessment scoring is entirely server-side.
-
-The browser must not be trusted to supply:
-
-- final score
-- pass/fail result
-- correct answers
-- authoritative completion
-
-The backend must determine:
-
-- attempt eligibility
-- question data
-- answer correctness
-- score
-- pass/fail
-- training completion effect
+Answers are accepted only for an in-progress attempt owned through the authenticated user's active Employee assignment. The server loads the attempt's questions and frozen revisions, verifies each selected option belongs to that revision, and calculates correctness, points, score, and pass/fail. Client-supplied score, correctness, pass state, or completion is not authoritative. Submitted attempts and recorded answers are protected from ordinary edits by model validation.
 
 ## 26. Assessment Attempt Controls
 
-Assessment logic must preserve:
-
-- attempt limits
-- prerequisite checks
-- ownership
-- assessment availability
-- time boundaries
-- completion state
-
-Concurrency around attempt creation and submission must be handled safely.
-
-Exact time boundaries should be covered by tests where relevant.
+Attempt creation and submission validate assignment ownership, active Employee state, assignment status, assessment/version relationship, prerequisites, and attempt limits. Attempts retain the exact assessment question revision/options presented to the learner. Creation and submission serialize on the Employee, TrainingVersion, and assignment before attempt-level work, with database uniqueness and validation as additional integrity controls. Required lesson completion, quiz prerequisites, and final-assessment requirements are checked by backend logic.
 
 ## 27. Question and Assessment Races
 
-Save-time validation can still fail after a form has already validated.
-
-The application must handle expected save-time uniqueness races without returning uncontrolled HTTP 500 responses.
-
-A previously reproduced Question creation race could proceed into revision creation without a valid saved Question.
-
-The flow now stops safely when Question creation returns validation errors.
+Question revision creation locks the Question while determining its next revision number. Assessment sequence uniqueness is validated against the backend-resolved TrainingVersion, with database constraints as the final integrity layer. Attempt starts/submissions use parent-to-assignment locking before assignment saves. These controls cover tested race paths, not every database or infrastructure failure.
 
 ## 28. Certificate Security
 
-Certificates must be based on authoritative training completion.
-
-The browser cannot directly request a certificate and become eligible simply by doing so.
-
-Certificate creation must verify backend state.
-
-Issuance is idempotent.
-
-Repeated completion processing must not create duplicate certificates.
+A backend service issues a certificate only after assignment completion and a submitted, passing FINAL assessment for the same assignment and exact TrainingVersion. The certificate stores a server-generated identifier and issue time with employee/training snapshots. A certificate is unique per assignment; repeat issuance returns the existing certificate. Ordinary edits and deletion of issued certificate content are rejected by model validation.
 
 ## 29. Certificate Revocation
 
-Revocation must:
-
-- require appropriate permission
-- use a state-changing request
-- preserve the certificate record
-- preserve audit history
-- validate revocation input
-
-Revocation reasons are length bounded.
-
-Revocation should never delete the historical certificate record.
+Certificate list/detail views show an Employee only that Employee's certificates unless the user has certificate view permission. Revocation requires certificate change permission, is POST-only, requires a non-empty bounded reason, preserves the record, and writes an audit event. Normal model validation prevents un-revoking a revoked certificate.
 
 ## 30. Reporting Security
 
@@ -547,52 +412,15 @@ Employees do not receive administrative reporting access.
 
 ## 31. Audit Security
 
-Audit events should contain authoritative server-derived information.
-
-The client must not control:
-
-- actor
-- target
-- timestamp
-- authoritative event type
-
-Audit metadata should be whitelisted or deliberately constructed.
-
-Do not store:
-
-- passwords
-- tokens
-- secrets
-- assessment answers
-- unnecessary training body content
+Audit events use server-derived actor, target, timestamp, and action, with deliberately constructed before/after data. Configured audit snapshots use an allowlist; assessment answers, passwords, tokens, and secrets are not included in those snapshots. The audit interface requires `audit.view_auditlog` and is read-only. The validated model manager rejects ordinary updates, bulk writes, and deletions, while model validation also rejects instance updates/deletion. This is application-level protection, not tamper-proof storage against privileged database access or direct SQL.
 
 ## 32. Transaction-Aware Auditing
 
-Audit success events must correspond to committed business actions.
-
-Where appropriate, audit creation uses transaction commit hooks.
-
-This prevents:
-
-```text
-business action rolls back
-but success audit record remains
-```
-
-The audit system is configured so that audit-log failure does not necessarily undo a valid business transaction.
-
-This tradeoff is intentional and should not be changed casually.
+`record_event()` schedules audit writes with `transaction.on_commit(..., robust=True)`, so rolled-back business transactions do not create success events. Audit write failure is configured not to undo an already committed business operation; audit persistence is not guaranteed against database or operational failure.
 
 ## 33. Audit Permissions
 
-The normal audit interface is read-only.
-
-Authorized users currently include the groups explicitly granted the audit viewing permission, including:
-
-- Administrator
-- Training Coordinator
-
-Manager and Employee users must not gain audit access without an explicit authorization change.
+The audit view checks `audit.view_auditlog`. The current permission assignment grants it to Administrator and Training Coordinator groups, not Manager or Employee groups. Effective access also depends on deployed group membership and direct Django permissions.
 
 ## 34. Secret Management
 
@@ -613,155 +441,47 @@ Production now requires explicit secret configuration.
 
 ## 35. DEBUG Security
 
-Production must use:
-
-```text
-DEBUG=False
-```
-
-The project uses a fail-closed default for DEBUG.
-
-If DEBUG is not explicitly enabled for development, it should not silently become true.
-
-Local development currently uses:
-
-```env
-DEBUG=true
-```
+`DEBUG` is environment-configured and defaults to `False`. When false, settings require `DJANGO_SECRET_KEY`; when true and no key is supplied, a random process-local key is generated for development. Development does not enforce HTTPS by default.
 
 ## 36. Django Secret Key
 
-Production requires a strong:
-
-```text
-DJANGO_SECRET_KEY
-```
-
-A production application must not start with a predictable or committed fallback secret.
-
-Secret rotation should be planned carefully because it may affect signed state and sessions.
+With `DEBUG=False`, the application refuses to start without `DJANGO_SECRET_KEY` and has no committed fallback. With DEBUG enabled it generates a random key at startup, which is development behavior, not production secret management. Django's password hasher stores password hashes. JWTs are signed tokens, not encrypted tokens.
 
 ## 37. Allowed Hosts
 
-Production should use explicit allowed hosts.
+`ALLOWED_HOSTS` is populated from the environment. If empty while DEBUG is true, settings allow localhost loopback names for development. The application does not provide a production host allowlist; deployments must configure explicit hostnames and verify Django deployment checks.
 
-Do not use broad or unsafe host configuration without a deployment-specific reason.
+## 38. HTTPS and Transport Settings
 
-Allowed hosts must match the actual deployment environment.
-
-## 38. HTTPS
-
-Production must use HTTPS.
-
-Relevant production settings may include:
-
-- SSL redirect
-- secure session cookie
-- secure CSRF cookie
-- HSTS
-
-The exact final values will be established during the production and deployment hardening milestone.
+`SECURE_SSL_REDIRECT` is environment-configurable and defaults to false. HSTS seconds default to zero; include-subdomains and preload also default to false. HTTPS redirect and HSTS are therefore not automatically enabled by application defaults, including with DEBUG disabled. Production must terminate HTTPS correctly and configure these settings for its proxy/domain architecture. Local development may use HTTP.
 
 ## 39. Secure Cookies
 
-When running in production:
-
-- session cookies should be secure
-- CSRF cookies should be secure
-
-The application already defaults these settings securely when debug mode is disabled.
-
-Do not weaken them merely to work around a deployment configuration issue.
-
-Fix the deployment configuration instead.
+`SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` default to true when `DEBUG=False`; in DEBUG mode they default to false unless explicitly enabled. Secure cookie flags require HTTPS to work in deployment and do not themselves enable HTTPS.
 
 ## 40. HSTS
 
-HTTP Strict Transport Security should be configured during production hardening.
-
-The exact HSTS duration should not be chosen blindly.
-
-A short initial deployment validation period may be appropriate before increasing the value.
-
-HSTS configuration should reflect the actual HTTPS deployment architecture.
+HSTS is disabled by default (`SECURE_HSTS_SECONDS=0`) and can be configured through environment variables. Enable it only after validating HTTPS across the deployed domain and proxy setup; include-subdomains and preload are separate opt-ins.
 
 ## 41. Proxy and HTTPS Awareness
 
-If the application is deployed behind a reverse proxy, proxy headers and secure-request detection must be configured correctly.
-
-Incorrect proxy configuration can cause:
-
-- broken CSRF behavior
-- incorrect HTTPS detection
-- redirect loops
-- insecure cookie behavior
-
-This must be verified against the real production environment.
+Settings do not configure a trusted reverse-proxy HTTPS header. A deployment behind a proxy must deliberately configure TLS termination and Django secure-request behavior. Forwarded protocol headers must not be trusted from untrusted clients; verify redirect, CSRF, and secure-cookie behavior in the deployed topology.
 
 ## 42. Static and Media Security
 
-Static and media files require separate consideration.
-
-Static assets may generally be public application assets.
-
-Training media may contain internal content and may require access control.
-
-Protected training video must not be assumed secure merely because its URL is difficult to guess.
-
-A final protected-media strategy will be completed during deployment hardening.
+Static assets are separate from protected training videos. The playback route streams video only after authenticated assignment, lesson, and current watch-session checks. Do not expose these files through a public media route or direct public object URL. Production storage/CDN integration must preserve authorization or provide an equivalent authorized delivery path; Django settings alone do not establish that infrastructure behavior.
 
 ## 43. Video Content Protection Boundary
 
-A normal web application cannot fully prevent:
-
-- operating-system screen recording
-- external camera recording
-- determined local capture
-
-Web-based protections can reduce casual misuse but cannot guarantee prevention.
-
-Potential V1 protections may include:
-
-- authenticated video access
-- temporary playback authorization
-- employee watermarking
-- audit logging
-- session controls
-
-Stronger capture prevention may require a native mobile application.
-
-For Android, platform-specific secure window controls may be considered in a future native application.
+The authenticated playback endpoint, owner/lesson checks, short-lived open watch-session requirement, and session controls restrict ordinary direct media retrieval. These controls do not provide DRM and cannot prevent operating-system screen recording, external camera recording, or determined local capture. Employee watermarking and platform-specific Android capture controls are not implemented by this web playback path; they would require separate product and platform work.
 
 ## 44. Session Security
 
-Session security should preserve:
-
-- authenticated ownership
-- secure cookie behavior in production
-- CSRF protection
-- session invalidation behavior
-- reasonable login lifecycle
-
-Future production review should consider whether additional controls are needed for:
-
-- session duration
-- concurrent sessions
-- one-device policies
-- login throttling
-
-These should not be claimed as implemented unless verified.
+The web application uses Django sessions and CSRF middleware. API access tokens last 30 minutes; refresh tokens last 7 days and rotate with blacklist-after-rotation. API logout blacklists the supplied refresh token after checking its owner, but does not immediately revoke issued access tokens. Active Employee checks prevent API use after Employee deactivation; otherwise access-token expiry is the revocation bound. Session duration and concurrent-session policies are not separately configured here.
 
 ## 45. Brute-Force and Rate Limiting
 
-Application-level login throttling has not been established as a verified current feature.
-
-Before public or externally exposed deployment, rate limiting should be reviewed at:
-
-- reverse proxy
-- infrastructure
-- application
-
-Do not claim login throttling is implemented unless it is actually verified.
+DRF throttling is configured for API login (5 requests/minute, anonymous scope) and refresh (20 requests/minute, user scope). No equivalent application throttle is configured here for web login, logout, or every other endpoint. DRF throttles use Django's configured cache and are not a substitute for edge/network rate limiting or a guarantee under every cache deployment.
 
 ## 46. Dependency Security
 
@@ -809,20 +529,7 @@ Removing a secret from the current file alone does not remove it from repository
 
 ## 48. Error Handling
 
-Known invalid user actions should not normally produce HTTP 500.
-
-Controlled failure modes include:
-
-```text
-400 - invalid request
-403 - not authorized
-404 - unavailable or out of scope
-409 - state conflict
-```
-
-Unexpected server failures should still be logged and investigated.
-
-Confirmed uncontrolled failures should receive regression tests where practical.
+DRF exceptions handled by `api.exceptions.custom_exception_handler` use a JSON envelope with `error.code`, `error.message`, and `error.fields`, preserving the HTTP status. Validation failures normally return 400; authentication, permission, not-found, and throttling failures retain framework statuses such as 401, 403, 404, or 429. Unknown `/api/v1/` routes deliberately return JSON 404 without authentication. Unexpected exceptions without a DRF response are not wrapped and remain server errors; this handler does not guarantee every failure becomes a controlled 4xx.
 
 ## 49. Information Disclosure
 
@@ -889,29 +596,7 @@ Backup procedures will be finalized during deployment planning.
 
 ## 54. Security Testing
 
-Security testing currently includes automated regression coverage for important authorization and malformed-input paths.
-
-Current automated baseline:
-
-```text
-189 full tests passing on MySQL
-```
-
-Security-related test areas include:
-
-- direct URL authorization
-- Manager hierarchy scope
-- Employee self-scope
-- privileged account protections
-- CSRF-sensitive mutation behavior
-- malformed playback input
-- playback anti-skip
-- duplicate state transitions
-- concurrency-sensitive assignment behavior
-- assessment ownership
-- certificate access
-- reporting scope
-- audit permissions
+Automated regression tests cover API login/refresh/logout, inactive or missing Employee rejection, JWT and session-authenticated requests, API error envelopes, and login/refresh throttling. Other suites cover direct URL authorization, Manager hierarchy scope, Employee ownership, CSRF-sensitive mutations, malformed playback input, anti-skip/progress, assessment ownership/scoring/prerequisites, certificate issuance/access/revocation, reporting scope, and audit permissions/immutability. Test counts change over time; use current test and CI output rather than a fixed count here. MySQL is used for authoritative full-suite runs.
 
 ## 55. Final Security Review
 
@@ -1016,23 +701,6 @@ For such changes:
 
 ## 60. Current Security Status
 
-The core backend has already received a dedicated security hardening pass and an additional interim backend bug hunt.
+Implemented application controls include Django session authentication and CSRF middleware, a path-versioned JWT API, active Employee checks on API endpoints, permission and object-scope checks, server-authoritative training/assessment/certificate state, authenticated video delivery, and append-oriented audit behavior. The sections above describe the boundaries of those controls.
 
-Important fixes have included:
-
-- fail-closed DEBUG behavior
-- production secure-cookie defaults
-- idle playback abuse prevention
-- cross-session playback tolerance control
-- malformed playback metadata validation
-- repeated employee-deactivation protection
-- assignment race handling
-- save-time uniqueness error handling
-
-Current automated baseline:
-
-```text
-189 full tests passing on MySQL
-```
-
-The application should still be treated as pre-release until frontend, E2E, deployment, and final security milestones are complete.
+Production readiness depends on configuration. HTTPS redirect and HSTS are off by default, production hostnames must be supplied, reverse-proxy behavior must be verified, and protected media storage must preserve the authenticated delivery boundary. `pip check` verifies dependency compatibility; it is not a vulnerability scan. This document records application behavior and does not certify any deployment.

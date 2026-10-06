@@ -502,3 +502,35 @@ button.sidebar-backdrop { display: none; }
   .login-brand-footer { padding-top: var(--space-3); }
   .login-card { padding: var(--space-4); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
 }
+
+.dashboard-quick-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0 0 var(--space-6); }
+.dashboard-quick-actions .btn { min-height: 2.75rem; }
+.dashboard-section { min-width: 0; margin: var(--space-8) 0; }
+.dashboard-section-heading { margin: 0 0 var(--space-4); }
+.dashboard-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr)); gap: var(--space-3); }
+.dashboard-kpis > .kpi-card { height: 100%; margin: 0; }
+.dashboard-record-list, .dashboard-task-list { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.dashboard-record-list > li, .dashboard-task-list > li { min-width: 0; }
+.dashboard-record-card .card-body { min-width: 0; }
+.dashboard-record-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin-bottom: var(--space-3); }
+.dashboard-record-heading h3 { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.dashboard-record-details, .dashboard-task-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr)); gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-3); }
+.dashboard-record-details dt, .dashboard-task-details dt { color: var(--color-text-muted); font-size: var(--font-size-sm); }
+.dashboard-record-details dd, .dashboard-task-details dd { margin: var(--space-1) 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.dashboard-task .card-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); min-width: 0; }
+.dashboard-task-copy { min-width: 0; }
+.dashboard-task-status { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+.dashboard-task h3 { margin: 0 0 var(--space-3); overflow-wrap: anywhere; }
+.dashboard-task-details { margin-bottom: 0; }
+.dashboard-task-action { min-width: 9rem; }
+
+@media (max-width: 48rem) {
+  .dashboard-section { margin: var(--space-6) 0; }
+  .dashboard-task .card-body { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-task-action { width: 100%; }
+}
+
+@media (max-width: 30rem) {
+  .dashboard-record-heading { align-items: flex-start; }
+  .dashboard-quick-actions { gap: var(--space-2); }
+}

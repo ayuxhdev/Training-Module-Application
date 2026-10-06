@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.test import Client, TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from certifications.services import issue_completed_assignment_certificate
@@ -43,6 +44,8 @@ class EmptyDashboardTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.context["metrics"]["total"], 0)
 		self.assertEqual(response.context["metrics"]["completion_percent"], 0)
+		self.assertContains(response, "Recent assessment failures")
+		self.assertContains(response, "There are no recent assessment failures to review.")
 		response = client.get("/reports/assignments/?status=COMPLETED")
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(len(response.context["assignments"]), 0)
@@ -115,6 +118,8 @@ class ReportingTests(CurriculumTestCase):
 				self.assertContains(response, "Trainings")
 				self.assertContains(response, "Assignment report")
 				self.assertContains(response, "Audit history")
+				self.assertContains(response, "Total assignments")
+				self.assertContains(response, "Certificates issued")
 				self.assertEqual(response.context["active_employee_count"], 3)
 				self.assertEqual(response.context["department_count"], 1)
 				self.assertEqual(response.context["published_training_count"], 1)
@@ -171,6 +176,8 @@ class ReportingTests(CurriculumTestCase):
 		self.assertContains(response, "My reporting team")
 		self.assertContains(response, "Team assignments")
 		self.assertContains(response, "Assignment report")
+		self.assertContains(response, "Active employees in scope")
+		self.assertContains(response, "Certificates issued")
 		self.assertNotContains(response, "Audit history")
 		self.assertNotContains(response, "Question bank")
 		self.assertEqual(response.context["employees_in_scope"], 3)
@@ -227,7 +234,7 @@ class ReportingTests(CurriculumTestCase):
 		finally:
 			self.assignment = current_assignment
 		self.complete_assignment()
-		issue_completed_assignment_certificate(self.assignment.pk)
+		certificate = issue_completed_assignment_certificate(self.assignment.pk)
 
 		client = self.client_for(self.employee_user)
 		response = client.get("/")
@@ -236,6 +243,16 @@ class ReportingTests(CurriculumTestCase):
 		self.assertContains(response, "My training")
 		self.assertContains(response, "My assignments")
 		self.assertContains(response, "My certificates")
+		self.assertContains(response, "Action Required")
+		self.assertContains(response, "Recent Certificates")
+		self.assertContains(response, certificate.training_title_snapshot)
+		self.assertContains(response, certificate.certificate_number)
+		self.assertContains(response, "Version")
+		self.assertContains(response, "Issue date")
+		self.assertContains(
+			response,
+			reverse("certifications:certificate-detail", kwargs={"pk": certificate.pk}),
+		)
 		self.assertNotContains(response, "Assignment report")
 		self.assertNotContains(response, "Audit history")
 		self.assertEqual(response.context["metrics"]["completed"], 1)
@@ -247,6 +264,47 @@ class ReportingTests(CurriculumTestCase):
 		))
 		self.assertNotContains(response, outsider.display_name)
 		self.assertEqual(client.get("/reports/assignments/").status_code, 403)
+
+	def test_employee_dashboard_marks_overdue_actions_without_duplicate_rows(self):
+		Group.objects.get(name="Employee").user_set.add(self.employee_user)
+		self.assignment.status = TrainingAssignment.Status.ASSIGNED
+		self.assignment.started_at = None
+		self.assignment.due_at = self.now + timedelta(minutes=1)
+		self.assignment.save()
+		client = self.client_for(self.employee_user)
+
+		assigned_response = client.get("/")
+		assigned = assigned_response.context["assigned_training"][0]
+		self.assertTrue(assigned.is_overdue)
+		self.assertContains(assigned_response, "Overdue")
+		self.assertContains(assigned_response, "Start training")
+		self.assertContains(assigned_response, "Version")
+		self.assertContains(assigned_response, "Due date")
+		self.assertContains(
+			assigned_response,
+			reverse("training:assignment-detail", kwargs={"pk": self.assignment.pk}),
+		)
+		self.assertEqual(assigned_response.content.decode().count(self.version.title), 1)
+
+		self.assignment.status = TrainingAssignment.Status.IN_PROGRESS
+		self.assignment.started_at = self.now + timedelta(minutes=2)
+		self.assignment.save()
+		in_progress_response = client.get("/")
+		in_progress = in_progress_response.context["in_progress_training"][0]
+		self.assertTrue(in_progress.is_overdue)
+		self.assertContains(in_progress_response, "In progress")
+		self.assertContains(in_progress_response, "Continue training")
+		self.assertContains(in_progress_response, "Due date")
+		self.assertEqual(in_progress_response.content.decode().count(self.version.title), 1)
+
+	def test_employee_dashboard_shows_action_and_certificate_empty_states(self):
+		user = self.group_user("empty-employee-dashboard", "Employee")
+		self.make_employee("GN-302", "Unassigned learner", user=user)
+		response = self.client_for(user).get("/")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, "There is no assigned or in-progress training that needs your attention.")
+		self.assertContains(response, "Certificates you earn will be available here.")
 
 	def test_overdue_definition_excludes_completed_and_cancelled_and_zero_is_safe(self):
 		self.assignment.due_at = self.now + timedelta(minutes=1)
