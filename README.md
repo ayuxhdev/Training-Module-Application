@@ -128,6 +128,15 @@ POST /api/v1/auth/logout/
 GET  /api/v1/auth/me/
 
 GET  /api/v1/dashboard/
+
+GET  /api/v1/assignments/
+GET  /api/v1/assignments/{assignment_id}/
+GET  /api/v1/assignments/{assignment_id}/lessons/{lesson_id}/progress/
+POST /api/v1/assignments/{assignment_id}/lessons/{lesson_id}/progress/
+POST /api/v1/assignments/{assignment_id}/lessons/{lesson_id}/complete/
+POST /api/v1/assignments/{assignment_id}/lessons/{lesson_id}/sessions/
+GET  /api/v1/assignments/{assignment_id}/lessons/{lesson_id}/sessions/{session_id}/media/
+POST /api/v1/assignments/{assignment_id}/lessons/{lesson_id}/sessions/{session_id}/end/
 ```
 
 The API currently provides:
@@ -141,7 +150,7 @@ The API currently provides:
 * standardized API error responses
 * throttling for authentication endpoints
 
-Additional learning, assessment, certificate, and playback endpoints required by the mobile application are still under development.
+Assignment and learning endpoints require a JWT bearer token and an active linked Employee. Assignment results are restricted to that Employee. Curriculum detail includes persisted lesson progress; playback and completion updates reuse the existing server-side validation and session rules. Assessment and certificate API endpoints are not included in this API surface.
 
 ## Core Features
 

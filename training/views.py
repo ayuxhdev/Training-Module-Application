@@ -125,6 +125,10 @@ def _playback_context(request, assignment_pk, lesson_pk):
 @require_http_methods(["GET", "HEAD"])
 @login_required
 def video_media(request, assignment_pk, lesson_pk, session_pk):
+	return _video_media_operation(request, assignment_pk, lesson_pk, session_pk)
+
+
+def _video_media_operation(request, assignment_pk, lesson_pk, session_pk):
 	assignment, lesson, error = _playback_context(request, assignment_pk, lesson_pk)
 	if error:
 		return error
@@ -277,8 +281,7 @@ def _apply_observed_position(progress, session, position, now):
 		progress.completed_at = now
 
 
-@login_required
-def video_progress(request, assignment_pk, lesson_pk):
+def _video_progress_operation(request, assignment_pk, lesson_pk):
 	assignment, lesson, error = _playback_context(request, assignment_pk, lesson_pk)
 	if error:
 		return error
@@ -351,9 +354,18 @@ def video_progress(request, assignment_pk, lesson_pk):
 		return JsonResponse({"error": str(exc)}, status=400)
 
 
+@login_required
+def video_progress(request, assignment_pk, lesson_pk):
+	return _video_progress_operation(request, assignment_pk, lesson_pk)
+
+
 @require_http_methods(["POST"])
 @login_required
 def start_video_session(request, assignment_pk, lesson_pk):
+	return _start_video_session_operation(request, assignment_pk, lesson_pk)
+
+
+def _start_video_session_operation(request, assignment_pk, lesson_pk):
 	assignment, lesson, error = _playback_context(request, assignment_pk, lesson_pk)
 	if error:
 		return error
@@ -414,6 +426,10 @@ def start_video_session(request, assignment_pk, lesson_pk):
 @require_http_methods(["POST"])
 @login_required
 def end_video_session(request, assignment_pk, lesson_pk, session_pk):
+	return _end_video_session_operation(request, assignment_pk, lesson_pk, session_pk)
+
+
+def _end_video_session_operation(request, assignment_pk, lesson_pk, session_pk):
 	assignment, lesson, error = _playback_context(request, assignment_pk, lesson_pk)
 	if error:
 		return error
@@ -472,6 +488,20 @@ def end_video_session(request, assignment_pk, lesson_pk, session_pk):
 @require_http_methods(["POST"])
 @login_required
 def complete_text_lesson(request, assignment_pk, lesson_pk):
+	try:
+		_complete_text_lesson_operation(request, assignment_pk, lesson_pk)
+	except AssignmentLearningConflict as exc:
+		return HttpResponse(str(exc), status=409)
+	except (ValidationError, IntegrityError, ValueError) as exc:
+		return HttpResponse(str(exc), status=400)
+	return redirect(reverse("training:assignment-detail", kwargs={"pk": assignment_pk}) + f"?lesson={lesson_pk}")
+
+
+class AssignmentLearningConflict(Exception):
+	pass
+
+
+def _complete_text_lesson_operation(request, assignment_pk, lesson_pk):
 	assignment = get_object_or_404(
 		TrainingAssignment.objects.select_related("employee", "training_version"),
 		pk=assignment_pk,
@@ -483,41 +513,38 @@ def complete_text_lesson(request, assignment_pk, lesson_pk):
 		module__training_version_id=assignment.training_version_id,
 		content_type=Lesson.ContentType.TEXT,
 	)
-	try:
-		with transaction.atomic():
-			assignment = _lock_playback_assignment(assignment)
-			progress = LessonProgress.objects.select_for_update().filter(
-				assignment=assignment, lesson=lesson,
-			).first()
-			if assignment.status == TrainingAssignment.Status.COMPLETED and progress and progress.completed_at:
-				return redirect(reverse("training:assignment-detail", kwargs={"pk": assignment.pk}) + f"?lesson={lesson.pk}")
-			if assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
-				return HttpResponse("This assignment does not accept progress.", status=409)
-			if not progress or not progress.completed_at:
-				now = timezone.now()
-				if progress is None:
-					progress = LessonProgress(
-						assignment=assignment, lesson=lesson,
-						started_at=now, last_accessed_at=now, completed_at=now,
-					)
-				else:
-					progress.last_accessed_at = now
-					progress.completed_at = now
-				progress.save()
-				record_event(
-					request.user, "training.lessonprogress.completed", progress,
-					after={"assignment_id": assignment.pk, "lesson_id": lesson.pk,
-						"completed_at": progress.completed_at.isoformat()},
+	with transaction.atomic():
+		assignment = _lock_playback_assignment(assignment)
+		progress = LessonProgress.objects.select_for_update().filter(
+			assignment=assignment, lesson=lesson,
+		).first()
+		if assignment.status == TrainingAssignment.Status.COMPLETED and progress and progress.completed_at:
+			return progress
+		if assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
+			raise AssignmentLearningConflict("This assignment does not accept progress.")
+		if not progress or not progress.completed_at:
+			now = timezone.now()
+			if progress is None:
+				progress = LessonProgress(
+					assignment=assignment, lesson=lesson,
+					started_at=now, last_accessed_at=now, completed_at=now,
 				)
-			if assignment.status == TrainingAssignment.Status.ASSIGNED:
-				assignment.status = TrainingAssignment.Status.IN_PROGRESS
-				assignment.started_at = timezone.now()
-				assignment.save()
-			from assessments.views import _try_complete_assignment
-			_try_complete_assignment(assignment, actor=request.user)
-	except (ValidationError, IntegrityError, ValueError) as exc:
-		return HttpResponse(str(exc), status=400)
-	return redirect(reverse("training:assignment-detail", kwargs={"pk": assignment.pk}) + f"?lesson={lesson.pk}")
+			else:
+				progress.last_accessed_at = now
+				progress.completed_at = now
+			progress.save()
+			record_event(
+				request.user, "training.lessonprogress.completed", progress,
+				after={"assignment_id": assignment.pk, "lesson_id": lesson.pk,
+					"completed_at": progress.completed_at.isoformat()},
+			)
+		if assignment.status == TrainingAssignment.Status.ASSIGNED:
+			assignment.status = TrainingAssignment.Status.IN_PROGRESS
+			assignment.started_at = timezone.now()
+			assignment.save()
+		from assessments.views import _try_complete_assignment
+		_try_complete_assignment(assignment, actor=request.user)
+	return progress
 
 
 def _with_assignment_overdue(queryset):
