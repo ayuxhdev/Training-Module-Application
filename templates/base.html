@@ -9,41 +9,111 @@
 </head>
 <body>
 <a class="skip-link" href="#main-content">Skip to content</a>
-<header class="site-header">
-  <a class="site-brand" href="{% if user.is_authenticated %}{% url 'reports:dashboard' %}{% else %}{% url 'accounts:login' %}{% endif %}">Garden's Need Training</a>
-  {% if user.is_authenticated %}
-    <div class="account-controls">
-      <span class="signed-in-user">Signed in as {% if user.get_full_name %}{{ user.get_full_name }}{% else %}{{ user.get_username }}{% endif %}</span>
-      <form method="post" action="{% url 'accounts:logout' %}">
-        {% csrf_token %}
-        <button type="submit">Log out</button>
-      </form>
-    </div>
-  {% endif %}
-</header>
 {% if user.is_authenticated %}
-<nav class="primary-nav" aria-label="Primary navigation">
-  <ul>
-    <li><a href="{% url 'reports:dashboard' %}">Dashboard</a></li>
-    {% if perms.organization.view_employee %}<li><a href="{% url 'organization:employee-list' %}">Employees</a></li>{% endif %}
-    {% if perms.organization.view_department %}<li><a href="{% url 'organization:department-list' %}">Departments</a></li>{% endif %}
-    {% if perms.organization.view_jobrole %}<li><a href="{% url 'organization:job-role-list' %}">Job roles</a></li>{% endif %}
-    {% if perms.training.view_training %}<li><a href="{% url 'training:training-list' %}">Trainings</a></li>{% endif %}
-    {% if shell_role %}<li><a href="{% url 'training:assignment-list' %}">Assignments</a></li>{% endif %}
-    {% if perms.assessments.view_question %}<li><a href="{% url 'assessments:question-list' %}">Question bank</a></li>{% endif %}
-    {% if shell_can_view_certificates %}<li><a href="{% url 'certifications:certificate-list' %}">Certificates</a></li>{% endif %}
-    {% if shell_role == 'company' or shell_role == 'manager' %}<li><a href="{% url 'reports:assignment-report' %}">Assignment report</a></li>{% endif %}
-    {% if perms.audit.view_auditlog %}<li><a href="{% url 'audit:audit-log-list' %}">Audit log</a></li>{% endif %}
-  </ul>
-</nav>
+  <div class="application-shell">
+    <header class="app-topbar">
+      <div class="topbar-brand-group">
+        <a class="site-brand" href="{% url 'reports:dashboard' %}">Garden's Need Training</a>
+        <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Toggle primary navigation" aria-controls="app-sidebar" aria-expanded="false">
+          <span aria-hidden="true">Menu</span>
+        </button>
+      </div>
+      <div class="account-controls">
+        <span class="signed-in-user">Signed in as {% if user.get_full_name %}{{ user.get_full_name }}{% else %}{{ user.get_username }}{% endif %}</span>
+        <form method="post" action="{% url 'accounts:logout' %}">
+          {% csrf_token %}
+          <button class="btn btn-secondary" type="submit">Log out</button>
+        </form>
+      </div>
+    </header>
+
+    <aside id="app-sidebar" class="app-sidebar">
+      <nav class="primary-nav" id="primary-navigation" aria-label="Primary navigation">
+        {% with current_route=request.resolver_match.url_name %}
+          <section class="nav-section" aria-labelledby="nav-workspace-heading">
+            <h2 id="nav-workspace-heading" class="nav-section-heading">Workspace</h2>
+            <ul>
+              <li><a class="nav-link{% if current_route == 'dashboard' %} is-active{% endif %}" href="{% url 'reports:dashboard' %}"{% if current_route == 'dashboard' %} aria-current="page"{% endif %}>Dashboard</a></li>
+              {% if shell_role == 'employee' %}
+                <li><a class="nav-link{% if current_route == 'assignment-list' or current_route == 'assignment-detail' or current_route == 'learner-overview' or current_route == 'attempt-start' or current_route == 'attempt-detail' or current_route == 'attempt-submit' %} is-active{% endif %}" href="{% url 'training:assignment-list' %}"{% if current_route == 'assignment-list' or current_route == 'assignment-detail' or current_route == 'learner-overview' or current_route == 'attempt-start' or current_route == 'attempt-detail' or current_route == 'attempt-submit' %} aria-current="page"{% endif %}>My training</a></li>
+              {% endif %}
+              {% if shell_can_view_certificates %}
+                <li><a class="nav-link{% if current_route == 'certificate-list' or current_route == 'certificate-detail' or current_route == 'certificate-revoke' %} is-active{% endif %}" href="{% url 'certifications:certificate-list' %}"{% if current_route == 'certificate-list' or current_route == 'certificate-detail' or current_route == 'certificate-revoke' %} aria-current="page"{% endif %}>Certificates</a></li>
+              {% endif %}
+            </ul>
+          </section>
+
+          {% if perms.organization.view_employee or perms.organization.view_department or perms.organization.view_jobrole or shell_role and shell_role != 'employee' %}
+            <section class="nav-section" aria-labelledby="nav-management-heading">
+              <h2 id="nav-management-heading" class="nav-section-heading">Management</h2>
+              <ul>
+                {% if perms.organization.view_employee %}
+                  <li><a class="nav-link{% if current_route == 'employee-list' or current_route == 'employee-create' or current_route == 'employee-detail' or current_route == 'employee-update' or current_route == 'employee-deactivate' %} is-active{% endif %}" href="{% url 'organization:employee-list' %}"{% if current_route == 'employee-list' or current_route == 'employee-create' or current_route == 'employee-detail' or current_route == 'employee-update' or current_route == 'employee-deactivate' %} aria-current="page"{% endif %}>Employees</a></li>
+                {% endif %}
+                {% if perms.organization.view_department %}
+                  <li><a class="nav-link{% if current_route == 'department-list' or current_route == 'department-create' or current_route == 'department-update' %} is-active{% endif %}" href="{% url 'organization:department-list' %}"{% if current_route == 'department-list' or current_route == 'department-create' or current_route == 'department-update' %} aria-current="page"{% endif %}>Departments</a></li>
+                {% endif %}
+                {% if perms.organization.view_jobrole %}
+                  <li><a class="nav-link{% if current_route == 'job-role-list' or current_route == 'job-role-create' or current_route == 'job-role-update' %} is-active{% endif %}" href="{% url 'organization:job-role-list' %}"{% if current_route == 'job-role-list' or current_route == 'job-role-create' or current_route == 'job-role-update' %} aria-current="page"{% endif %}>Job roles</a></li>
+                {% endif %}
+                {% if shell_role and shell_role != 'employee' %}
+                  <li><a class="nav-link{% if current_route == 'assignment-list' or current_route == 'assignment-create' or current_route == 'role-assignment-create' or current_route == 'role-requirement-list' or current_route == 'role-requirement-create' or current_route == 'role-requirement-update' or current_route == 'assignment-detail' %} is-active{% endif %}" href="{% url 'training:assignment-list' %}"{% if current_route == 'assignment-list' or current_route == 'assignment-create' or current_route == 'role-assignment-create' or current_route == 'role-requirement-list' or current_route == 'role-requirement-create' or current_route == 'role-requirement-update' or current_route == 'assignment-detail' %} aria-current="page"{% endif %}>Assignments</a></li>
+                {% endif %}
+              </ul>
+            </section>
+          {% endif %}
+
+          {% if perms.training.view_training or perms.assessments.view_question %}
+            <section class="nav-section" aria-labelledby="nav-curriculum-heading">
+              <h2 id="nav-curriculum-heading" class="nav-section-heading">Curriculum</h2>
+              <ul>
+                {% if perms.training.view_training %}
+                  <li><a class="nav-link{% if current_route == 'training-list' or current_route == 'training-create' or current_route == 'training-detail' or current_route == 'training-update' or current_route == 'version-list' or current_route == 'version-create' or current_route == 'version-detail' or current_route == 'version-update' or current_route == 'version-publish' or current_route == 'version-retire' or current_route == 'module-create' or current_route == 'module-update' or current_route == 'lesson-create' or current_route == 'lesson-update' %} is-active{% endif %}" href="{% url 'training:training-list' %}"{% if current_route == 'training-list' or current_route == 'training-create' or current_route == 'training-detail' or current_route == 'training-update' or current_route == 'version-list' or current_route == 'version-create' or current_route == 'version-detail' or current_route == 'version-update' or current_route == 'version-publish' or current_route == 'version-retire' or current_route == 'module-create' or current_route == 'module-update' or current_route == 'lesson-create' or current_route == 'lesson-update' %} aria-current="page"{% endif %}>Training</a></li>
+                {% endif %}
+                {% if perms.assessments.view_question %}
+                  <li><a class="nav-link{% if current_route == 'question-list' or current_route == 'question-create' or current_route == 'question-detail' or current_route == 'question-update' or current_route == 'revision-create' or current_route == 'revision-detail' or current_route == 'revision-update' or current_route == 'revision-freeze' or current_route == 'assessment-list' or current_route == 'assessment-create' or current_route == 'assessment-detail' or current_route == 'assessment-update' or current_route == 'assessment-question-create' or current_route == 'assessment-question-update' %} is-active{% endif %}" href="{% url 'assessments:question-list' %}"{% if current_route == 'question-list' or current_route == 'question-create' or current_route == 'question-detail' or current_route == 'question-update' or current_route == 'revision-create' or current_route == 'revision-detail' or current_route == 'revision-update' or current_route == 'revision-freeze' or current_route == 'assessment-list' or current_route == 'assessment-create' or current_route == 'assessment-detail' or current_route == 'assessment-update' or current_route == 'assessment-question-create' or current_route == 'assessment-question-update' %} aria-current="page"{% endif %}>Question bank</a></li>
+                {% endif %}
+              </ul>
+            </section>
+          {% endif %}
+
+          {% if shell_role == 'company' or shell_role == 'manager' or perms.audit.view_auditlog %}
+            <section class="nav-section" aria-labelledby="nav-reporting-heading">
+              <h2 id="nav-reporting-heading" class="nav-section-heading">Reporting</h2>
+              <ul>
+                {% if shell_role == 'company' or shell_role == 'manager' %}
+                  <li><a class="nav-link{% if current_route == 'assignment-report' %} is-active{% endif %}" href="{% url 'reports:assignment-report' %}"{% if current_route == 'assignment-report' %} aria-current="page"{% endif %}>Assignment report</a></li>
+                {% endif %}
+                {% if perms.audit.view_auditlog %}
+                  <li><a class="nav-link{% if current_route == 'audit-log-list' %} is-active{% endif %}" href="{% url 'audit:audit-log-list' %}"{% if current_route == 'audit-log-list' %} aria-current="page"{% endif %}>Audit log</a></li>
+                {% endif %}
+              </ul>
+            </section>
+          {% endif %}
+        {% endwith %}
+      </nav>
+    </aside>
+
+    <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Close navigation menu" hidden></button>
+
+    <div class="app-main">
+{% else %}
+  <header class="site-header">
+    <a class="site-brand" href="{% url 'accounts:login' %}">Garden's Need Training</a>
+  </header>
 {% endif %}
 {% if messages %}
-<ul class="messages" aria-label="Notifications">
-  {% for message in messages %}<li class="message {{ message.tags }}">{{ message }}</li>{% endfor %}
-</ul>
+  <ul class="messages" aria-label="Notifications">
+    {% for message in messages %}<li class="message {{ message.tags }}">{{ message }}</li>{% endfor %}
+  </ul>
 {% endif %}
 <main id="main-content" class="page-content" tabindex="-1">
   {% block content %}{% endblock %}
 </main>
+{% if user.is_authenticated %}
+  </div>
+</div>
+<script src="{% static 'accounts/shell.js' %}" defer></script>
+{% endif %}
 </body>
 </html>

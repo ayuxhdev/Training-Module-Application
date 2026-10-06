@@ -1,5 +1,54 @@
 {% extends "base.html" %}
+{% block title %}Sign in | Garden's Need Training Module{% endblock %}
 {% block content %}
-<h1>Sign in</h1>
-<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Sign in</button></form>
+<section class="login-page" aria-labelledby="login-title">
+  <div class="login-layout">
+    <div class="login-brand-panel">
+      <div>
+        <p class="login-eyebrow">Employee learning portal</p>
+        <span class="login-brand-rule" aria-hidden="true"></span>
+        <h1 id="login-title">Garden's Need Training Module</h1>
+        <p class="login-brand-description">Training, assessments, and certificates for Garden's Need employees.</p>
+      </div>
+      <p class="login-brand-footer">A secure place to continue your learning.</p>
+    </div>
+
+    <div class="login-card">
+      <div class="login-card-heading">
+        <p class="login-eyebrow">Account access</p>
+        <h2>Sign in</h2>
+        <p>Enter your account credentials to continue.</p>
+      </div>
+
+      <form method="post" class="login-form">
+        {% csrf_token %}
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+
+        {% if form.non_field_errors %}
+          <div class="login-form-errors" role="alert">
+            {{ form.non_field_errors }}
+          </div>
+        {% endif %}
+
+        <div class="login-field">
+          {{ form.username.label_tag }}
+          {{ form.username }}
+          {% if form.username.errors %}
+            <div class="login-field-errors" role="alert">{{ form.username.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="login-field">
+          {{ form.password.label_tag }}
+          {{ form.password }}
+          {% if form.password.errors %}
+            <div class="login-field-errors" role="alert">{{ form.password.errors }}</div>
+          {% endif %}
+        </div>
+
+        <button class="btn btn-primary login-submit" type="submit">Sign in</button>
+      </form>
+    </div>
+  </div>
+</section>
 {% endblock %}

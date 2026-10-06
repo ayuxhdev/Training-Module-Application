@@ -17,6 +17,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from organization.models import Department, Employee, JobRole
+from training.models import Training
 
 
 class ProductionSettingsTests(SimpleTestCase):
@@ -56,6 +57,67 @@ class ProductionSettingsTests(SimpleTestCase):
 
 
 class AuthenticationWorkflowTests(TestCase):
+	def test_login_page_renders_the_accessible_branded_form(self):
+		response = Client().get(reverse("accounts:login"))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, "Garden's Need Training Module")
+		self.assertContains(response, 'id="login-title"')
+		self.assertContains(response, 'for="id_username"')
+		self.assertContains(response, 'name="username"')
+		self.assertContains(response, 'name="password"')
+		self.assertContains(response, 'name="csrfmiddlewaretoken"')
+		self.assertContains(response, 'class="login-layout"')
+
+	def test_invalid_credentials_render_the_server_side_error(self):
+		response = Client().post(reverse("accounts:login"), {
+			"username": "missing-login-user", "password": "incorrect",
+		})
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'class="login-form-errors" role="alert"')
+		self.assertContains(response, "correct username and password")
+		self.assertContains(response, 'name="username" value="missing-login-user"')
+
+	def test_field_validation_errors_are_rendered_with_accessible_alerts(self):
+		response = Client().post(reverse("accounts:login"), {"username": "", "password": ""})
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'class="login-field-errors" role="alert"')
+		self.assertContains(response, 'id="id_username"')
+		self.assertContains(response, 'for="id_password"')
+
+	def test_csrf_protection_remains_required_for_login(self):
+		client = Client(enforce_csrf_checks=True)
+		response = client.get(reverse("accounts:login"))
+
+		self.assertContains(response, 'name="csrfmiddlewaretoken"')
+		self.assertEqual(client.post(reverse("accounts:login"), {
+			"username": "someone", "password": "incorrect",
+		}).status_code, 403)
+
+	def test_login_preserves_next_and_authenticated_user_redirects(self):
+		get_user_model().objects.create_user(username="auth-next", password="test-password")
+		client = Client()
+		assignment_url = reverse("training:assignment-list")
+		response = client.post(reverse("accounts:login"), {
+			"username": "auth-next", "password": "test-password", "next": assignment_url,
+		})
+
+		self.assertRedirects(response, assignment_url, fetch_redirect_response=False)
+		self.assertRedirects(client.get(reverse("accounts:login")), "/", fetch_redirect_response=False)
+
+	def test_inactive_user_is_still_rejected_by_authentication(self):
+		get_user_model().objects.create_user(
+			username="inactive-login", password="test-password", is_active=False,
+		)
+		response = Client().post(reverse("accounts:login"), {
+			"username": "inactive-login", "password": "test-password",
+		})
+
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, "correct username and password")
+
 	def test_login_and_post_only_logout(self):
 		get_user_model().objects.create_user(username="auth-workflow", password="test-password")
 		client = Client()
@@ -113,6 +175,32 @@ class ApplicationShellTests(TestCase):
 				self.assertIn(f'href="{reverse(name)}"', navigation)
 		self.assertContains(response, "Signed in as shell-coordinator")
 		self.assertContains(response, 'method="post" action="/accounts/logout/"')
+
+	def test_shell_marks_dashboard_active_and_exposes_mobile_drawer_controls(self):
+		client = Client()
+		client.force_login(self.user_with_role("shell-active-dashboard", "Training Coordinator"))
+		response = client.get(reverse("reports:dashboard"))
+		navigation = self.navigation(response)
+
+		self.assertIn(f'href="{reverse("reports:dashboard")}" aria-current="page">Dashboard</a>', navigation)
+		self.assertContains(response, 'id="app-sidebar"')
+		self.assertContains(response, 'id="sidebar-toggle"')
+		self.assertContains(response, 'aria-controls="app-sidebar"')
+		self.assertContains(response, 'aria-expanded="false"')
+		self.assertContains(response, 'src="/static/accounts/shell.js"')
+
+	def test_nested_training_page_keeps_training_navigation_active(self):
+		client = Client()
+		user = self.user_with_role("shell-active-training", "Training Coordinator")
+		client.force_login(user)
+		training = Training.objects.create(
+			code="SHELL-ACTIVE", catalog_title="Shell active training", created_by=user,
+		)
+		response = client.get(reverse("training:training-detail", kwargs={"pk": training.pk}))
+		navigation = self.navigation(response)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertIn(f'href="{reverse("training:training-list")}" aria-current="page">Training</a>', navigation)
 
 	def test_employee_and_manager_navigation_respects_role_boundaries(self):
 		for role, expected_report in (("Employee", False), ("Manager", True)):

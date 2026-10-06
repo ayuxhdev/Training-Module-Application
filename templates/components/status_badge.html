@@ -1,0 +1,8 @@
+{% with code=status|upper %}
+<span class="status-badge status-{{ code|lower }}
+  {% if code == 'PUBLISHED' or code == 'COMPLETED' or code == 'SUBMITTED' or code == 'FROZEN' or code == 'ACTIVE' or code == 'VALID' or code == 'PASSED' %}status-badge--success
+  {% elif code == 'DRAFT' or code == 'ASSIGNED' %}status-badge--warning
+  {% elif code == 'IN_PROGRESS' %}status-badge--info
+  {% elif code == 'CANCELLED' or code == 'EXPIRED' or code == 'ABANDONED' or code == 'REVOKED' or code == 'INACTIVE' or code == 'OVERDUE' or code == 'NOT_PASSED' %}status-badge--danger
+  {% else %}status-badge--neutral{% endif %}">{{ label|default:status }}</span>
+{% endwith %}

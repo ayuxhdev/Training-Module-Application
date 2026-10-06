@@ -1,0 +1,6 @@
+<section class="empty-state" aria-label="{{ title }}">
+  <h2>{{ title }}</h2>
+  {% if message %}<p>{{ message }}</p>{% endif %}
+  {% if supporting_text %}<p>{{ supporting_text }}</p>{% endif %}
+  {% if action_url and action_label %}<a class="btn btn-secondary" href="{{ action_url }}">{{ action_label }}</a>{% endif %}
+</section>

@@ -1,0 +1,9 @@
+<section class="card kpi-card{% if modifier %} kpi-card--{{ modifier }}{% endif %}" aria-label="{{ label }}">
+  <div class="card-body">
+    <dl>
+      <dt>{{ label }}</dt>
+      <dd>{{ value }}</dd>
+    </dl>
+    {% if supporting_text %}<p class="kpi-card-supporting">{{ supporting_text }}</p>{% endif %}
+  </div>
+</section>
