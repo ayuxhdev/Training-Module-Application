@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
@@ -74,11 +75,15 @@ class LessonListScreen extends ConsumerWidget {
 
                 return GestureDetector(
                   onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Lesson entry coming soon!'),
-                      ),
-                    );
+                    if (lesson.type.toUpperCase() == 'TEXT') {
+                      context.go('/learning/assignments/$assignmentId/modules/$moduleId/lessons/${lesson.id}/text');
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('${lesson.type} lessons are not supported yet.'),
+                        ),
+                      );
+                    }
                   },
                   child: CustomCard(
                     child: Column(

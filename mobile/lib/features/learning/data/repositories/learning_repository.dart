@@ -32,5 +32,14 @@ class LearningRepository {
       throw apiClient.mapExceptionToApiError(e);
     }
   }
+
+  Future<LessonProgress> completeTextLesson(int assignmentId, int lessonId) async {
+    try {
+      final response = await apiClient.dio.post('/assignments/$assignmentId/lessons/$lessonId/complete/');
+      return LessonProgress.fromJson(response.data as Map<String, dynamic>);
+    } catch (e) {
+      throw apiClient.mapExceptionToApiError(e);
+    }
+  }
 }
 

@@ -10,6 +10,7 @@ import 'package:training_app/features/learning/presentation/screens/learning_scr
 import 'package:training_app/features/learning/presentation/screens/assignment_detail_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/module_list_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/lesson_list_screen.dart';
+import 'package:training_app/features/learning/presentation/screens/text_lesson_screen.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 
@@ -115,6 +116,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                           }
                           return LessonListScreen(assignmentId: id, moduleId: moduleId);
                         },
+                        routes: [
+                          GoRoute(
+                            path: ':lessonId/text',
+                            builder: (context, state) {
+                              final idString = state.pathParameters['id'];
+                              final lessonIdString = state.pathParameters['lessonId'];
+                              final id = int.tryParse(idString ?? '');
+                              final lessonId = int.tryParse(lessonIdString ?? '');
+                              if (id == null || lessonId == null) {
+                                return const Scaffold(
+                                  body: ErrorView(message: 'Invalid ID'),
+                                );
+                              }
+                              return TextLessonScreen(assignmentId: id, lessonId: lessonId);
+                            },
+                          ),
+                        ],
                       ),
                     ],
                   ),
