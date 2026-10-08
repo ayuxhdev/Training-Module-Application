@@ -7,7 +7,9 @@ import 'package:training_app/features/auth/presentation/screens/login_screen.dar
 import 'package:training_app/core/presentation/screens/app_shell.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/learning_screen.dart';
+import 'package:training_app/features/learning/presentation/screens/assignment_detail_screen.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
+import 'package:training_app/core/presentation/components/error_view.dart';
 
 // Create a Listenable to trigger router redirects on auth state changes
 class RouterNotifier extends ChangeNotifier {
@@ -56,13 +58,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/login',
         builder: (context, state) => const LoginScreen(),
       ),
+      GoRoute(
+        path: '/',
+        builder: (context, state) => const AppShell(child: SizedBox.shrink()),
+      ),
       ShellRoute(
         builder: (context, state, child) => AppShell(child: child),
         routes: [
-          GoRoute(
-            path: '/',
-            builder: (context, state) => const SizedBox.shrink(),
-          ),
           GoRoute(
             path: '/dashboard',
             builder: (context, state) => const DashboardScreen(),
@@ -70,6 +72,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/learning',
             builder: (context, state) => const LearningScreen(),
+            routes: [
+              GoRoute(
+                path: 'assignments/:id',
+                builder: (context, state) {
+                  final idString = state.pathParameters['id'];
+                  final id = int.tryParse(idString ?? '');
+                  if (id == null) {
+                    return const Scaffold(
+                      body: ErrorView(message: 'Invalid assignment ID'),
+                    );
+                  }
+                  return AssignmentDetailScreen(assignmentId: id);
+                },
+              ),
+            ],
           ),
           GoRoute(
             path: '/profile',

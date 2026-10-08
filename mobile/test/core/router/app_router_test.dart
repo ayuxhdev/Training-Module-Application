@@ -12,8 +12,11 @@ import 'package:training_app/features/auth/presentation/screens/login_screen.dar
 import 'package:training_app/features/dashboard/domain/models/dashboard_data.dart';
 import 'package:training_app/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'package:training_app/features/learning/domain/models/assignment.dart';
+import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 import 'package:training_app/features/learning/presentation/screens/learning_screen.dart';
+import 'package:training_app/features/learning/presentation/screens/assignment_detail_screen.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
 
 class MockAuthController extends Notifier<AuthState> implements AuthController {
@@ -129,5 +132,95 @@ void main() {
 
     expect(find.text('Test network error'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('Navigates to detail screen from learning screen', (tester) async {
+    final mockAssignments = [
+      Assignment(
+        id: 42,
+        trainingId: 101,
+        trainingTitle: 'Test Assignment',
+        versionNumber: 1,
+        status: 'ASSIGNED',
+        isOverdue: false,
+        progressSummary: ProgressSummary(requiredLessonsCompleted: 0, requiredLessonsTotal: 1),
+      )
+    ];
+
+    final mockDetail = AssignmentDetail(
+      id: 42,
+      trainingId: 101,
+      trainingTitle: 'Test Assignment Detail',
+      versionNumber: 1,
+      status: 'ASSIGNED',
+      isOverdue: false,
+      modules: [],
+    );
+
+    final app = ProviderScope(
+      overrides: [
+        authControllerProvider.overrideWith(() => MockAuthController(AuthAuthenticated(tEmployee))),
+        dashboardDataProvider.overrideWith((ref) => Future.value(mockDashboardData)),
+        assignmentListProvider.overrideWith((ref) => Future.value(mockAssignments)),
+        assignmentDetailProvider(42).overrideWith((ref) => Future.value(mockDetail)),
+      ],
+      child: Consumer(
+        builder: (context, ref, child) {
+          final router = ref.watch(appRouterProvider);
+          return MaterialApp.router(
+            routerConfig: router,
+          );
+        },
+      ),
+    );
+
+    await tester.pumpWidget(app);
+    await tester.pumpAndSettle();
+
+    // Navigate to learning tab
+    await tester.tap(find.text('Learning'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LearningScreen), findsOneWidget);
+    
+    // Tap the assignment card
+    expect(find.text('Test Assignment'), findsOneWidget);
+    await tester.tap(find.text('Test Assignment'));
+    await tester.pumpAndSettle();
+
+    // Verify detail screen is shown
+    expect(find.byType(AssignmentDetailScreen), findsOneWidget);
+    expect(find.text('Test Assignment Detail'), findsOneWidget);
+  });
+
+  testWidgets('Shows ErrorView for non-integer assignment ID', (tester) async {
+    final app = ProviderScope(
+      overrides: [
+        authControllerProvider.overrideWith(() => MockAuthController(AuthAuthenticated(tEmployee))),
+        dashboardDataProvider.overrideWith((ref) => Future.value(mockDashboardData)),
+        assignmentListProvider.overrideWith((ref) => Future.value([])),
+      ],
+      child: Consumer(
+        builder: (context, ref, child) {
+          final router = ref.watch(appRouterProvider);
+          return MaterialApp.router(
+            routerConfig: router,
+          );
+        },
+      ),
+    );
+
+    await tester.pumpWidget(app);
+    await tester.pumpAndSettle();
+
+    // Navigate to learning tab
+    await tester.tap(find.text('Learning'));
+    await tester.pumpAndSettle();
+
+    // Push malformed route
+    final BuildContext context = tester.element(find.byType(LearningScreen));
+    context.go('/learning/assignments/abc');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Invalid assignment ID'), findsOneWidget);
   });
 }

@@ -8,6 +8,7 @@ import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/learning/domain/models/assignment.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
+import 'package:go_router/go_router.dart';
 
 class LearningScreen extends ConsumerWidget {
   const LearningScreen({super.key});
@@ -83,8 +84,10 @@ class _AssignmentCard extends StatelessWidget {
         ? '${dueDate.year}-${dueDate.month.toString().padLeft(2, '0')}-${dueDate.day.toString().padLeft(2, '0')}' 
         : 'No due date';
 
-    return CustomCard(
-      child: Column(
+    return GestureDetector(
+      onTap: () => context.go('/learning/assignments/${assignment.id}'),
+      child: CustomCard(
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -134,6 +137,7 @@ class _AssignmentCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
