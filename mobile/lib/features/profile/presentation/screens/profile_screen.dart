@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/secondary_button.dart';
+import 'package:training_app/core/presentation/components/status_badge.dart';
+import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 
@@ -21,27 +25,48 @@ class ProfileScreen extends ConsumerWidget {
         title: const Text('Profile'),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(AppSpacing.md),
         children: [
-          const CircleAvatar(
-            radius: 48,
-            child: Icon(Icons.person, size: 64),
+          Center(
+            child: CircleAvatar(
+              radius: 48,
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              child: Icon(
+                Icons.person,
+                size: 64,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
           ),
-          const SizedBox(height: 24),
-          _ProfileItem(label: 'Name', value: employee.displayName),
-          _ProfileItem(label: 'Employee Code', value: employee.employeeCode),
-          _ProfileItem(label: 'Department', value: employee.department),
-          _ProfileItem(label: 'Job Role', value: employee.jobRole),
-          const SizedBox(height: 32),
-          ElevatedButton.icon(
+          const SizedBox(height: AppSpacing.md),
+          Center(
+            child: StatusBadge(
+              text: employee.isActive ? 'Active' : 'Inactive',
+              status: employee.isActive ? BadgeStatus.success : BadgeStatus.error,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          CustomCard(
+            child: Column(
+              children: [
+                _ProfileItem(label: 'Name', value: employee.displayName),
+                const Divider(),
+                _ProfileItem(label: 'Employee Code', value: employee.employeeCode),
+                const Divider(),
+                _ProfileItem(label: 'Department', value: employee.department),
+                const Divider(),
+                _ProfileItem(label: 'Job Role', value: employee.jobRole),
+                const Divider(),
+                _ProfileItem(label: 'Username', value: employee.username),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          SecondaryButton(
+            text: 'Logout',
             onPressed: () {
               ref.read(authControllerProvider.notifier).logout();
             },
-            icon: const Icon(Icons.logout),
-            label: const Text('Logout'),
-            style: ElevatedButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
           ),
         ],
       ),
@@ -58,7 +83,7 @@ class _ProfileItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -66,9 +91,9 @@ class _ProfileItem extends StatelessWidget {
             width: 120,
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: Colors.grey,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -85,4 +110,3 @@ class _ProfileItem extends StatelessWidget {
     );
   }
 }
-

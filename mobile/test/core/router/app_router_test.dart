@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,8 @@ import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/domain/models/employee.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/auth/presentation/screens/login_screen.dart';
+import 'package:training_app/features/dashboard/domain/models/dashboard_data.dart';
+import 'package:training_app/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/learning_screen.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
@@ -40,10 +43,17 @@ void main() {
     isActive: true,
   );
 
+  final mockDashboardData = DashboardData(
+    metrics: DashboardMetrics(total: 0, assigned: 0, inProgress: 0, completed: 0, cancelled: 0, overdue: 0, completionPercent: 0.0, certificatesCount: 0),
+    actionRequired: [],
+    recentCertificates: [],
+  );
+
   Widget createTestApp(AuthState authState) {
     return ProviderScope(
       overrides: [
         authControllerProvider.overrideWith(() => MockAuthController(authState)),
+        dashboardDataProvider.overrideWith((ref) => Future.value(mockDashboardData)),
       ],
       child: Consumer(
         builder: (context, ref, child) {
