@@ -12,6 +12,7 @@ import 'package:training_app/features/auth/presentation/screens/login_screen.dar
 import 'package:training_app/features/dashboard/domain/models/dashboard_data.dart';
 import 'package:training_app/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 import 'package:training_app/features/learning/presentation/screens/learning_screen.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
 
@@ -54,6 +55,7 @@ void main() {
       overrides: [
         authControllerProvider.overrideWith(() => MockAuthController(authState)),
         dashboardDataProvider.overrideWith((ref) => Future.value(mockDashboardData)),
+        assignmentListProvider.overrideWith((ref) => Future.value([])),
       ],
       child: Consumer(
         builder: (context, ref, child) {
