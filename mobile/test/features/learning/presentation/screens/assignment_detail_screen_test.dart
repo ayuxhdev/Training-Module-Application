@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
@@ -83,12 +84,59 @@ void main() {
     expect(find.text('Due: 2023-10-01'), findsOneWidget);
     expect(find.text('Progress: 0/0 lessons'), findsOneWidget);
     
-    // Tap primary button
+    expect(find.text('Progress: 0/0 lessons'), findsOneWidget);
     expect(find.byType(PrimaryButton), findsOneWidget);
-    await tester.tap(find.byType(PrimaryButton));
+  });
+
+  testWidgets('Start Training button navigates to modules list route', (tester) async {
+    final mockDetail = AssignmentDetail(
+      id: 1,
+      trainingId: 101,
+      trainingTitle: 'Safety Basics',
+      versionNumber: 1,
+      status: 'IN_PROGRESS',
+      isOverdue: false,
+      dueAt: DateTime(2023, 10, 1),
+      modules: [],
+    );
+
+    final container = ProviderContainer(
+      overrides: [
+        assignmentDetailProvider(1).overrideWith((ref) async => mockDetail),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: '/detail',
+      routes: [
+        GoRoute(
+          path: '/detail',
+          builder: (context, state) => const AssignmentDetailScreen(assignmentId: 1),
+        ),
+        GoRoute(
+          path: '/learning/assignments/:id/modules',
+          builder: (context, state) => Text('Modules Route for ${state.pathParameters['id']}'),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(
+          routerConfig: router,
+        ),
+      ),
+    );
+
     await tester.pumpAndSettle();
 
-    // Verify snackbar is shown for placeholder navigation
-    expect(find.text('Training entry coming soon!'), findsOneWidget);
+    final button = find.widgetWithText(PrimaryButton, 'Start Training');
+    expect(button, findsOneWidget);
+
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Modules Route for 1'), findsOneWidget);
   });
 }

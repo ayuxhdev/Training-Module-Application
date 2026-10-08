@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
@@ -109,12 +110,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                               PrimaryButton(
                                 text: 'Start Training',
                                 onPressed: () {
-                                  // Navigate to the next learning route - placeholder for now
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Training entry coming soon!'),
-                                    ),
-                                  );
+                                  context.go('/learning/assignments/$assignmentId/modules');
                                 },
                               ),
                             ],

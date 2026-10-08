@@ -8,6 +8,8 @@ import 'package:training_app/core/presentation/screens/app_shell.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/learning_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/assignment_detail_screen.dart';
+import 'package:training_app/features/learning/presentation/screens/module_list_screen.dart';
+import 'package:training_app/features/learning/presentation/screens/lesson_list_screen.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 
@@ -85,6 +87,38 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   }
                   return AssignmentDetailScreen(assignmentId: id);
                 },
+                routes: [
+                  GoRoute(
+                    path: 'modules',
+                    builder: (context, state) {
+                      final idString = state.pathParameters['id'];
+                      final id = int.tryParse(idString ?? '');
+                      if (id == null) {
+                        return const Scaffold(
+                          body: ErrorView(message: 'Invalid assignment ID'),
+                        );
+                      }
+                      return ModuleListScreen(assignmentId: id);
+                    },
+                    routes: [
+                      GoRoute(
+                        path: ':moduleId/lessons',
+                        builder: (context, state) {
+                          final idString = state.pathParameters['id'];
+                          final moduleIdString = state.pathParameters['moduleId'];
+                          final id = int.tryParse(idString ?? '');
+                          final moduleId = int.tryParse(moduleIdString ?? '');
+                          if (id == null || moduleId == null) {
+                            return const Scaffold(
+                              body: ErrorView(message: 'Invalid ID'),
+                            );
+                          }
+                          return LessonListScreen(assignmentId: id, moduleId: moduleId);
+                        },
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ],
           ),
