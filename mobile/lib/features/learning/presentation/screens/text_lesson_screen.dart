@@ -11,6 +11,13 @@ import 'package:training_app/features/learning/data/repositories/learning_reposi
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 
+class _LessonLocation {
+  final int moduleId;
+  final LessonLearning lesson;
+
+  _LessonLocation(this.moduleId, this.lesson);
+}
+
 class TextLessonScreen extends ConsumerStatefulWidget {
   final int assignmentId;
   final int lessonId;
@@ -27,9 +34,26 @@ class TextLessonScreen extends ConsumerStatefulWidget {
 
 class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
   bool _isSubmitting = false;
+  bool _isCompletedLocally = false;
+  int _generation = 0;
+
+  @override
+  void didUpdateWidget(TextLessonScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.assignmentId != widget.assignmentId || oldWidget.lessonId != widget.lessonId) {
+      _generation++;
+      _isSubmitting = false;
+      _isCompletedLocally = false;
+    }
+  }
 
   Future<void> _completeLesson() async {
     if (_isSubmitting) return;
+
+    _generation++;
+    final capturedGeneration = _generation;
+    final requestedAssignmentId = widget.assignmentId;
+    final requestedLessonId = widget.lessonId;
 
     setState(() {
       _isSubmitting = true;
@@ -37,17 +61,38 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
 
     try {
       final repository = ref.read(learningRepositoryProvider);
-      await repository.completeTextLesson(widget.assignmentId, widget.lessonId);
+      final result = await repository.completeTextLesson(requestedAssignmentId, requestedLessonId);
       
-      if (mounted) {
-        ref.invalidate(assignmentDetailProvider(widget.assignmentId));
+      if (!mounted) return;
+
+      final bool isCurrentLesson = widget.assignmentId == requestedAssignmentId && widget.lessonId == requestedLessonId;
+      final bool isGenerationMatch = _generation == capturedGeneration;
+
+      if (result.completed) {
+        // Invalidate if it's for a different lesson, or if it's the current lesson and not stale.
+        if (!isCurrentLesson || isGenerationMatch) {
+          ref.invalidate(assignmentDetailProvider(requestedAssignmentId));
+        }
+      }
+
+      if (isCurrentLesson && isGenerationMatch) {
+        if (result.completed) {
+          _isCompletedLocally = true;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Lesson completed successfully')),
         );
-        context.pop();
+        setState(() {
+          _isSubmitting = false;
+        });
       }
     } catch (e) {
-      if (mounted) {
+      if (!mounted) return;
+
+      final bool isCurrentLesson = widget.assignmentId == requestedAssignmentId && widget.lessonId == requestedLessonId;
+      final bool isGenerationMatch = _generation == capturedGeneration;
+
+      if (isCurrentLesson && isGenerationMatch) {
         setState(() {
           _isSubmitting = false;
         });
@@ -77,32 +122,28 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
       ),
       body: detailAsync.when(
         data: (detail) {
-          LessonLearning? targetLesson;
+          final allLessons = <_LessonLocation>[];
           for (final module in detail.modules) {
             for (final lesson in module.lessons) {
-              if (lesson.id == widget.lessonId) {
-                targetLesson = lesson;
-                break;
-              }
+              allLessons.add(_LessonLocation(module.id, lesson));
             }
-            if (targetLesson != null) break;
           }
 
-          if (targetLesson == null) {
+          final currentIndex = allLessons.indexWhere((loc) => loc.lesson.id == widget.lessonId);
+          if (currentIndex == -1) {
             return ErrorView(
               message: 'Lesson not found',
               onRetry: () => ref.refresh(assignmentDetailProvider(widget.assignmentId).future),
             );
           }
 
-          if (targetLesson.type.toUpperCase() != 'TEXT') {
-            return ErrorView(
-              message: 'This screen only supports text lessons.',
-              onRetry: () => context.pop(),
-            );
-          }
+          final currentLocation = allLessons[currentIndex];
+          final targetLesson = currentLocation.lesson;
+          final prevLocation = currentIndex > 0 ? allLessons[currentIndex - 1] : null;
+          final nextLocation = currentIndex < allLessons.length - 1 ? allLessons[currentIndex + 1] : null;
 
-          final isCompleted = targetLesson.progress.completed;
+          final isCompleted = _isCompletedLocally || targetLesson.progress.completed;
+          final isTextLesson = targetLesson.type.toUpperCase() == 'TEXT';
 
           return SingleChildScrollView(
             padding: AppSpacing.pagePadding,
@@ -137,21 +178,64 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
                         ),
                   ),
                 AppSpacing.gapLg,
-                Text(
-                  targetLesson.body.isNotEmpty ? targetLesson.body : 'No content available.',
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
+                if (isTextLesson)
+                  Text(
+                    targetLesson.body.isNotEmpty ? targetLesson.body : 'No content available.',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  )
+                else
+                  Container(
+                    padding: AppSpacing.pagePadding,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'This ${targetLesson.type} lesson is not supported yet.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: AppSpacing.xxl),
-                if (!isCompleted)
+                if (isTextLesson && !isCompleted)
                   PrimaryButton(
                     text: _isSubmitting ? 'Submitting...' : 'Complete Lesson',
                     onPressed: _isSubmitting ? null : _completeLesson,
-                  )
-                else
-                  PrimaryButton(
-                    text: 'Back to Module',
-                    onPressed: () => context.pop(),
                   ),
+                if (isTextLesson && !isCompleted)
+                  AppSpacing.gapLg,
+                Row(
+                  children: [
+                    if (prevLocation != null)
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isSubmitting ? null : () {
+                            context.pushReplacement('/learning/assignments/${widget.assignmentId}/modules/${prevLocation.moduleId}/lessons/${prevLocation.lesson.id}/text');
+                          },
+                          child: const Text('Previous'),
+                        ),
+                      )
+                    else
+                      const Spacer(),
+                    
+                    if (prevLocation != null && nextLocation != null) 
+                      AppSpacing.gapMd,
+                      
+                    if (nextLocation != null)
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isSubmitting ? null : () {
+                            context.pushReplacement('/learning/assignments/${widget.assignmentId}/modules/${nextLocation.moduleId}/lessons/${nextLocation.lesson.id}/text');
+                          },
+                          child: const Text('Next'),
+                        ),
+                      )
+                    else
+                      const Spacer(),
+                  ],
+                ),
               ],
             ),
           );
