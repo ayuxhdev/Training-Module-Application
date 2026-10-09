@@ -418,6 +418,17 @@ def _start_video_session_operation(request, assignment_pk, lesson_pk):
 				assignment.status = TrainingAssignment.Status.IN_PROGRESS
 				assignment.started_at = now
 				assignment.save()
+			record_event(
+				request.user,
+				"training.videowatchsession.started",
+				session,
+				after={
+					"assignment_id": assignment.pk,
+					"lesson_id": lesson.pk,
+					"session_id": session.pk,
+					"started_at": session.started_at.isoformat(),
+				},
+			)
 		return JsonResponse(_progress_response(progress, session), status=201)
 	except (ValidationError, IntegrityError, ValueError) as exc:
 		return JsonResponse({"error": str(exc)}, status=400)
@@ -480,6 +491,18 @@ def _end_video_session_operation(request, assignment_pk, lesson_pk, session_pk):
 						"completed_at": progress.completed_at.isoformat(),
 					},
 				)
+			record_event(
+				request.user,
+				"training.videowatchsession.ended",
+				session,
+				after={
+					"assignment_id": assignment.pk,
+					"lesson_id": lesson.pk,
+					"session_id": session.pk,
+					"ended_at": session.ended_at.isoformat(),
+					"completed_normally": session.completed_normally,
+				},
+			)
 		return JsonResponse(_progress_response(progress, session))
 	except (ValidationError, IntegrityError, ValueError) as exc:
 		return JsonResponse({"error": str(exc)}, status=400)

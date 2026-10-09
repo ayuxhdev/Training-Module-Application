@@ -1,0 +1,6 @@
+﻿{
+  "private": true,
+  "scripts": {
+    "test": "node --test accounts/shell.test.js training/playback.test.js"
+  }
+}

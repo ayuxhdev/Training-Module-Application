@@ -194,7 +194,7 @@ class LearningAPITests(CurriculumTestCase):
 		self.assertEqual(response.data["error"]["code"], "conflict")
 
 	def test_jwt_video_session_progress_and_media_reuse_web_playback_rules(self):
-		video_bytes = b"0123456789video-content"
+		video_bytes = b"\x00\x00\x00\x18ftyp-video-content"
 		size_patch = patch.object(FileSystemStorage, "size", return_value=len(video_bytes))
 		open_patch = patch.object(FileSystemStorage, "open", side_effect=lambda name, mode: BytesIO(video_bytes))
 		size_patch.start()

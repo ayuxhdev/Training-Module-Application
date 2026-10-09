@@ -1,4 +1,4 @@
-package com.gardensneed.training.training_app
+package com.gardensneed.training
 
 import io.flutter.embedding.android.FlutterActivity
 

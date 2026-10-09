@@ -1132,7 +1132,7 @@ class LearnerFrontendTests(CurriculumTestCase):
 
 
 class ProtectedVideoTests(CurriculumTestCase):
-    video_bytes = b"0123456789video-content"
+    video_bytes = b"\x00\x00\x00\x18ftyp-video-content"
 
     @classmethod
     def setUpTestData(cls):

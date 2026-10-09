@@ -2,9 +2,13 @@
 
 from datetime import timedelta
 from decimal import Decimal
+import os
+import shutil
+import tempfile
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from assessments.models import Assessment, AssessmentAttempt, AssessmentQuestion, AttemptAnswer, Question, QuestionOption, QuestionRevision
@@ -14,10 +18,28 @@ from training.models import Lesson, LessonProgress, Module, Training, TrainingAs
 
 class CurriculumTestCase(TestCase):
     @classmethod
+    def setUpClass(cls):
+        cls.temp_media_dir = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.temp_media_dir, ignore_errors=True)
+
+        cls.settings_override = override_settings(MEDIA_ROOT=cls.temp_media_dir)
+        cls.settings_override.enable()
+        cls.addClassCleanup(cls.settings_override.disable)
+
+        super().setUpClass()
+
+    @classmethod
     def setUpTestData(cls):
         cls.now = timezone.now() - timedelta(minutes=5)
         cls.user = get_user_model().objects.create_user(username="coordinator", password="test-only-password")
         cls.employee_user = get_user_model().objects.create_user(username="employee")
+
+        videos_dir = os.path.join(settings.MEDIA_ROOT, "training", "videos")
+        os.makedirs(videos_dir, exist_ok=True)
+        for name in ("safety-v1.mp4", "lesson.mp4", "other.mp4", "invalid.mp4", "unrelated.mp4"):
+            with open(os.path.join(videos_dir, name), "wb") as f:
+                f.write(b"\x00\x00\x00\x18ftyp")
+
         cls.department = Department.objects.create(code="PROD", name="Production")
         cls.role = JobRole.objects.create(code="OP", name="Operator")
         cls.employee = Employee.objects.create(employee_code="GN-001", display_name="Employee One",
