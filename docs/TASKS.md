@@ -2,222 +2,119 @@
 
 ## 1. Purpose
 
-This document tracks the current development roadmap, major work items, release gates, and milestone status for the Garden's Need Training Module Application.
+This document tracks repository-level development tasks, milestone work, validation requirements, and release gates for the Garden's Need Training Module Application.
 
-The Excel roadmap remains the management tracker.
+`docs/ROADMAP.md` is the canonical milestone roadmap.
 
-This file is the repository-side development roadmap.
+This file provides the practical task-level view of that roadmap.
+
+The Excel roadmap may remain the management tracker, but it must not override the repository's actual implementation state.
+
+---
 
 ## 2. Current Status
 
 Current milestone:
 
 ```text
-Milestone 12 - Functional Frontend
+M16 - Learning + Secure Video
 ```
 
-Current backend status:
+Completed milestones:
 
 ```text
-Core backend complete
+M0–M13 - Core Platform + Mobile API Foundation
+M14    - Flutter / Android Foundation
+M15    - Employee App Core
 ```
 
-Current automated test baseline:
+Current application state:
 
 ```text
-189 full tests passing on MySQL
+Backend/Web platform: Complete
+Mobile API foundation: Complete
+Flutter/Android foundation: Complete
+Employee learning foundation: Complete
+Secure video learning: Next
 ```
 
-Current project estimate:
+Current verified automated baseline:
 
 ```text
-Approximately 70-75% complete
+Django/MySQL: 348 tests passing
+Flutter: 81 tests passing
+JavaScript playback tests: 3 tests passing
 ```
 
-The application is still pre-release.
-
-## 3. Current Priorities
-
-Immediate priorities are:
-
-1. Begin Milestone 12 - Functional Frontend.
-2. Build the complete usable browser interface across the implemented backend workflows.
-3. Preserve the 189-test MySQL backend baseline while integrating the frontend.
-4. Keep backend authorization authoritative and avoid UI-only security assumptions.
-5. Prepare the application for later UX, responsive, accessibility, and E2E milestones.
-
-## 4. Milestone Overview
+Additional verified checks include:
 
 ```text
-Milestone 0  - Project Setup & Foundation                    COMPLETE
-Milestone 1  - Authentication & Organization                 COMPLETE
-Milestone 2  - Training Content & Versioning                 COMPLETE
-Milestone 3  - Training Assignments                          COMPLETE
-Milestone 4  - Video Progress & Anti-Skip                    COMPLETE
-Milestone 5  - Assessments & Scoring                         COMPLETE
-Milestone 6  - Certificates                                  COMPLETE
-Milestone 7  - Dashboards & Reports                          COMPLETE
-Milestone 8  - Audit Logging & Backend Hardening             COMPLETE
-Milestone 9  - Backend Cleanup & Simplification              COMPLETE
-Milestone 10 - Security Hardening & Vulnerability Testing    COMPLETE
-Milestone 11 - Documentation + Project Structure + CI        COMPLETE
-Milestone 12 - Functional Frontend                           IN PROGRESS
-Milestone 13 - UX + Responsive + Accessibility               PLANNED
-Milestone 14 - Full E2E + Integration Testing                PLANNED
-Milestone 15 - Production + Deployment Hardening             PLANNED
-Milestone 16 - Final Bug Hunt + Security + Repository Review PLANNED
-Milestone 17 - Final Readability + Refactor Pass             PLANNED
-Milestone 18 - Premium Visual Polish                         PLANNED
-Milestone 19 - Final Acceptance + V1 Release                 PLANNED
+Django check: passing
+Migration consistency: passing
+pip check: passing
+git diff --check: passing
+Flutter analyze: passing
+Android debug APK build: passing
+GitHub Actions CI: passing
 ```
 
-## 5. Milestone 0 - Project Setup & Foundation
+The application remains pre-release.
 
-Status:
+---
+
+# 3. Milestone Overview
 
 ```text
-COMPLETE
+M0–M12 - Core Django Training Platform       COMPLETE
+M13    - Mobile API Foundation & Versioning   COMPLETE
+M14    - Flutter / Android Foundation         COMPLETE
+M15    - Employee App Core                    COMPLETE
+M16    - Learning + Secure Video              NEXT
+M17    - Assessment + Certificates             PLANNED
+M18    - Notifications + Resilience            PLANNED
+M19    - Android Release Candidate             PLANNED
+M20    - Production + Deployment Hardening     PLANNED
+M21    - Final Bug Hunt + Security Review      PLANNED
+M22    - Readability + Refactor + Visual Polish PLANNED
+M23    - Final Acceptance + Android V1 Release PLANNED
 ```
 
-Completed work included:
+---
 
-- Django project creation
-- application structure
-- virtual environment
-- MySQL setup
-- environment configuration
-- migrations
-- superuser
-- Git setup
-- GitHub repository
-- Django/MySQL compatibility resolution
+# 4. Completed Foundation: M0–M12
 
-Important decision:
+Milestones M0 through M12 established the core Django/web platform.
 
-```text
-Django 5.2 LTS + MySQL 8
-```
+Completed areas include:
 
-## 6. Milestone 1 - Authentication & Organization
-
-Status:
-
-```text
-COMPLETE
-```
-
-Completed work included:
-
-- login
-- logout
-- role groups
-- permissions
-- departments
-- job roles
+- project foundation
+- authentication
+- organization structure
+- roles and permissions
 - employees
-- recursive reporting hierarchy
-- Manager scope
-- Employee self-scope
-- employee deactivation
-- privileged-account protections
-- direct URL authorization
-
-Milestone test baseline:
-
-```text
-84 tests
-```
-
-## 7. Milestone 2 - Training Content & Versioning
-
-Status:
-
-```text
-COMPLETE
-```
-
-Completed work included:
-
-- Training
-- TrainingVersion
-- Module
-- Lesson
-- TEXT lessons
-- VIDEO lessons
-- ordering
-- Draft / Published / Retired lifecycle
-- publishing rules
-- retirement rules
-- published-content immutability
-- final-assessment publishing requirement
-
-Milestone test baseline:
-
-```text
-104 tests
-```
-
-## 8. Milestone 3 - Training Assignments
-
-Status:
-
-```text
-COMPLETE
-```
-
-Completed work included:
-
-- manual assignments
-- role-based assignments
-- due dates
-- duplicate prevention
-- assignment source
-- historical snapshots
-- Manager scope
-- Employee visibility rules
-- safe permission migration
-
-Milestone test baseline:
-
-```text
-109 tests
-```
-
-## 9. Milestone 4 - Video Progress & Anti-Skip
-
-Status:
-
-```text
-COMPLETE
-```
-
-Completed work included:
-
-- resume endpoint
-- start endpoint
-- heartbeat endpoint
-- end endpoint
-- watched ranges
-- progress persistence
+- reporting hierarchy
+- training content
+- training versions
+- training assignments
+- video progress
+- playback sessions
 - anti-skip logic
-- idle-time protection
-- session validation
-- concurrency-safe locking
+- assessments
+- scoring
+- certificates
+- dashboards
+- reports
+- audit logging
+- backend hardening
+- security hardening
+- functional web workflows
+- backend regression coverage
 
-Important fixes included:
+These milestones are historical and should not be reopened unless a genuine regression or release-blocking defect is discovered.
 
-- reusable tolerance issue
-- idle-time counting
-- malformed session ID handling
-- locking order
+---
 
-Milestone test baseline:
-
-```text
-127 tests
-```
-
-## 10. Milestone 5 - Assessments & Scoring
+# 5. M13 - Mobile API Foundation & Versioning
 
 Status:
 
@@ -225,28 +122,44 @@ Status:
 COMPLETE
 ```
 
-Completed work included:
+## Completed
 
-- question bank
-- question revisions
-- answer options
-- lesson quizzes
-- final assessments
-- attempts
-- attempt limits
-- prerequisites
-- server-side scoring
-- pass/fail
-- assignment completion integration
-- concurrency-safe assessment behavior
+- `/api/v1/` API foundation
+- API versioning
+- JWT authentication
+- token refresh
+- logout
+- authenticated employee profile
+- dashboard API
+- assignment APIs
+- assignment detail APIs
+- lesson completion API
+- learning progress API
+- playback session creation
+- playback progress
+- playback session ending
+- protected session-based media access
+- employee ownership enforcement
+- permission enforcement
+- API error handling
+- API regression tests
 
-Milestone test baseline:
+## Validation
 
 ```text
-150 tests
+Django/MySQL suite: 348 passing
+Django check: passing
+Migration check: passing
+pip check: passing
+git diff --check: passing
+GitHub Actions CI: passing
 ```
 
-## 11. Milestone 6 - Certificates
+M13 is complete.
+
+---
+
+# 6. M14 - Flutter / Android Foundation
 
 Status:
 
@@ -254,26 +167,87 @@ Status:
 COMPLETE
 ```
 
-Completed work included:
+## Completed
 
-- automatic issuance
-- unique certificate numbers
-- issue timestamps
-- employee snapshots
-- training-version snapshots
-- Employee access
-- Administrator management
-- Training Coordinator management
-- revocation
-- idempotent issuance
+### Android Foundation
 
-Milestone test baseline:
+- Flutter Android project
+- Android application configuration
+- package identity cleanup
+- feature-based project structure
+- Android build configuration
+- environment configuration
+
+### Networking
+
+- Dio API client
+- API configuration
+- API error handling
+- authentication interceptor
+- bearer-token handling
+- secure token storage
+
+### Authentication
+
+- employee-code login
+- JWT access/refresh storage
+- session restoration
+- `/auth/me`
+- logout
+- Riverpod authentication state
+- GoRouter authentication guards
+- startup restoration
+- authentication error handling
+
+### Application Shell
+
+- application shell
+- dashboard route
+- learning route
+- profile route
+- login route
+- navigation
+- authentication loading state
+- authentication error state
+
+### Base UI
+
+- reusable cards
+- text fields
+- buttons
+- badges
+- loading states
+- error states
+- empty states
+- theme foundation
+- typography foundation
+- spacing foundation
+- color foundation
+
+### Dashboard/Profile
+
+- authenticated employee data
+- dashboard API integration
+- profile API integration
+- loading states
+- error states
+- refresh behavior
+
+## Validation
 
 ```text
-154 tests
+Flutter tests: passing
+Flutter analyze: passing
+Android debug APK: passing
+CodeRabbit review: clear
+GitHub Actions CI: passing
 ```
 
-## 12. Milestone 7 - Dashboards & Reports
+M14 is complete.
+
+---
+
+# 7. M15 - Employee App Core
 
 Status:
 
@@ -281,379 +255,326 @@ Status:
 COMPLETE
 ```
 
-Completed work included:
-
-- role-aware root dashboard
-- Administrator metrics
-- Training Coordinator metrics
-- Manager subtree metrics
-- Employee dashboard
-- assignment reports
-- overdue reporting
-- completion percentage
-- report filters
-- filter scope protection
-
-Milestone test baseline:
-
-```text
-159 tests
-```
-
-## 13. Milestone 8 - Audit Logging & Backend Hardening
-
-Status:
-
-```text
-COMPLETE
-```
-
-Completed work included:
-
-- central audit logging
-- transaction-aware audit creation
-- employee change events
-- organization events
-- training events
-- assignment events
-- assessment events
-- certificate events
-- completion events
-- read-only audit interface
-- Administrator audit access
-- Training Coordinator audit access
-- secret handling improvements
-- malformed-input hardening
-
-Milestone test baseline:
-
-```text
-164 tests
-```
-
-## 14. Milestone 9 - Backend Cleanup & Simplification
-
-Status:
-
-```text
-COMPLETE
-```
-
-Completed work included:
-
-- verified unused import removal
-- unnecessary helper removal
-- unused dependency cleanup
-- backend simplification
-- preservation of existing behavior
-
-Deep readability refactoring was deliberately deferred.
-
-Milestone test baseline:
-
-```text
-164 tests
-```
-
-## 15. Milestone 10 - Security Hardening & Vulnerability Testing
-
-Status:
-
-```text
-COMPLETE
-```
-
-Completed work included:
-
-- production secure-cookie defaults
-- DEBUG fail-closed behavior
-- playback metadata validation
-- playback idle-gap hardening
-- cross-session allowance hardening
-- authentication review
-- authorization review
-- IDOR review
-- assessment review
-- certificate review
-- reporting review
-- audit review
-- configuration hardening
-
-Milestone test baseline:
-
-```text
-173 tests
-```
-
-## 16. Interim Backend Bug Hunt
-
-Status:
-
-```text
-COMPLETE
-```
-
-This was completed after Milestone 10 and before Milestone 11.
-
-It is not a separate numbered milestone.
-
-Confirmed defects fixed included:
-
-- repeated employee deactivation overwriting historical information
-- duplicate deactivation success audit events
-- due-today assignment timestamp ordering
-- concurrent duplicate role assignment HTTP 500
-- oversized due-period overflow
-- Training save-time uniqueness race
-- Question creation race continuing into revision creation
-
-Each reproduced defect received regression coverage where practical.
-
-Updated backend baseline:
-
-```text
-189 tests passing on MySQL
-```
-
-Verification passed:
-
-```text
-python manage.py test
-python manage.py check
-python manage.py makemigrations --check --dry-run
-python -m pip check
-git diff --check
-```
-
-## 17. Milestone 11 - Documentation + Project Structure + CI
-
-Status:
-
-```text
-COMPLETE
-```
-
-### Documentation Tasks
-
-Required root files:
-
-```text
-README.md
-AGENTS.md
-CHANGELOG.md
-```
-
-Required documentation files:
-
-```text
-docs/
-├── PRD.md
-├── ARCHITECTURE.md
-├── DESIGN.md
-├── TASKS.md
-├── MEMORY.md
-├── SECURITY.md
-├── TESTING.md
-└── DEPLOYMENT.md
-```
-
-### Documentation Progress
-
-```text
-README.md                COMPLETE
-AGENTS.md                COMPLETE
-CHANGELOG.md             COMPLETE
-docs/PRD.md              COMPLETE
-docs/ARCHITECTURE.md     COMPLETE
-docs/SECURITY.md         COMPLETE
-docs/TESTING.md          COMPLETE
-docs/DEPLOYMENT.md       COMPLETE
-docs/DESIGN.md           COMPLETE
-docs/TASKS.md            COMPLETE
-docs/MEMORY.md           COMPLETE
-```
-
-### CI Tasks
+## Step 1 - Assignment List
 
 Completed:
 
+- assignment model
+- learning repository
+- assignment list provider
+- real assignment API integration
+- assignment status
+- loading state
+- empty state
+- error state
+- retry
+- pull-to-refresh
+
+## Step 2 - Assignment Detail
+
+Completed:
+
+- assignment detail
+- assignment metadata
+- training entry
+- route integration
+- malformed-ID handling
+- API error handling
+
+## Step 3 - Module + Lesson Navigation
+
+Completed:
+
+- module navigation
+- lesson navigation
+- curriculum traversal
+- route integration
+- training entry flow
+
+## Step 4 - TEXT Lesson Completion
+
+Completed:
+
+- TEXT lesson screen
+- completion API integration
+- completion state
+- navigation
+- friendly unsupported handling for non-TEXT lessons
+
+## Step 5 - Learning Progress
+
+Completed:
+
+- flattened lesson sequence
+- previous lesson navigation
+- next lesson navigation
+- completion persistence
+- navigation locking during completion
+- stale async-result protection
+- route identity reset
+- assignment-detail invalidation
+- friendly error handling
+
+## Step 6 - Integration QA
+
+Completed end-to-end flow:
+
 ```text
-[x] Create .github/workflows/ci.yml
-[x] Configure Python
-[x] Configure MySQL 8 service
-[x] Install dependencies
-[x] Run Django system check
-[x] Run migration consistency check
-[x] Run full MySQL test suite
-[x] Run pip check
-[x] Push workflow
-[x] Confirm GitHub Actions passes
+Assignment
+→ Assignment Detail
+→ Module
+→ Lesson
+→ TEXT Lesson
+→ Completion
+→ Progress
+→ Previous/Next
+→ Completed State
 ```
 
-GitHub Actions CI runs against MySQL.
-
-The initial CI run exposed a Linux filename case-sensitivity issue because the dependency file was named:
+## Final M15 Validation
 
 ```text
-Requirements.txt
+Flutter tests: 81 passing
+Flutter analyze: passing
+Android debug APK: successful
+CodeRabbit review: clear
+GitHub Actions CI: passing
 ```
 
-It was renamed to the conventional:
+M15 is complete.
 
-```text
-requirements.txt
-```
+---
 
-After the rename, GitHub Actions completed successfully.
-
-### Milestone 11 Verification
-
-```text
-[x] Required documentation exists
-[x] Documentation reflects the current project baseline
-[x] Future functionality is separated from implemented functionality
-[x] GitHub Actions workflow exists
-[x] CI uses MySQL
-[x] CI passes
-[x] Full local test suite passes
-[x] Django check passes
-[x] Migration check passes
-[x] pip check passes
-[x] git diff --check passes
-[x] Changes reviewed
-[x] Stable changes committed and pushed
-```
-
-Milestone 11 completed successfully.
-
-Backend baseline preserved:
-
-```text
-189 full tests passing on MySQL
-```
-
-## 18. Milestone 12 - Functional Frontend
+# 8. M16 - Learning + Secure Video
 
 Status:
 
 ```text
-IN PROGRESS
+NEXT
 ```
 
 Primary goal:
 
 ```text
-Make the complete application usable through the browser.
+Build the complete secure employee learning experience for VIDEO lessons.
 ```
 
-Planned work includes:
+M16 must build on the existing M13 playback architecture rather than creating a parallel implementation.
 
-- application shell
+## 8.1 Pre-Implementation Verification
+
+Before implementation:
+
+- inspect existing M13 playback API contracts
+- inspect session creation
+- inspect protected media endpoint
+- inspect heartbeat/progress behavior
+- inspect session ending
+- verify training-version pinning
+- verify published-media immutability
+- verify existing authorization rules
+- verify existing anti-skip behavior
+- verify Flutter video architecture
+- verify Android package identity
+- verify staging/test media requirements
+
+Do not redesign already-correct backend behavior without a concrete defect.
+
+## 8.2 Video Player Foundation
+
+Planned:
+
+- Flutter `video_player`
+- authenticated protected media integration
+- playback state
+- loading state
+- buffering state
+- error state
+- completion state
+- playback controls appropriate for V1
+- clean disposal of media resources
+
+Prefer the existing playback stack unless actual requirements require a different library.
+
+## 8.3 Playback Sessions
+
+Integrate:
+
+- session creation
+- protected media access
+- heartbeat
+- progress synchronization
+- session end
+- server-authoritative completion
+
+The mobile application must not independently decide authoritative completion.
+
+## 8.4 Resume Behavior
+
+Implement:
+
+- resume from server-authoritative progress
+- local UI synchronization
+- recovery after navigation
+- recovery after app lifecycle changes
+- recovery after temporary network failure
+
+## 8.5 Anti-Skip / Anti-Seek
+
+The Flutter client must integrate with the existing backend rules.
+
+Do not recreate backend anti-skip rules locally.
+
+Test:
+
+- forward seeking
+- backward seeking
+- rapid seeking
+- repeated seeking
+- buffering
+- pause/resume
+- app backgrounding
+- network interruption
+- session expiration
+
+## 8.6 Network and Lifecycle Recovery
+
+Handle:
+
+- temporary network loss
+- API timeout
+- heartbeat failure
+- app backgrounding
+- app foregrounding
+- route changes
+- player disposal
+- session expiration
+- stale playback state
+
+Failure behavior must be clear to the employee.
+
+## 8.7 Screen Capture Protection
+
+Where appropriate, Android `FLAG_SECURE` should be used for protected learning screens.
+
+Do not claim that this makes media impossible to capture.
+
+The goal is to apply the strongest practical Android protection available for V1.
+
+## 8.8 Media Rules
+
+Published media remains immutable.
+
+V1 media remains streaming-oriented.
+
+Do not add unrestricted media downloads.
+
+Reuse the existing protected session-based media endpoint.
+
+Do not create a second protected-media API merely for Flutter.
+
+## 8.9 M16 Testing
+
+Risk-based testing should include:
+
+### Low risk
+
+- normal playback
+- pause/resume
 - navigation
-- role-aware menus
-- Administrator pages
-- Training Coordinator pages
-- Manager pages
-- Employee pages
-- organization forms
-- training forms
-- training version pages
-- module pages
-- lesson pages
-- assignment pages
-- video experience
-- assessment experience
-- certificate pages
-- report pages
-- audit pages
-- validation feedback
-- success/error messages
+- completion
+- normal progress synchronization
 
-Architecture remains:
+### Medium risk
+
+- network interruption
+- background/foreground
+- buffering
+- repeated pause/resume
+- session recovery
+- player disposal/recreation
+
+### High risk
+
+- rapid seeking
+- anti-skip bypass attempts
+- stale session use
+- unauthorized media access
+- cross-assignment media access
+- heartbeat manipulation
+- malformed identifiers
+- expired sessions
+- concurrent session behavior
+
+## M16 Exit Criteria
 
 ```text
-Django Templates + HTML + CSS + basic JavaScript
+[ ] VIDEO lesson opens successfully
+[ ] Protected media requires valid authorization
+[ ] Playback session is created correctly
+[ ] Media is streamed through the existing protected route
+[ ] Heartbeats synchronize correctly
+[ ] Progress is persisted correctly
+[ ] Resume works
+[ ] Session end works
+[ ] Completion remains server-authoritative
+[ ] Anti-seek/anti-skip behavior is preserved
+[ ] Network interruption is handled
+[ ] App lifecycle transitions are handled
+[ ] Player resources are disposed correctly
+[ ] Protected learning screens use appropriate Android security controls
+[ ] Unauthorized media access is rejected
+[ ] Cross-assignment media access is rejected
+[ ] Focused tests pass
+[ ] Full Flutter suite passes
+[ ] Full Django/MySQL suite passes
+[ ] Flutter analyze passes
+[ ] Android debug build passes
+[ ] CI passes
+[ ] Code review is clear
 ```
 
-Do not introduce React without an explicit architecture decision.
+---
 
-### Milestone 12 Development Principles
+# 9. M17 - Assessment + Certificates
 
-Frontend development must preserve the existing backend architecture.
+Status:
 
-The frontend must not become authoritative for:
+```text
+PLANNED
+```
 
-- permissions
-- employee scope
-- Manager scope
-- assignment ownership
-- progress
-- assessment scores
+## Tasks
+
+- assessment screen
+- question rendering
+- answer selection
+- submission
+- attempt handling
+- retry handling
+- server-side scoring
+- pass/fail result
+- final assessment integration
+- assignment completion state
+- certificate access
+- certificate display
+- certificate version reference
+
+## Rules
+
+The mobile application must not reproduce authoritative scoring rules.
+
+The backend remains authoritative for:
+
+- attempt limits
+- scoring
+- pass/fail
 - completion
 - certificate eligibility
 
-The backend remains authoritative.
+---
 
-Frontend controls are primarily responsible for:
-
-- usability
-- navigation
-- presentation
-- feedback
-- workflow clarity
-
-### Milestone 12 Initial Priorities
-
-Initial implementation order should favor:
-
-```text
-Application shell
--> navigation
--> role-aware menus
--> dashboards
--> organization pages
--> training management
--> assignments
--> employee learning flow
--> video experience
--> assessment experience
--> certificates
--> reports
--> audit interface
-```
-
-The exact order may be adjusted based on dependencies discovered during implementation.
-
-### Milestone 12 Exit Criteria
-
-Milestone 12 should not close until:
-
-```text
-[ ] Core application shell exists
-[ ] Navigation works
-[ ] Role-aware navigation works
-[ ] Administrator workflows are usable
-[ ] Training Coordinator workflows are usable
-[ ] Manager workflows are usable
-[ ] Employee workflows are usable
-[ ] Organization management is usable
-[ ] Training management is usable
-[ ] Assignment management is usable
-[ ] Video training flow is usable
-[ ] Assessment flow is usable
-[ ] Certificate pages are usable
-[ ] Reports are usable
-[ ] Audit interface is usable
-[ ] Form errors are visible and understandable
-[ ] Success/error feedback is present
-[ ] Existing backend authorization remains intact
-[ ] Full MySQL test suite passes
-[ ] CI passes
-```
-
-Deep responsive, accessibility, and premium visual work belongs to later milestones.
-
-## 19. Milestone 13 - UX + Responsive + Accessibility
+# 10. M18 - Notifications + Resilience
 
 Status:
 
@@ -661,177 +582,96 @@ Status:
 PLANNED
 ```
 
-Planned work includes:
+## Tasks
 
-- responsive layouts
-- navigation improvements
-- mobile behavior
-- tablet behavior
-- form usability
-- error-state improvements
-- empty states
-- loading states
-- training progress UI
-- assessment usability
-- video usability
-- keyboard navigation
-- visible focus states
-- contrast review
-- semantic HTML
-- accessibility improvements
-
-Playwright may begin being used heavily here.
-
-Primary question for this milestone:
-
-```text
-Is the application easy to use?
-```
-
-## 20. Milestone 14 - Full E2E + Integration Testing
-
-Status:
-
-```text
-PLANNED
-```
-
-Primary goal:
-
-```text
-Verify complete workflows through the browser.
-```
-
-Representative administrative flow:
-
-```text
-Administrator
--> Create Training
--> Create Version
--> Add Module
--> Add Lesson
--> Add Assessment
--> Publish
--> Assign Employee
-```
-
-Representative Employee flow:
-
-```text
-Employee
--> Login
--> Open Assignment
--> Complete Lessons
--> Watch Video
--> Complete Quiz
--> Complete Final Assessment
--> Complete Training
--> Receive Certificate
-```
-
-Planned work includes:
-
-- Playwright E2E tests
-- role workflows
-- direct URL tests
-- negative authorization paths
-- malformed browser flows
-- browser integration bugs
-- frontend/backend integration fixes
-
-Important roles should include at minimum:
-
-```text
-Administrator
-Training Coordinator
-Manager
-Employee
-```
-
-Trainer and Supervisor flows should be tested according to their actual implemented V1 permissions.
-
-## 21. Milestone 15 - Production + Deployment Hardening
-
-Status:
-
-```text
-PLANNED
-```
-
-Planned work includes:
-
-- production environment selection
-- production environment variables
-- DEBUG=False verification
-- secret management
-- allowed hosts
-- HTTPS
-- secure cookies
-- HSTS
-- reverse proxy
-- application server
-- static files
-- protected media
-- database backups
-- restore test
+- notification foundation
+- authentication recovery
+- token/session resilience
+- network recovery
+- retry behavior
+- background/foreground reliability
+- API error recovery
 - operational logging
-- smoke testing
+- health checks
+- user-facing error handling
+
+M18 should improve reliability without introducing unnecessary architecture changes.
+
+---
+
+# 11. M19 - Android Release Candidate
+
+Status:
+
+```text
+PLANNED
+```
+
+## Tasks
+
+- feature freeze
+- Android regression
+- backend regression
+- API regression
+- playback regression
+- assessment regression
+- certificate regression
+- security review
+- permission/IDOR review
+- device testing
+- performance review
+- lifecycle review
+- network testing
+- pilot testing
+- release candidate build
+
+## Release Candidate Gate
+
+```text
+[ ] Required features complete
+[ ] Automated tests pass
+[ ] Runtime QA passes
+[ ] Security review passes
+[ ] No critical/blocking defects remain
+[ ] Pilot validation complete
+[ ] Documentation current
+[ ] CI green
+[ ] Release build verified
+```
+
+---
+
+# 12. M20 - Production + Deployment Hardening
+
+Status:
+
+```text
+PLANNED
+```
+
+## Tasks
+
+- production environment configuration
+- secrets management
+- database configuration
+- production media/storage configuration
+- backup verification
+- restore verification
+- deployment procedure
 - rollback procedure
+- health checks
+- monitoring
+- logging
+- production smoke tests
+- Android release configuration
+- build/version management
+- CI/CD reliability
 
-Production-specific values should not be guessed before the deployment environment is selected.
+Production credentials must never be committed to the repository.
 
-## 22. Milestone 16 - Final Bug Hunt + Security + Repository Review
+---
 
-Status:
-
-```text
-PLANNED
-```
-
-This is the final broad technical review.
-
-Planned work includes:
-
-- whole-application bug hunt
-- backend review
-- frontend review
-- E2E failure review
-- authorization review
-- IDOR review
-- CSRF review
-- session review
-- cookie review
-- playback review
-- assessment review
-- certificate review
-- report review
-- audit review
-- dependency vulnerability scan
-- secret scan
-- migration review
-- repository cleanup review
-- TODO review
-- debug artifact review
-
-Potential tools include:
-
-- `pip-audit`
-- Strix or another authorized security testing tool
-- manual targeted review
-- Playwright negative/security flows
-
-Automated findings must be reviewed manually.
-
-Do not blindly apply generated security patches.
-
-The release target remains:
-
-```text
-No known exploitable critical/high-severity security issue.
-No known important reproducible release-blocking bug left unresolved.
-```
-
-## 23. Milestone 17 - Final Readability + Refactor Pass
+# 13. M21 - Final Bug Hunt + Security + Repository Review
 
 Status:
 
@@ -839,90 +679,52 @@ Status:
 PLANNED
 ```
 
-Primary goal:
+## Functional Review
 
-```text
-Improve code readability without changing behavior.
-```
-
-Work should be done one important file at a time.
-
-Focus areas:
-
-- compressed logic
-- unclear naming
-- overly dense forms
-- overly dense views
-- repeated local patterns
-- unnecessary complexity
-- proven dead code
-
-Code should favor readable formatting such as:
-
-```python
-actor = forms.ModelChoiceField(
-    queryset=get_user_model().objects.none(),
-    required=False,
-    label="Performed By",
-)
-```
-
-rather than compressed equivalents.
-
-After each meaningful refactor:
-
-- run focused tests
-- preserve behavior
-- run the full suite where appropriate
-
-No broad redesign should occur merely because code can be written differently.
-
-## 24. Milestone 18 - Premium Visual Polish
-
-Status:
-
-```text
-PLANNED
-```
-
-Primary goal:
-
-```text
-Make the application feel like a finished Garden's Need product.
-```
-
-Visual direction:
-
-- deep forest green
-- ivory / white
-- charcoal
-- restrained brass accents
-
-Planned work includes:
-
-- typography
-- exact colors
-- navigation styling
-- cards
-- tables
-- forms
+- authentication
+- authorization
+- assignments
+- training versions
+- learning
+- video
+- assessments
+- certificates
 - dashboards
-- badges
-- progress indicators
-- spacing
-- responsive refinement
-- polished empty states
-- consistent interaction states
+- reports
+- audit logging
 
-No backend business-logic changes should be introduced during this pass unless a genuine bug is discovered.
+## Security Review
 
-Primary question:
+- authentication
+- token handling
+- permissions
+- IDOR
+- protected media
+- session authorization
+- input validation
+- upload validation
+- audit logging
+- sensitive information exposure
+- Android security controls
 
-```text
-Does the application feel like a finished Garden's Need product?
-```
+## Repository Review
 
-## 25. Milestone 19 - Final Acceptance + V1 Release
+- dead code
+- unused dependencies
+- temporary files
+- debug artifacts
+- secrets
+- documentation contradictions
+- CI configuration
+- migration state
+- test reliability
+- repository hygiene
+
+Only genuine defects or justified maintainability problems should be fixed.
+
+---
+
+# 14. M22 - Readability + Refactor + Garden's Need Visual Polish
 
 Status:
 
@@ -930,299 +732,365 @@ Status:
 PLANNED
 ```
 
-Final tasks include:
+## Maintainability
 
-- final automated test run
-- final CI verification
-- final Playwright run
-- final browser smoke test
-- final responsive review
-- final accessibility review
-- final security review confirmation
-- production configuration confirmation
-- documentation review
-- README setup test
-- Git status review
-- release commit
-- version tag
-- deployment
-- post-deployment smoke test
-- V1 sign-off
+- improve confusing code
+- remove unnecessary duplication
+- improve naming
+- simplify overly complex logic
+- remove obsolete code
+- improve readability
+- avoid unnecessary abstractions
 
-## 26. V1 Release Gates
+Refactoring must preserve behavior.
 
-V1 must not be considered ready until all major release gates pass.
+## Visual Polish
 
-### Functional Gate
+This is the deliberate final Garden's Need UI/UX design phase.
+
+Potential work:
+
+- final typography
+- final colors
+- spacing
+- cards
+- navigation
+- dashboards
+- progress indicators
+- animations
+- transitions
+- micro-interactions
+- loading states
+- empty states
+- error states
+- accessibility
+- responsive refinement
+- Garden's Need visual identity
+
+The final visual direction should be reviewed before broad implementation.
+
+Do not let coding agents independently lock the final visual identity before this milestone.
+
+---
+
+# 15. M23 - Final Acceptance + Android V1 Release
+
+Status:
 
 ```text
-[ ] Required workflows work end-to-end
+PLANNED
 ```
 
-### Automated Testing Gate
+## Final Tasks
+
+- final acceptance testing
+- final backend regression
+- final API regression
+- final Android regression
+- final playback validation
+- final assessment validation
+- final certificate validation
+- final security review
+- final device testing
+- final performance review
+- final UX review
+- production verification
+- release build verification
+- release signing verification
+- production deployment
+- post-release smoke test
+- documentation checkpoint
+- final sign-off
+
+## V1 Release Gate
 
 ```text
-[ ] Full automated suite passes
+[ ] All required milestones complete
+[ ] Automated tests pass
 [ ] CI passes
-```
-
-### E2E Gate
-
-```text
-[ ] Important Playwright flows pass
-```
-
-### Security Gate
-
-```text
-[ ] Final security review complete
-[ ] No known exploitable critical/high-severity issue remains
-```
-
-### Bug Quality Gate
-
-```text
-[ ] No known important reproducible release-blocking bug remains unresolved
-```
-
-### Deployment Gate
-
-```text
+[ ] Security review passes
+[ ] Runtime/device QA passes
+[ ] No critical/blocking defects remain
 [ ] Production configuration verified
-[ ] HTTPS verified
-[ ] Secure cookies verified
-[ ] Backup strategy verified
-[ ] Restore procedure tested
-[ ] Smoke test passes
+[ ] Backup/rollback verified
+[ ] Release build verified
+[ ] Documentation current
+[ ] Post-release smoke test passes
 ```
 
-### Documentation Gate
+---
+
+# 16. Versioning and Training Rules
+
+The following rules are locked for V1.
+
+## Lifecycle
 
 ```text
-[ ] README accurate
-[ ] Architecture accurate
-[ ] Security documentation accurate
-[ ] Testing documentation accurate
-[ ] Deployment documentation accurate
+Draft → Published → Retired
 ```
 
-### Visual and Accessibility Gate
+## Published Versions
+
+Published versions are immutable.
+
+Anything that requires changing published training content requires a new version.
+
+## Assignments
+
+Assignments remain pinned to their assigned version.
+
+New assignments use the latest applicable published version.
+
+The application must not automatically migrate employees to newer versions.
+
+Retired versions cannot receive new assignments, but existing assignments may continue where permitted by the backend.
+
+## Assessments
+
+Assessment questions and answer keys are frozen with the applicable training version.
+
+## Certificates
+
+Certificates reference the training version earned by the employee.
+
+Certificate revocation must not modify the historical training version.
+
+## Media
+
+Published media is immutable.
+
+Replacing published media requires a new version.
+
+---
+
+# 17. Mobile Architecture Rules
+
+The Flutter application is a client of the backend, not a second business-logic layer.
+
+Backend authority includes:
 
 ```text
-[ ] Final premium visual pass complete
-[ ] Responsive review complete
-[ ] Accessibility review complete
+Authorization
+Assignment ownership
+Training version
+Progress
+Playback sessions
+Anti-skip rules
+Completion
+Assessment scoring
+Certificate eligibility
 ```
 
-## 27. Current Blockers
-
-Current known blocker:
+Flutter is responsible primarily for:
 
 ```text
-None
+Presentation
+Navigation
+Local UI state
+User interaction
+API orchestration
+Loading/error feedback
+Device-specific behavior
 ```
 
-Milestone 12 can proceed normally.
+Do not duplicate authoritative business rules in Flutter.
 
-If a blocker appears, record:
+---
 
-- issue
-- affected milestone
-- impact
-- temporary workaround
-- required decision
+# 18. Offline Rules
 
-## 28. Deferred Work
+V1 does not provide authoritative offline course completion.
 
-The following work is intentionally deferred and should not interrupt current V1 development unless priorities change:
+Offline behavior may include:
 
-- skill matrix
-- practical assessment
-- supervisor verification
-- machine certification
-- QR verification
-- notifications
-- multilingual support
-- AI knowledge assistant
-- retrieval-augmented knowledge
-- native mobile application
-- native Android screen-capture protection
-- advanced workforce analytics
+- clear offline state
+- retry
+- network recovery
+- session recovery
+- progress recovery where technically appropriate
 
-These are future-scope features and must not be treated as current V1 functionality.
+The server remains authoritative for completion.
 
-## 29. Tooling Plan
+---
 
-Current development tools include:
+# 19. Media Architecture Rules
 
-- VS Code
-- Git
-- GitHub
-- GitHub Actions
-- GitHub Copilot
-- Codex
-- Context7
-- Playwright
+The existing M13 session-based protected media architecture must be reused.
 
-### Context7
+Do not introduce a parallel media authorization system.
 
-Use when current framework or library documentation is required.
+Do not introduce a duplicate protected media route without a concrete architectural requirement.
 
-Useful for:
+Media storage must remain behind an abstraction so future object-storage migration does not require rewriting authorization logic.
 
-- Django documentation
-- GitHub Actions documentation
-- library/API behavior that may have changed
+---
 
-Do not use it to replace inspection of the actual project code.
-
-### Playwright
-
-Primary use:
-
-```text
-Milestones 13-14
-```
-
-Expected uses include:
-
-- browser workflows
-- responsive behavior
-- role isolation
-- direct URL testing
-- negative flows
-- E2E testing
-
-### Strix
-
-Potential use:
-
-```text
-Milestone 16
-```
-
-Use only for authorized final security testing against:
-
-- local environments
-- staging
-- systems owned or explicitly authorized by Garden's Need
-
-Automated findings require review.
-
-### GitBook
-
-Optional.
-
-Repository Markdown remains the documentation source of truth.
-
-GitBook may later provide a polished documentation surface.
-
-### Linear
-
-Optional.
-
-Consider only if the feature/bug backlog becomes difficult to manage through the current roadmap and repository documentation.
-
-### OmniRoute
-
-Optional backup tooling.
-
-OmniRoute should not block application development.
-
-Use it only when it provides useful additional model capacity without consuming excessive setup time.
-
-## 30. Development Workflow
+# 20. Development Workflow
 
 Preferred workflow:
 
 ```text
 Inspect
--> Plan
--> Implement
--> Focused Tests
--> Broader Tests
--> Full MySQL Suite
--> Django Check
--> Migration Check
--> pip Check
--> Diff Check
--> Live Test if useful
--> Review
--> Commit
--> Push
+→ Plan
+→ Implement
+→ Focused Tests
+→ Broader Tests
+→ Full MySQL Suite
+→ Flutter Tests
+→ Analyze
+→ Build
+→ Live/Runtime QA
+→ Code Review
+→ Stage
+→ Inspect Staged Diff
+→ Commit
+→ Push
+→ CI Verification
 ```
 
-Do not commit unstable work.
+Agents must not commit or push unless explicitly requested.
 
-Take a stable checkpoint before starting risky work.
+---
+
+# 21. Defect Workflow
 
 For confirmed defects:
 
 ```text
 Reproduce
--> Regression Test
--> Narrow Fix
--> Focused Verification
--> Full Verification
+→ Add/confirm regression coverage
+→ Narrow Fix
+→ Focused Verification
+→ Broader Verification
+→ Review
 ```
 
-## 31. Current Baseline to Protect
+Avoid unrelated refactors while fixing a defect.
 
-Before starting a major new milestone, preserve this current backend baseline:
+---
+
+# 22. Testing Strategy
+
+Testing should be risk-based.
+
+## Low Risk
+
+Use focused tests and normal regression.
+
+Examples:
+
+- simple UI changes
+- copy changes
+- isolated presentation changes
+
+## Medium Risk
+
+Use focused tests plus runtime validation.
+
+Examples:
+
+- navigation
+- authentication flows
+- API integration
+- learning state
+- lifecycle behavior
+
+## High Risk
+
+Use adversarial/security/regression testing.
+
+Examples:
+
+- authorization
+- IDOR
+- protected media
+- playback sessions
+- anti-skip
+- authentication
+- assessment scoring
+- certificate eligibility
+- concurrency
+
+Avoid adding tests merely to increase test count.
+
+Tests should protect meaningful behavior.
+
+---
+
+# 23. Current Validation Baseline
+
+The current verified baseline is:
 
 ```text
-189 full tests passing on MySQL
+Django/MySQL tests: 348 passing
+Flutter tests: 81 passing
+JavaScript playback tests: 3 passing
 ```
 
-Additional current verification:
+Additional checks:
 
 ```text
 Django check: passing
-Migration check: passing
+Migration consistency: passing
 pip check: passing
 git diff --check: passing
-GitHub Actions MySQL CI: passing
+Flutter analyze: passing
+Android debug APK: passing
+GitHub Actions CI: passing
 ```
 
-If future work adds tests, the latest verified passing count becomes the new baseline.
+If new tests are added, the verified baseline should be updated.
 
-A decrease in test count should be investigated unless tests were deliberately and correctly removed.
+If tests are removed, the reason must be understood and documented where appropriate.
 
-Frontend work must not silently weaken the backend test baseline.
+Historical test counts should not be rewritten simply because the current test count is higher.
 
-## 32. Current Next Action
+---
 
-Current milestone:
+# 24. Documentation Rules
+
+`docs/ROADMAP.md` is the canonical milestone roadmap.
+
+`docs/TASKS.md` tracks practical milestone tasks and exit criteria.
+
+`CHANGELOG.md` records historical changes.
+
+`AGENTS.md` contains repository/agent operating instructions.
+
+Do not duplicate milestone definitions unnecessarily across documents.
+
+When milestone state changes, update the appropriate documentation.
+
+Do not claim work is complete until its exit criteria have been satisfied.
+
+---
+
+# 25. Current Next Action
+
+The next development milestone is:
 
 ```text
-Milestone 12 - Functional Frontend
+M16 - Learning + Secure Video
 ```
 
-Immediate goal:
+Immediate priorities:
 
 ```text
-Make the complete application usable through the browser.
+1. Verify existing M13 playback contracts.
+2. Verify protected session-based media access.
+3. Verify training-version and media immutability rules.
+4. Build Flutter VIDEO lesson playback.
+5. Integrate playback sessions.
+6. Integrate progress and heartbeats.
+7. Integrate resume behavior.
+8. Handle network and lifecycle recovery.
+9. Preserve backend anti-seek/anti-skip authority.
+10. Apply appropriate Android screen-capture protection.
+11. Run focused playback QA.
+12. Run full regression.
 ```
 
-Initial priorities:
+No M17, M18, M19, M20, M21, M22, or M23 implementation should begin merely because those milestones are documented.
 
-```text
-Build the application shell and navigation
-Build role-aware menus
-Connect existing backend workflows to usable pages
-Build Administrator workflows
-Build Training Coordinator workflows
-Build Manager workflows
-Build Employee workflows
-Preserve backend authorization and business rules
-Preserve the 189-test MySQL baseline
-Keep GitHub Actions CI green
-```
-
-After Milestone 12:
-
-```text
-Milestone 13 - UX + Responsive + Accessibility
-```
-
-The immediate development focus is now the functional frontend.
+The project should progress sequentially through the roadmap, with each milestone passing its exit criteria before the next milestone becomes active.

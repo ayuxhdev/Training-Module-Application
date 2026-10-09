@@ -2,131 +2,172 @@
 
 ## 1. Purpose
 
-This document defines the visual and interaction direction for the Garden's Need Training Module Application.
+This document defines the visual, interaction, and usability direction for the Garden's Need Training Module Application.
 
-The design goal is to create a professional internal business application that feels:
+The design goal is a professional internal business application that feels:
 
 - clear
 - premium
 - calm
 - trustworthy
 - practical
+- efficient
 - easy to use
 
-The interface should support employees, managers, coordinators, trainers, supervisors, and administrators without unnecessary complexity.
+The application serves Employees, Managers, Training Coordinators, Trainers, Supervisors, and Administrators.
 
-Functionality and usability take priority over decoration.
+Functionality, usability, accessibility, and security take priority over decoration.
 
-## 2. Design Principles
+The final Garden's Need visual polish is intentionally scheduled for **M22**. Earlier milestones should establish a solid functional and usable interface without prematurely locking every visual detail.
 
-The application should follow these principles:
+---
 
-### Clarity First
+# 2. Design Principles
 
-Users should be able to understand:
+## Clarity First
+
+Users should quickly understand:
 
 - where they are
 - what they need to do
 - what is complete
 - what remains
-- what actions are available
+- what is due
+- what action is available next
 
-### Consistency
+## Consistency
 
-Similar actions should look and behave consistently across the application.
+Similar actions should look and behave consistently.
 
 Examples:
 
-- primary actions use the same visual treatment
-- destructive actions use the same warning treatment
+- primary actions use consistent treatment
+- destructive actions use consistent warning treatment
 - forms use consistent spacing
 - cards use consistent structure
 - status labels use consistent styles
+- navigation behaves consistently
 
-### Low Cognitive Load
+## Low Cognitive Load
 
 The application should not overwhelm users with unnecessary information.
 
-Pages should prioritize the most important task first.
+Each page should prioritize the user's primary task.
 
-### Business-Oriented
+## Business-Oriented
 
-The visual system should feel appropriate for internal company software.
+The interface should feel appropriate for internal enterprise software.
 
-Avoid overly playful consumer-app styling.
+Avoid turning the product into a consumer social app or a marketing website.
 
-### Responsive
+## Responsive
 
-Important workflows must remain usable on:
+Important workflows should remain usable across:
 
 - desktop
 - laptop
 - tablet
-- mobile
+- Android mobile
 
-### Accessible
+## Accessible
 
-Design decisions should support:
+Design should support:
 
 - keyboard navigation
 - readable contrast
-- clear focus states
-- form labels
-- useful error messages
-- understandable status indicators
+- visible focus states
+- semantic structure
+- clear labels
+- understandable errors
+- meaningful status indicators
 
-## 3. Brand Direction
+---
 
-The intended Garden's Need visual identity uses:
+# 3. Current Design State
+
+The project currently has two active product surfaces:
+
+```text
+Django Web Application
+        +
+Flutter Android Employee Application
+```
+
+M14 established the Android application's foundation.
+
+M15 established the employee learning flow.
+
+The current mobile UI is therefore functional foundation work, not the final visual design.
+
+The final visual system should not be considered locked until the dedicated polish phase.
+
+---
+
+# 4. Garden's Need Visual Direction
+
+The intended visual direction is:
+
+- premium
+- restrained
+- natural
+- professional
+- calm
+
+A possible brand direction includes:
 
 - deep forest green
-- ivory / white
+- ivory / soft white
 - charcoal
-- restrained brass accents
+- restrained brass or muted gold
 
-The visual tone should feel premium but controlled.
+However, these are **design directions rather than immutable production values**.
+
+Exact colors, typography, spacing, shadows, radii, and animation should be validated visually during M22.
 
 Avoid:
 
 - excessive gradients
-- excessive shadows
 - neon colors
+- excessive shadows
 - overly rounded consumer-app styling
-- decorative animations that distract from work
-- visual clutter
+- excessive glassmorphism
+- decorative clutter
+- unnecessary animation
 
-## 4. Suggested Color System
+---
 
-Final production color values should be validated visually during the premium polish milestone.
+# 5. Color System
 
-A practical starting direction:
+The final production palette will be selected during M22.
 
-### Primary
+A useful starting direction is:
+
+## Primary
 
 Deep forest green.
 
-Used for:
+Potential uses:
 
-- primary navigation
-- primary buttons
+- primary actions
+- navigation
 - active states
 - important brand elements
 
-### Background
+## Background
 
 Ivory or soft off-white.
 
-Used for:
+Potential uses:
 
 - application background
-- large page surfaces
-- calm separation from white cards
+- page surfaces
+- large content areas
 
-### Surface
+## Surface
 
 White.
 
-Used for:
+Potential uses:
 
 - cards
 - forms
@@ -134,89 +175,91 @@ Used for:
 - dialogs
 - content containers
 
-### Text
+## Text
 
 Charcoal.
 
-Used for:
+Potential uses:
 
-- primary text
 - headings
+- primary body text
 - table content
 
-### Accent
+## Accent
 
 Restrained brass or muted gold.
 
-Used sparingly for:
+Potential uses:
 
 - premium highlights
-- badges
-- decorative separators
-- selected brand details
+- subtle decorative details
+- selected brand elements
 
-Accent color should not become the main action color.
+Accent colors should not become the dominant action color.
 
-## 5. Semantic Colors
+---
 
-Semantic colors should communicate system meaning consistently.
+# 6. Semantic Colors
 
-### Success
+Semantic colors must communicate meaning consistently.
 
-Used for:
+## Success
+
+Examples:
 
 - completed training
-- passing assessment
-- successful actions
+- passed assessment
+- successful action
 - active certificate
 
-### Warning
+## Warning
 
-Used for:
+Examples:
 
 - due soon
 - incomplete requirements
 - caution states
 
-### Danger
+## Danger
 
-Used for:
+Examples:
 
 - failed assessment
 - overdue training
 - destructive actions
-- revocation
+- certificate revocation
 - serious validation problems
 
-### Neutral
+## Neutral
 
-Used for:
+Examples:
 
 - draft
 - inactive
 - secondary information
 - optional metadata
 
-Do not communicate important status using color alone.
+Important status must never be communicated through color alone.
 
 Use text, icons, or labels as well.
 
-## 6. Typography
+---
+
+# 7. Typography
 
 Typography should prioritize readability.
 
-Use a professional sans-serif typeface.
+The final font choice should be:
 
-The final font should be:
+- professional
+- readable
+- broadly supported
+- suitable for dashboards
+- clear at small sizes
 
-- easy to read
-- widely supported
-- appropriate for dashboards
-- clean at small sizes
+Avoid unnecessary font-family combinations.
 
-Avoid using multiple competing font families.
-
-A practical hierarchy:
+A basic hierarchy is:
 
 ```text
 Page Title
@@ -227,31 +270,61 @@ Secondary Text
 Caption / Metadata
 ```
 
-Font weight should be used sparingly.
+Font weight should create hierarchy without making every heading heavy.
 
-Avoid making every heading bold.
+The final typography system will be validated during M22.
 
-## 7. Page Layout
+---
 
-The application should use a consistent shell.
+# 8. Web Application Layout
 
-Suggested structure:
+The Django application should use a consistent shell.
+
+A possible structure is:
 
 ```text
-Top Bar / Header
-|
-+-- Sidebar or Main Navigation
-|
-+-- Main Content Area
-    |
-    +-- Page Header
-    |
-    +-- Primary Content
+Header
+│
+├── Navigation
+│
+└── Main Content
+    │
+    ├── Page Header
+    │
+    └── Primary Content
 ```
 
-The exact navigation pattern should be finalized during frontend development.
+The exact navigation pattern should follow the existing Django implementation and be refined during later UX work.
 
-## 8. Desktop Layout
+---
+
+# 9. Android Application Layout
+
+The Flutter Android application should use a mobile-first structure appropriate for employee workflows.
+
+Typical flow:
+
+```text
+App Shell
+│
+├── Dashboard
+├── My Training
+├── Training Detail
+├── Module
+├── Lesson
+├── Assessment
+└── Certificates
+```
+
+M14 and M15 establish the functional foundation.
+
+M16 onward will add secure video and additional learning functionality.
+
+The final visual system remains open until M22.
+
+---
+
+# 10. Desktop Layout
 
 Desktop pages should provide:
 
@@ -260,33 +333,33 @@ Desktop pages should provide:
 - sufficient whitespace
 - readable tables
 - consistent page headers
+- clear primary actions
 
-Avoid stretching content across the full screen when a narrower content area improves readability.
+Avoid unnecessarily stretching content across the entire screen.
 
-## 9. Mobile Layout
+---
 
-Mobile layouts should:
+# 11. Mobile Layout
 
-- collapse navigation appropriately
-- avoid horizontal scrolling where possible
-- stack forms vertically
-- convert wide tables where necessary
+Mobile interfaces should:
+
 - keep important actions reachable
-- maintain readable spacing
+- use readable spacing
+- stack forms appropriately
+- avoid unnecessary horizontal scrolling
+- simplify dense information
+- provide clear navigation
+- preserve the user's current task
 
-Critical employee workflows should work comfortably on smaller screens.
+Critical Employee workflows should work comfortably on Android devices.
 
-## 10. Navigation
+---
+
+# 12. Navigation
 
 Navigation should reflect the user's permissions.
 
-Users should not see irrelevant sections.
-
-However, hidden navigation is not a security control.
-
-Backend authorization remains mandatory.
-
-Possible navigation areas include:
+Possible areas include:
 
 ```text
 Dashboard
@@ -300,25 +373,34 @@ Organization
 Audit
 ```
 
-The exact navigation shown should depend on role and permissions.
+The exact navigation depends on the authenticated role.
 
-## 11. Navigation States
+Hidden navigation is only a UX decision.
+
+Backend authorization remains mandatory.
+
+---
+
+# 13. Navigation States
 
 Navigation should clearly indicate:
 
 - current section
-- expanded section
-- selected page
+- current page
+- expanded section where applicable
+- selected item
 
-Avoid ambiguous active states.
+Active states should be visually obvious without relying solely on color.
 
-## 12. Page Headers
+---
 
-Each major page should have a consistent header containing:
+# 14. Page Headers
+
+Major pages should have a consistent header containing:
 
 - page title
-- optional short description
-- important primary action
+- optional description
+- primary action where applicable
 - optional breadcrumb
 
 Example:
@@ -330,9 +412,11 @@ Manage training programs and versions.
 [Create Training]
 ```
 
-## 13. Breadcrumbs
+---
 
-Breadcrumbs may be useful for deeply nested training content.
+# 15. Breadcrumbs
+
+Breadcrumbs are useful for deeply nested web content.
 
 Example:
 
@@ -344,11 +428,15 @@ Training
 > Lesson 3
 ```
 
-Do not add breadcrumbs where they provide no useful context.
+Do not add breadcrumbs where they provide no useful navigation value.
 
-## 14. Cards
+Mobile interfaces should generally avoid unnecessary breadcrumb complexity.
 
-Cards should be used for:
+---
+
+# 16. Cards
+
+Cards may be used for:
 
 - dashboard metrics
 - training summaries
@@ -359,42 +447,42 @@ Cards should be used for:
 Cards should have:
 
 - consistent padding
-- subtle borders
-- limited shadow
-- clear heading
+- restrained borders
+- limited elevation
+- clear headings
 - predictable structure
 
-Avoid turning every piece of content into a card.
+Do not turn every piece of content into a card.
 
-## 15. Dashboard Design
+---
+
+# 17. Dashboard Design
 
 Dashboards should prioritize actionable information.
 
-Examples:
+## Administrator / Coordinator
 
-### Administrator / Coordinator
-
-Potential dashboard elements:
+Potential information:
 
 - active employees
 - published training
 - assignments
 - overdue assignments
-- completion rate
+- completion
 - recent activity
 
-### Manager
+## Manager
 
-Potential dashboard elements:
+Potential information:
 
 - employees in scope
 - assigned training
 - overdue training
 - completion status
 
-### Employee
+## Employee
 
-Potential dashboard elements:
+Potential information:
 
 - assigned training
 - training in progress
@@ -402,15 +490,17 @@ Potential dashboard elements:
 - completed training
 - certificates
 
-Dashboards should not become overloaded analytics screens.
+Dashboards should not become unnecessarily dense analytics screens.
 
-## 16. Metric Cards
+---
 
-Metric cards should display:
+# 18. Metric Cards
+
+Metric cards should communicate:
 
 - clear label
-- clear number
-- optional supporting text
+- clear value
+- optional supporting context
 
 Example:
 
@@ -420,13 +510,15 @@ Overdue Training
 Employees requiring attention
 ```
 
-Avoid excessive decorative icons or charts for simple metrics.
+Avoid excessive decorative charts or icons for simple metrics.
 
-## 17. Tables
+---
 
-Tables will be important throughout the application.
+# 19. Tables
 
-Use tables for:
+Tables are appropriate for administrative and reporting workflows.
+
+Examples:
 
 - employees
 - assignments
@@ -435,48 +527,34 @@ Use tables for:
 - reports
 - audit events
 
-Tables should include:
+Tables should have:
 
 - readable headers
 - clear row spacing
-- aligned data
+- aligned information
 - visible actions
 - useful empty states
 
-Avoid extremely dense spreadsheet-like styling.
+Avoid unnecessarily dense spreadsheet-style layouts.
 
-## 18. Table Actions
+---
 
-Row actions should be consistent.
+# 20. Responsive Tables
 
-Examples:
+On smaller screens, possible approaches include:
 
-```text
-View
-Edit
-Assign
-Revoke
-Deactivate
-```
+- hiding low-priority columns
+- controlled horizontal scrolling
+- stacked row summaries
+- mobile-specific layouts
 
-Destructive actions should be visually distinct.
+The appropriate solution depends on the table.
 
-Do not make every row action a bright primary button.
+Do not force one responsive pattern onto every table.
 
-## 19. Responsive Tables
+---
 
-Wide tables may not fit smaller screens.
-
-Possible approaches:
-
-- hide low-priority columns
-- allow controlled horizontal scrolling
-- convert rows to stacked cards
-- provide mobile-specific summaries
-
-The best solution should depend on the specific table.
-
-## 20. Forms
+# 21. Forms
 
 Forms should be easy to scan.
 
@@ -487,27 +565,20 @@ Use:
 - useful help text
 - consistent spacing
 - clear validation
+- accessible controls
 
-Avoid forms where labels exist only as placeholders.
+Do not use placeholders as the only field labels.
 
-## 21. Form Layout
+---
 
-Simple forms should usually use a single-column layout.
-
-Two-column layouts may be used for short related fields on wide screens.
-
-On mobile, forms should normally collapse to one column.
-
-## 22. Form Validation
+# 22. Form Validation
 
 Validation messages should:
 
 - explain the problem
 - appear near the relevant field
-- avoid technical jargon
+- avoid unnecessary technical terminology
 - preserve user input where safe
-
-Example:
 
 Poor:
 
@@ -521,19 +592,13 @@ Better:
 Due date must be on or after the assignment date.
 ```
 
-## 23. Required Fields
+---
 
-Required fields should be clearly indicated.
+# 23. Buttons
 
-Do not rely only on color.
+Buttons should have a clear hierarchy.
 
-## 24. Buttons
-
-Buttons should follow a hierarchy.
-
-### Primary
-
-Use for the main action on a page.
+## Primary
 
 Examples:
 
@@ -544,9 +609,7 @@ Publish
 Submit Assessment
 ```
 
-### Secondary
-
-Use for less important actions.
+## Secondary
 
 Examples:
 
@@ -556,9 +619,7 @@ Back
 Preview
 ```
 
-### Destructive
-
-Use for dangerous actions.
+## Destructive
 
 Examples:
 
@@ -568,11 +629,13 @@ Revoke
 Retire
 ```
 
-Avoid multiple competing primary buttons on the same page.
+Avoid multiple competing primary actions on one page.
 
-## 25. Destructive Actions
+---
 
-Destructive or important irreversible actions should require deliberate confirmation when appropriate.
+# 24. Destructive Actions
+
+Actions with meaningful consequences should require deliberate confirmation where appropriate.
 
 Examples:
 
@@ -580,11 +643,13 @@ Examples:
 - certificate revocation
 - training retirement
 
-Confirmation text should clearly state the consequence.
+Confirmation should clearly communicate the consequence.
 
-## 26. Status Badges
+---
 
-Use consistent badges for status values.
+# 25. Status Badges
+
+Use consistent status treatments.
 
 Examples:
 
@@ -602,11 +667,13 @@ Active
 Revoked
 ```
 
-Badges should use both text and color.
+Badges should communicate meaning through text as well as visual styling.
 
-## 27. Training Status
+---
 
-Training cards or rows should make progress easy to understand.
+# 26. Training Status
+
+Training interfaces should make the employee's current state obvious.
 
 Possible states:
 
@@ -617,38 +684,44 @@ Completed
 Overdue
 ```
 
-For employees, the next required action should be obvious.
+The next required action should be easy to identify.
 
-## 28. Progress Indicators
+---
 
-Training progress may use:
+# 27. Progress Indicators
+
+Progress may be represented through:
 
 - percentage
 - progress bar
 - completed lesson count
 
-Progress should reflect trusted backend state.
+Progress displayed by the client must represent backend-authoritative state.
 
-The frontend should only display authoritative values from the backend.
+The frontend must not invent completion percentages or completion status.
 
-## 29. Training Detail Page
+---
 
-A training detail page may include:
+# 28. Training Detail
+
+A training detail screen may contain:
 
 - title
 - description
 - due date
 - progress
 - module list
-- lessons
+- lesson list
 - assessment status
 - certificate state
 
-The employee should understand the next step immediately.
+The employee should immediately understand what to do next.
 
-## 30. Module Design
+---
 
-Modules should appear as clearly separated sections.
+# 29. Module Design
+
+Modules should be visually separated.
 
 Example:
 
@@ -661,119 +734,148 @@ Introduction
 ○ Lesson 3
 ```
 
-Icons should support text, not replace it.
+Icons support the text but do not replace it.
 
-## 31. Lesson Design
+---
 
-Lesson pages should provide:
+# 30. Lesson Design
+
+Lesson pages should prioritize:
 
 - lesson title
-- content
+- learning content
 - progress context
-- next/back navigation
+- previous/next navigation
+- completion state
 
-Avoid unnecessary side content that distracts from learning.
+Avoid unnecessary information competing with the lesson itself.
 
-## 32. Video Lesson Design
+---
 
-Video lesson pages should prioritize the video.
+# 31. Text Lesson Design
 
-Potential layout:
+Text lessons should provide a focused reading experience.
+
+The completion action should be clear without overwhelming the content.
+
+Completion remains backend-authoritative.
+
+---
+
+# 32. Video Lesson Design
+
+Video lessons should prioritize the player.
+
+A possible layout:
 
 ```text
 Lesson Title
 
 [ Video Player ]
 
-Progress / status
+Progress / Status
 
-Previous Lesson       Next Lesson
+Previous Lesson        Next Lesson
 ```
 
-The UI may show progress, but backend logic remains authoritative.
+The player UI may display progress, but authoritative progress and completion remain server-side.
 
-## 33. Video Player States
+M16 will establish the secure playback experience.
 
-Useful player states may include:
+---
+
+# 33. Video Player States
+
+The video interface should handle:
 
 - loading
 - playing
 - paused
+- seeking
 - completed
-- error
+- playback error
+- session error
+- network interruption
 
-Errors should provide a useful next action where possible.
+Errors should provide an understandable next action where possible.
 
-## 34. Assessment Design
+The client must not bypass server playback rules when recovering from errors.
+
+---
+
+# 34. Assessment Design
 
 Assessment pages should feel focused.
 
-Avoid displaying unnecessary dashboard navigation inside an active assessment if it distracts users.
+A typical structure:
 
-Assessment pages should include:
+```text
+Assessment Title
 
-- assessment title
-- instructions
-- progress
-- question
-- answer options
-- submit/next action
+Instructions
 
-## 35. Assessment Results
+Question 1 of N
 
-Results should clearly show:
+Question
+
+Answer Options
+
+[Next]
+```
+
+Avoid unnecessary dashboard content while an employee is actively completing an assessment.
+
+Assessment functionality is planned for M17 on Android.
+
+---
+
+# 35. Assessment Results
+
+Results should clearly communicate:
 
 - pass/fail
-- score
+- score where appropriate
 - next step
+- retry state where applicable
 
-Do not expose correct answers unless the product explicitly allows it.
+Correct answers should not be exposed unless explicitly supported by product requirements.
 
-## 36. Certificate Design
+---
 
-Certificate pages should clearly show:
+# 36. Certificate Design
+
+Certificate screens should clearly show:
 
 - employee
 - training
 - training version
 - issue date
 - certificate number
-- status
+- certificate status
 
-Revoked certificates should remain visible but clearly marked as revoked where authorized.
+Revoked certificates should remain visible where authorized and clearly indicate their revoked state.
 
-## 37. Reports
+---
 
-Report interfaces should support:
+# 37. Reports
+
+Reports should provide:
 
 - clear filters
+- visible active filters
 - reset action
 - readable results
-- useful empty state
-- current filter visibility
+- useful empty states
 
-Filters should not become visually overwhelming.
+Do not overwhelm users with unnecessary filtering controls.
 
-## 38. Report Filters
+---
 
-Filters may include:
+# 38. Audit Log Design
 
-- status
-- department
-- job role
-- training
-- training version
-- overdue
+Audit interfaces should be information-dense but readable.
 
-Desktop layouts may place filters horizontally or in a compact panel.
-
-Mobile layouts should stack or collapse filters.
-
-## 39. Audit Log Design
-
-Audit pages should be information-dense but readable.
-
-Columns may include:
+Possible columns:
 
 ```text
 Time
@@ -783,23 +885,15 @@ Target
 Details
 ```
 
-Use the visible term:
+Use user-friendly language such as `Performed By` rather than exposing internal terminology such as `Actor`.
 
-```text
-Performed By
-```
+The backend model may continue using the field name `actor`.
 
-rather than:
+---
 
-```text
-Actor
-```
+# 39. Empty States
 
-The backend field may remain named `actor`.
-
-## 40. Empty States
-
-Every important list should have a useful empty state.
+Important lists should provide useful empty states.
 
 Examples:
 
@@ -815,36 +909,41 @@ No certificates have been issued.
 No audit events match these filters.
 ```
 
-Avoid showing a blank table without explanation.
+Avoid blank screens that give no explanation.
 
-## 41. Loading States
+---
 
-Where JavaScript introduces delayed operations, use clear loading feedback.
+# 40. Loading States
+
+Loading feedback should be used for operations that may take noticeable time.
 
 Examples:
 
 - saving
-- submitting assessment
+- submitting
 - loading video
-- filtering reports
+- filtering
+- network requests
 
-Avoid unnecessary animated loaders for fast server-rendered pages.
+Avoid unnecessary loaders for operations that complete immediately.
 
-## 42. Error States
+---
 
-Errors should be understandable.
+# 41. Error States
 
-Good error pages should explain:
+Errors should explain:
 
 - what happened
 - whether the user can fix it
-- what they should do next
+- what to do next
 
-Do not expose internal stack traces or technical details in production.
+Production interfaces must not expose stack traces or internal implementation details.
 
-## 43. Success Messages
+---
 
-Use confirmation messages for important successful actions.
+# 42. Success Feedback
+
+Important successful operations should provide concise feedback.
 
 Examples:
 
@@ -860,57 +959,76 @@ Employee deactivated.
 Certificate revoked.
 ```
 
-Messages should be concise.
+Feedback should not interrupt the workflow unnecessarily.
 
-## 44. Notifications
+---
 
-V1 may use standard page-level or toast-style messages for immediate action feedback.
+# 43. Notifications
 
-A full notification center is future scope unless explicitly implemented.
+Immediate action feedback may use:
 
-## 45. Accessibility
+- inline messages
+- banners
+- toast-style messages
 
-Accessibility should be integrated into design.
+A full notification center belongs to M18 or later unless explicitly required earlier.
 
-Requirements include:
+---
+
+# 44. Accessibility
+
+Accessibility is part of the design rather than a final cosmetic pass.
+
+Important requirements include:
 
 - semantic HTML
-- keyboard access
-- visible focus states
-- labels
+- keyboard navigation
+- visible focus
+- accessible labels
 - sufficient contrast
-- readable font sizes
-- meaningful link text
+- readable text
+- meaningful links
 - accessible buttons
-- understandable error messages
+- understandable errors
 
-## 46. Keyboard Navigation
+Flutter controls should also provide appropriate semantics and touch targets.
 
-Important workflows should be usable without a mouse.
+---
+
+# 45. Keyboard Navigation
+
+Important web workflows should work without a mouse.
 
 Interactive controls must be reachable through normal keyboard navigation.
 
-Do not remove browser focus outlines unless a clear accessible replacement is provided.
+Do not remove browser focus indicators without providing an accessible replacement.
 
-## 47. Focus States
+---
 
-Focus states should be visible and consistent.
+# 46. Focus States
 
-Use a high-contrast focus ring appropriate to the brand.
+Focus indicators should be:
 
-## 48. Color Contrast
+- visible
+- consistent
+- high enough contrast
+- visually appropriate to the final brand palette
 
-Text and interactive elements should maintain sufficient contrast.
+---
+
+# 47. Color Contrast
+
+Text and interactive elements must maintain sufficient contrast.
 
 Muted text must remain readable.
 
-Brass accent colors should not be used for important low-contrast body text.
+Brass or gold accents should not be used as low-contrast body text.
 
-## 49. Icons
+---
 
-Icons may improve scanning but should not replace important text.
+# 48. Icons
 
-For example:
+Icons may improve scanning but should not replace important labels.
 
 Good:
 
@@ -924,26 +1042,40 @@ Risky:
 ✓
 ```
 
-with no text or accessible label.
+with no accessible label or supporting text.
 
-## 50. Responsive Breakpoints
+---
 
-Exact breakpoints should be defined during implementation rather than guessed in documentation.
+# 49. Touch Targets
 
-The design should adapt naturally across:
+Android controls should have comfortable touch targets.
+
+Primary actions should not require precise tapping.
+
+Dense administrative interfaces may use tighter layouts than Employee learning screens, but usability should remain the priority.
+
+---
+
+# 50. Responsive Breakpoints
+
+Exact breakpoints should be established during implementation and browser/device testing.
+
+The system should adapt naturally across:
 
 - large desktop
-- standard laptop
+- laptop
 - tablet
-- mobile
+- Android mobile
 
-Avoid creating excessive breakpoint-specific complexity.
+Avoid excessive breakpoint-specific overrides.
 
-## 51. Spacing System
+---
+
+# 51. Spacing System
 
 Use a consistent spacing scale.
 
-For example:
+A possible starting scale:
 
 ```text
 4
@@ -955,40 +1087,45 @@ For example:
 48
 ```
 
-The final implementation may use CSS variables.
+The exact values may change during M22.
 
-Consistent spacing matters more than the exact numeric scale.
+Consistency is more important than any individual number.
 
-## 52. Border Radius
+---
 
-Use moderate border radius.
+# 52. Border Radius
 
-Avoid extremely rounded pill-shaped cards throughout the application.
+Use restrained border radius.
 
-Pills are appropriate for:
+Avoid making the entire application consist of large rounded containers.
+
+Pill-shaped elements are appropriate for:
 
 - status badges
 - compact filters
 - tags
 
-Cards and forms should remain restrained.
+---
 
-## 53. Shadows
+# 53. Shadows
 
-Use shadows sparingly.
+Use elevation sparingly.
 
 Prefer:
 
 - subtle borders
-- slight elevation
+- modest elevation
+- clear hierarchy
 
 over large decorative shadows.
 
-## 54. CSS Architecture
+---
 
-The frontend should avoid unnecessary complexity.
+# 54. CSS Architecture
 
-A practical structure may include:
+The web application should avoid unnecessary frontend complexity.
+
+A possible structure is:
 
 ```text
 static/
@@ -999,11 +1136,13 @@ static/
     └── pages/
 ```
 
-The exact structure should reflect actual frontend needs.
+The actual structure should follow the needs of the existing application.
 
-Avoid creating dozens of tiny CSS files prematurely.
+Do not create a large CSS architecture merely for theoretical reuse.
 
-## 55. CSS Variables
+---
+
+# 55. CSS Variables
 
 Shared design values should eventually use CSS custom properties.
 
@@ -1019,27 +1158,52 @@ Example:
 }
 ```
 
-Final values should be chosen during implementation and visual polish.
+Final values should be selected during the visual-polish phase.
 
-## 56. Reusable Components
+---
 
-Reusable UI patterns may include:
+# 56. Flutter Styling
+
+The Flutter application should centralize shared visual decisions where practical.
+
+Potential shared areas include:
+
+- typography
+- spacing
+- button styles
+- input styles
+- cards
+- status indicators
+- colors
+- navigation
+- app-bar behavior
+
+Avoid creating a large custom design system before the final visual direction has been approved.
+
+---
+
+# 57. Reusable Components
+
+Useful reusable patterns include:
 
 - buttons
 - badges
 - cards
 - tables
-- form fields
+- forms
 - alerts
 - page headers
 - metric cards
-- breadcrumbs
-- progress bars
+- progress indicators
 - empty states
+- loading states
+- error states
 
-Reuse should improve consistency without creating an unnecessary component framework.
+Reuse should improve consistency without creating unnecessary abstraction.
 
-## 57. Template Architecture
+---
+
+# 58. Django Template Architecture
 
 Django templates should use inheritance where appropriate.
 
@@ -1047,12 +1211,12 @@ Example:
 
 ```text
 base.html
-|
-+-- dashboard.html
-+-- training/
-+-- assessments/
-+-- certificates/
-+-- reports/
+│
+├── dashboard.html
+├── training/
+├── assessments/
+├── certificates/
+└── reports/
 ```
 
 Shared elements may include:
@@ -1063,143 +1227,182 @@ Shared elements may include:
 - footer
 - reusable partials
 
-## 58. JavaScript Strategy
+---
 
-JavaScript should remain lightweight.
+# 59. JavaScript Strategy
 
-Use JavaScript for interactions where it provides real value.
+JavaScript should remain focused and lightweight.
 
-Examples:
+Appropriate uses include:
 
-- playback heartbeat
+- video playback behavior
+- heartbeat handling
 - dynamic form behavior
 - confirmation interactions
 - progressive enhancement
 
-Avoid rebuilding the whole application in JavaScript.
+Avoid rebuilding the Django application as a JavaScript SPA.
 
-## 59. Progressive Enhancement
+---
 
-Where practical, core workflows should remain understandable even if JavaScript fails.
+# 60. Mobile State Handling
+
+Flutter may maintain local UI state for responsiveness.
+
+However, local state must not become authoritative for:
+
+- authorization
+- assignment ownership
+- progress
+- completion
+- assessment scores
+- certificates
+
+Server state remains authoritative.
+
+---
+
+# 61. Progressive Enhancement
+
+Where practical, core web workflows should remain understandable if JavaScript is unavailable.
 
 JavaScript-dependent features should fail safely.
 
-Security must never depend solely on JavaScript.
+Security must never depend on JavaScript.
 
-## 60. Animation
+---
 
-Animation should be minimal.
+# 62. Animation
+
+Animation should support understanding rather than compete with the task.
 
 Appropriate examples:
 
-- subtle menu transition
+- subtle navigation transitions
 - modal appearance
-- progress change
+- progress transitions
+- lightweight state changes
 
 Avoid:
 
-- decorative bouncing
-- excessive motion
+- decorative motion everywhere
+- excessive bouncing
+- long transitions
 - animation on every card
-- long transitions that slow work
+- motion that slows work
 
 Respect reduced-motion preferences where practical.
 
-## 61. Employee Experience
+The final animation language will be decided during M22.
 
-Employee workflows should be especially simple.
+---
 
-The typical employee should not need to understand the full system architecture.
+# 63. Employee Experience
 
-Primary employee questions are:
+Employee workflows should be the simplest part of the system.
+
+Employees should quickly answer:
 
 ```text
-What training do I need to complete?
+What training do I need?
 What should I do next?
 When is it due?
 Did I pass?
 Is my certificate available?
 ```
 
-The UI should answer these quickly.
+The mobile application should prioritize these questions.
 
-## 62. Manager Experience
+---
 
-Managers need visibility without administrative overload.
+# 64. Manager Experience
 
-Primary Manager questions may include:
+Managers need useful visibility without administrative overload.
+
+Typical questions:
 
 ```text
 Who reports to me?
 Who has incomplete training?
 Who is overdue?
-What is the completion status of my team?
+What is my team's completion status?
 ```
 
-The interface should stay within the Manager's authorized scope.
+All Manager information must remain within authorized scope.
 
-## 63. Training Coordinator Experience
+---
 
-Training Coordinators need operational efficiency.
+# 65. Training Coordinator Experience
 
-Important tasks may include:
+Training Coordinators need efficient operational workflows.
+
+Important tasks include:
 
 - managing training
 - publishing versions
-- creating assignments
+- assigning training
 - managing assessments
 - reviewing certificates
 - reviewing reports
-- viewing audit records
+- reviewing audit information
 
-Frequent actions should require minimal unnecessary navigation.
+Frequent operations should require minimal unnecessary navigation.
 
-## 64. Administrator Experience
+---
 
-Administrators may need broad access to:
+# 66. Administrator Experience
+
+Administrators may need access to:
 
 - organization
 - training
 - permissions
 - reports
 - audits
+- operational configuration
 
-The interface should expose advanced controls clearly without making ordinary pages feel cluttered.
+Advanced functionality should remain discoverable without cluttering ordinary workflows.
 
-## 65. Visual Hierarchy
+---
 
-Each page should have a clear hierarchy:
+# 67. Visual Hierarchy
+
+Each page should generally follow:
 
 ```text
-Page title
-Primary action
-Important status
-Main content
-Secondary information
+Page Title
+    ↓
+Primary Action / Important Status
+    ↓
+Main Content
+    ↓
+Secondary Information
 ```
 
-Do not make metadata visually compete with the page's main task.
+Metadata should not compete with the primary task.
 
-## 66. Content Density
+---
 
-Administrative tables can be moderately dense.
+# 68. Content Density
 
-Employee training pages should feel more spacious and instructional.
+Administrative tables may be moderately dense.
 
-Use different density appropriately rather than forcing one layout style everywhere.
+Employee learning interfaces should generally be more spacious and instructional.
 
-## 67. Content Language
+Different workflows may therefore use different density levels.
 
-Interface text should be:
+---
+
+# 69. Content Language
+
+User-facing language should be:
 
 - direct
 - concise
 - professional
 - understandable
 
-Avoid technical Django terminology in user-facing messages.
-
-Example:
+Avoid technical implementation terminology.
 
 Poor:
 
@@ -1213,208 +1416,335 @@ Better:
 This training cannot be published until a final assessment is configured.
 ```
 
-## 68. Date and Time Display
+---
 
-Dates should use a consistent display format.
+# 70. Date and Time
 
-The final format should reflect business preference.
+Dates and times should use a consistent user-facing format.
 
-Internally, the backend remains responsible for authoritative timestamps.
+The final display format should follow business requirements.
 
-## 69. Confirmation Dialogs
+Backend timestamps remain authoritative.
 
-Confirmation should be reserved for actions with meaningful consequences.
+---
+
+# 71. Confirmation Dialogs
+
+Confirmation should be reserved for meaningful consequences.
 
 Examples:
 
-- revoke certificate
-- deactivate employee
 - retire training
+- deactivate employee
+- revoke certificate
 
-Do not add confirmation dialogs to routine navigation or simple saves.
+Do not add confirmation to routine navigation or harmless saves.
 
-## 70. Search
+---
 
-Search may be added to areas where lists become large.
+# 72. Search
+
+Search may be introduced where lists become large.
 
 Potential areas:
 
 - employees
 - training
 - certificates
-- audit logs
+- audit records
 
-Do not add search to every page automatically.
+Do not automatically add search to every screen.
 
-## 71. Pagination
+---
 
-Long tables should eventually support pagination where necessary.
+# 73. Pagination
+
+Long datasets should support pagination where appropriate.
 
 Examples:
 
 - employees
-- audit logs
-- reports
+- audit records
 - certificates
+- reports
 
-Pagination behavior must preserve active filters.
+Pagination should preserve active filters and sorting.
 
-## 72. Performance Perception
+---
 
-Even when server operations are fast, the UI should communicate clearly during slower actions.
+# 74. Performance Perception
 
-Avoid allowing users to submit the same action repeatedly because no feedback appeared.
+The interface should communicate clearly during slower operations.
 
-This is especially important for:
+This is particularly important for:
 
 - assessment submission
 - publishing
 - assignments
 - certificate actions
+- video startup
+- network operations
 
-## 73. Duplicate Submission Protection
+Users should not be able to accidentally submit the same action repeatedly simply because feedback was delayed.
 
-The frontend may disable a submit button after submission to reduce accidental double clicks.
+---
 
-This is only a usability improvement.
+# 75. Duplicate Submission Protection
 
-The backend must still handle duplicate or concurrent submissions safely.
+The frontend may disable a submit control while an operation is pending.
 
-## 74. Security and Design
+This is a usability feature only.
 
-Visual design must never imply that hidden UI controls provide authorization.
+The backend must remain responsible for safely handling duplicate and concurrent requests.
 
-Example:
+---
 
-Hiding an "Audit" navigation item from an Employee is good UX.
+# 76. Security and Design
 
-But the `/audit/` backend route must still reject the Employee directly.
+Visual design must never be mistaken for authorization.
 
-## 75. Design Milestones
+For example:
 
-Design work is intentionally staged.
+Hiding the Audit navigation item from an Employee is good UX.
 
-### Milestone 12
+It is not security.
 
-Build the complete functional frontend.
+The backend must still reject unauthorized requests to the audit endpoint.
 
-Priority:
+The same principle applies to:
 
-```text
-Does it work?
-```
+- reports
+- assignments
+- certificates
+- training management
+- organization management
+- protected media
 
-### Milestone 13
+---
 
-Improve:
+# 77. Design Milestones
 
-- usability
-- responsive layout
-- accessibility
-- interaction quality
+Design work is intentionally staged with the broader roadmap.
 
-Priority:
+## M14
 
-```text
-Is it easy to use?
-```
-
-### Milestone 18
-
-Apply premium final visual polish.
+Establish the Android foundation.
 
 Priority:
 
 ```text
-Does it feel like a finished Garden's Need product?
+Does the application work?
 ```
 
-This order prevents visual work from repeatedly being rebuilt while functionality changes.
+## M15
 
-## 76. Premium Visual Polish
+Establish the core Employee learning experience.
 
-The final visual pass may refine:
+Priority:
 
-- typography
+```text
+Can the employee complete the basic learning flow?
+```
+
+## M16
+
+Add secure video learning.
+
+Priority:
+
+```text
+Can the employee securely consume video training?
+```
+
+## M17
+
+Add assessment and certificate experiences.
+
+Priority:
+
+```text
+Can the employee complete and understand the full training outcome?
+```
+
+## M18
+
+Improve resilience and operational feedback.
+
+Priority:
+
+```text
+Does the application behave predictably under normal failures?
+```
+
+## M19
+
+Prepare the Android release candidate.
+
+Priority:
+
+```text
+Is the Android product stable enough for final release testing?
+```
+
+## M20
+
+Harden production and deployment.
+
+Priority:
+
+```text
+Can the system be operated safely?
+```
+
+## M21
+
+Perform the final bug, security, and repository review.
+
+Priority:
+
+```text
+Is the product technically ready for release?
+```
+
+## M22
+
+Perform readability, refactoring, and final Garden's Need visual polish.
+
+Priority:
+
+```text
+Does the finished product look and feel like a polished Garden's Need application?
+```
+
+## M23
+
+Perform final acceptance and Android V1 release.
+
+Priority:
+
+```text
+Is the product ready for real employees?
+```
+
+---
+
+# 78. Premium Visual Polish
+
+The M22 visual pass may refine:
+
 - exact color palette
+- typography
 - spacing
 - navigation
-- tables
-- cards
-- forms
 - dashboards
+- cards
+- tables
+- forms
 - icons
 - empty states
+- loading states
+- error states
+- progress indicators
+- mobile layouts
+- animation
 - interaction states
 
-The final pass should avoid changing backend business logic.
+The purpose is to make the product feel cohesive and premium without sacrificing usability.
 
-## 77. Design Validation
+Visual polish should not introduce unrelated backend changes.
 
-The completed frontend should be tested through real workflows.
+---
 
-Visual review should include:
+# 79. Design Validation
+
+Design should be validated through actual workflows rather than static mockups alone.
+
+Validation should cover:
 
 - desktop
 - laptop
 - tablet
-- mobile
+- Android phone
 
-Representative roles should include:
+Representative roles:
 
 - Administrator
 - Training Coordinator
 - Manager
 - Employee
 
-## 78. Browser Validation
+Employee flows deserve particular attention because the Android application is the V1 mobile product.
 
-Playwright and live browser testing should eventually verify:
+---
+
+# 80. Browser and Device Validation
+
+Where appropriate, live browser and device testing should verify:
 
 - navigation
 - responsive states
 - forms
 - role-specific pages
-- complete training workflows
+- training workflows
+- playback
+- assessments
+- certificates
 
-Screenshots may be useful for identifying visual regressions.
+Visual screenshots may be used during review to identify regressions.
 
-## 79. Accessibility Validation
+Android validation should use real devices before release.
+
+---
+
+# 81. Accessibility Validation
 
 Before release, verify important workflows for:
 
-- keyboard use
-- focus visibility
+- keyboard access
+- visible focus
 - form labels
 - heading hierarchy
 - contrast
 - button semantics
-- links
+- link semantics
 - error feedback
+- touch-target usability
+- reduced-motion behavior where applicable
 
-## 80. Design Non-Goals
+---
 
-For V1, avoid unnecessary work such as:
+# 82. Design Non-Goals
 
-- complex animation systems
-- custom design-system framework
-- full SPA rewrite
+V1 does not require:
+
+- a custom frontend framework
+- a full SPA rewrite
+- complex animation infrastructure
 - excessive charting
 - decorative gamification
-- public marketing-site styling inside the internal application
+- a public marketing-site visual language
+- a large custom design-system package
+- unnecessary component abstraction
 
-## 81. Current Design Status
+The objective is a polished internal product, not visual complexity for its own sake.
 
-Current status:
+---
+
+# 83. Current Design Status
 
 ```text
-Design direction: defined
-Functional frontend: pending
-Responsive/UX implementation: pending
-Accessibility pass: pending
-Premium visual polish: pending
+Design direction:              Defined
+Django functional UI:          Existing
+Flutter foundation:            Complete
+Employee learning UI:          Functional
+Secure video UI:               M16
+Assessment UI:                 M17
+Resilience UX:                 M18
+Android release-candidate UI:  M19
+Final visual polish:           M22
+Final acceptance:              M23
 ```
 
-The visual rules in this document are guidance for upcoming frontend milestones.
+The exact visual system is intentionally not frozen yet.
 
-Exact CSS values, component dimensions, and final visual details should be established through implementation and browser testing rather than treated as fixed before the frontend exists.
+The current priority is to complete the functional product safely, then use M22 as the deliberate visual-design phase for the final Garden's Need experience.

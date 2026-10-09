@@ -4,11 +4,11 @@
 
 This document defines the testing strategy for the Garden's Need Training Module Application.
 
-Testing is treated as part of implementation, not as a separate cleanup step.
+Testing is part of implementation, not a separate cleanup phase.
 
-The project aims to verify:
+The project verifies:
 
-- correct business behavior
+- business behavior
 - authorization boundaries
 - ownership rules
 - data integrity
@@ -17,19 +17,32 @@ The project aims to verify:
 - malformed-input handling
 - regression safety
 - browser workflows
+- mobile workflows
 - production readiness
+- security-sensitive behavior
+
+Testing should be risk-based. High-risk changes receive deeper validation than cosmetic or low-risk changes.
+
+---
 
 ## 2. Current Test Baseline
 
-Current backend baseline:
+Current verified baseline:
 
 ```text
-189 full tests passing on MySQL
+Django/MySQL: 348 / 348 passing
+Flutter: 81 / 81 passing
+Flutter analyze: 0 issues
+JavaScript playback: 3 / 3 passing
 ```
 
-The complete backend test suite currently runs against MySQL rather than SQLite.
+The backend suite runs against MySQL rather than SQLite.
 
-This baseline was established after the interim backend bug-hunt completed between Milestones 10 and 11.
+The Flutter suite validates the Android client foundation and employee learning flow implemented through M15.
+
+The JavaScript tests cover the existing web playback behavior.
+
+---
 
 ## 3. Testing Stack
 
@@ -39,152 +52,192 @@ Current testing tools include:
 - MySQL 8
 - Django test client
 - Python assertions
-- project-specific regression tests
+- Flutter test framework
+- Flutter analyzer
+- JavaScript playback tests
+- GitHub Actions CI
 
-Planned later-stage testing includes:
+Planned or later-stage validation includes:
 
-- Playwright
-- browser workflow testing
-- end-to-end integration testing
-- deployment smoke testing
+- Android runtime testing
+- Playwright browser workflows where applicable
+- production-like staging tests
+- deployment smoke tests
 - security-focused testing
+- dependency vulnerability scanning
+- final acceptance testing
+
+---
 
 ## 4. Database Strategy
 
-Backend automated tests should continue to run against MySQL.
+Backend automated tests must continue to run against MySQL.
 
-Do not switch the main test suite to SQLite only for convenience.
+Do not switch the main backend suite to SQLite merely for convenience.
 
-Using MySQL helps exercise behavior closer to the actual application environment, including:
+MySQL exercises behavior closer to the real application, including:
 
-- database constraints
-- locking behavior
-- transaction behavior
-- uniqueness behavior
+- constraints
+- transactions
+- locking
+- uniqueness
 - date and time behavior
-- concurrency-sensitive logic
+- concurrency-sensitive behavior
+
+---
 
 ## 5. Main Verification Commands
 
-Run the complete test suite:
+Backend:
 
 ```powershell
 python manage.py test
-```
-
-Run Django system checks:
-
-```powershell
 python manage.py check
-```
-
-Check for missing migrations:
-
-```powershell
 python manage.py makemigrations --check --dry-run
-```
-
-Check installed dependency consistency:
-
-```powershell
 python -m pip check
-```
-
-Check the Git diff for whitespace errors:
-
-```powershell
 git diff --check
 ```
 
-These checks should pass before stable work is committed.
+Repository state:
 
-## 6. Test Categories
+```powershell
+git status --short
+```
 
-The project uses several categories of testing.
+Flutter:
 
-### 6.1 Unit and Component-Level Tests
+```powershell
+flutter analyze
+flutter test
+```
 
-These test focused pieces of business behavior.
+JavaScript playback tests should be run when playback-related code changes.
 
-Examples include:
+---
+
+## 6. Unit and Component Testing
+
+Focused tests should cover individual business behaviors such as:
 
 - form validation
 - model validation
 - permission helpers
 - lifecycle rules
 - assignment logic
-- scoring behavior
-- certificate behavior
+- scoring
+- certificate issuance
+- certificate revocation
+- playback validation
+- API serialization
+- API authentication
 
-### 6.2 View Tests
+Tests should remain focused enough to identify the source of a failure.
 
-View tests verify:
+---
+
+## 7. View and API Testing
+
+View and API tests should verify:
 
 - authentication requirements
-- permissions
+- authorization
 - ownership
-- form handling
+- Manager scope
+- request validation
 - HTTP status codes
-- redirects
 - malformed requests
 - state transitions
+- error responses
+- direct URL protection
+- API-specific permission boundaries
 
-### 6.3 Integration Tests
+A successful response is not sufficient if the underlying authorization boundary is incorrect.
 
-Integration tests verify behavior across multiple parts of the system.
+---
 
-Examples include:
+## 8. Integration Testing
+
+Integration tests verify behavior across multiple components.
+
+Important workflows include:
 
 ```text
 Employee
--> Training Assignment
--> Lesson Progress
+-> Assignment
+-> Module
+-> Lesson
+-> Progress
 -> Assessment
 -> Completion
 -> Certificate
 ```
 
-These tests become increasingly important as the frontend and complete workflows are finished.
+For mobile:
 
-### 6.4 Regression Tests
+```text
+Login
+-> Dashboard
+-> Assignment
+-> Training
+-> Module
+-> Lesson
+-> Completion / Progress
+```
 
-Every confirmed defect should receive a regression test when practical.
+Video integration must additionally verify the protected session-based media flow.
 
-A regression test should:
+---
 
-1. reproduce the original failure
-2. fail before the fix
-3. pass after the fix
-4. remain in the suite permanently unless the related behavior is intentionally removed
+## 9. Regression Testing
 
-Regression tests protect against reintroducing previously fixed bugs.
+Every confirmed defect should receive regression coverage when practical.
 
-## 7. Security Testing
+Preferred process:
 
-Security-sensitive features require both positive and negative tests.
+```text
+Reproduce
+-> Write failing test
+-> Confirm failure
+-> Implement narrow fix
+-> Focused validation
+-> Broader validation
+-> Full suite
+```
+
+Regression tests should remain unless the related behavior is intentionally removed.
+
+---
+
+## 10. Security Testing
+
+Security-sensitive features require positive and negative tests.
 
 Important areas include:
 
 - authentication
+- JWT/API authentication
 - authorization
 - object ownership
-- Manager reporting scope
+- Manager scope
 - Employee self-scope
 - direct URL access
 - CSRF-sensitive mutations
 - assessment scoring
 - video progress
+- protected media access
 - certificate access
 - reporting
 - audit logs
+- malformed input
+- session behavior
 
-Security testing should verify not only what users can do, but also what they cannot do.
+Tests should verify both what users can do and what they cannot do.
 
-## 8. Authorization Tests
+---
 
-Authorization tests should cover different user roles.
+## 11. Authorization Tests
 
-Examples include:
+Representative roles include:
 
 ```text
 Administrator
@@ -198,17 +251,20 @@ Anonymous user
 
 Tests should verify:
 
-- permitted views succeed
-- unauthorized views fail
+- permitted actions succeed
+- unauthorized actions fail
 - direct URLs cannot bypass authorization
 - crafted identifiers do not broaden access
 - filters do not broaden scope
+- API and web authorization remain aligned
 
-## 9. Manager Scope Testing
+---
 
-Manager behavior should be tested against the recursive reporting hierarchy.
+## 12. Manager Scope Testing
 
-Tests should include:
+Manager authorization must follow the recursive reporting hierarchy.
+
+Test:
 
 - direct reports
 - nested reports
@@ -216,26 +272,39 @@ Tests should include:
 - crafted employee IDs
 - crafted department filters
 - crafted role filters
-- report filtering
+- report filters
+- dashboard filters
+- API object access
 
-A Manager should never gain access outside the authorized reporting subtree.
+A Manager must never gain access outside the authorized reporting subtree.
 
-## 10. Employee Scope Testing
+---
 
-Employees should be tested for self-only access.
+## 13. Employee Scope Testing
 
-Examples include:
+Employees should be restricted to their own records.
+
+Test:
 
 - own assignments
 - own progress
 - own assessment attempts
 - own certificates
+- own training data
 
-Negative tests should verify that an Employee cannot access another Employee's records.
+Negative tests must verify that an Employee cannot access another Employee's records through:
 
-## 11. Training Lifecycle Testing
+- direct URLs
+- IDs
+- query parameters
+- API paths
+- manipulated client state
 
-Training lifecycle tests should cover:
+---
+
+## 14. Training Lifecycle Testing
+
+Training versions follow:
 
 ```text
 DRAFT
@@ -243,18 +312,24 @@ PUBLISHED
 RETIRED
 ```
 
-Important cases include:
+Test:
 
 - valid publishing
 - invalid publishing
-- publishing without required final assessment structure
-- attempts to modify published content
-- attempts to modify retired content
+- required final assessment structure
+- published content immutability
+- retired content immutability
 - retirement
 - repeated lifecycle actions
 - direct URL mutation attempts
+- new assignment behavior
+- existing assignment behavior
 
-## 12. Assignment Testing
+Published versions must remain immutable.
+
+---
+
+## 15. Assignment Testing
 
 Assignment tests should cover:
 
@@ -271,21 +346,27 @@ Assignment tests should cover:
 
 Important regression cases include:
 
-- due period of zero
+- zero-day due periods
 - concurrent duplicate assignment creation
-- database uniqueness races
+- uniqueness races
 - extremely large due periods
 - empty role-assignment batches
 
-## 13. Video Progress Testing
+Assignments remain pinned to their assigned training version.
 
-Video progress testing should verify:
+---
 
-- resume position
+## 16. Video Progress Testing
+
+Video testing should verify:
+
 - session creation
+- session authorization
+- resume position
 - heartbeat behavior
 - watched ranges
-- session end behavior
+- progress updates
+- session end
 - completion thresholds
 - malformed session identifiers
 - malformed playback metadata
@@ -293,15 +374,42 @@ Video progress testing should verify:
 - anti-skip behavior
 - cross-session behavior
 - ownership
+- protected byte-range requests
 
-Tests should ensure that clients cannot manufacture completion by:
+Tests must ensure clients cannot manufacture completion by:
 
 - skipping large sections
 - waiting while idle
 - repeatedly creating sessions
 - manipulating client-reported positions
+- bypassing assignment ownership
 
-## 14. Assessment Testing
+The server remains authoritative.
+
+---
+
+## 17. Media Upload Testing
+
+Media upload tests should verify:
+
+- supported formats
+- unsupported formats
+- extension validation
+- actual file signature validation
+- maximum file size
+- malformed files
+- unreadable files
+- checksum handling
+- storage behavior
+- failure handling
+
+Validation should fail closed.
+
+A filename or client MIME type alone must not be treated as proof of file type.
+
+---
+
+## 18. Assessment Testing
 
 Assessment tests should cover:
 
@@ -319,16 +427,19 @@ Assessment tests should cover:
 
 Important boundaries include:
 
-- exact score thresholds
-- exact time limits
-- repeated submission
-- duplicate assessment creation
+- exact pass threshold
+- just-below-pass result
+- perfect score
+- attempt limits
+- repeated submissions
 - concurrent attempts
 - question creation races
 
-The browser must never become the authority for scoring.
+The browser or Flutter client must never become the authority for scoring.
 
-## 15. Certificate Testing
+---
+
+## 19. Certificate Testing
 
 Certificate tests should cover:
 
@@ -340,25 +451,30 @@ Certificate tests should cover:
 - administrative access
 - revocation
 - repeated revocation behavior
+- historical preservation
 
-Certificate history must remain preserved.
+Repeated completion processing must not create duplicate certificates.
 
-## 16. Dashboard Testing
+---
+
+## 20. Dashboard Testing
 
 Dashboard tests should verify:
 
-- anonymous root behavior
-- authenticated role routing
+- anonymous behavior
+- authenticated routing
 - Administrator metrics
 - Training Coordinator metrics
 - Manager scope
 - Employee self-only data
-- empty dashboards
-- no assignment scenarios
+- empty states
+- no-assignment scenarios
 
-Dashboard calculations must only use data inside the user's authorized scope.
+Dashboard calculations must use only data inside the user's authorized scope.
 
-## 17. Reporting Testing
+---
+
+## 21. Reporting Testing
 
 Reporting tests should cover:
 
@@ -368,73 +484,85 @@ Reporting tests should cover:
 - job-role filters
 - training filters
 - training-version filters
-- completion percentage
+- completion percentages
 - Manager scope
 - Employee denial
 
-Tests should verify that crafted filter values cannot broaden authorization.
+Crafted filters must never broaden authorization.
 
-## 18. Audit Testing
+---
+
+## 22. Audit Testing
 
 Audit tests should verify:
 
 - expected events are created
 - actor is server-derived
 - target is correct
-- success events occur only after successful operations
+- successful events occur only after successful operations
 - failed operations do not create misleading success events
-- sensitive information is not recorded
+- sensitive data is not recorded
 - authorized users can view logs
 - unauthorized users cannot access logs
 - audit records remain read-only
 
-## 19. Retry Testing
+---
 
-Operations that may be repeated should have retry tests.
+## 23. Retry and Idempotency Testing
 
-Examples include:
+Operations that may be repeated should have controlled retry behavior.
+
+Examples:
 
 - repeated employee deactivation
 - repeated certificate issuance
 - repeated revocation
-- repeated publish or retire operations
+- repeated publish/retire actions
 - duplicate assignment attempts
-- repeated assessment submissions
+- repeated assessment submission
+- repeated API requests where appropriate
 
-The system should return controlled and predictable behavior rather than corrupting historical state.
+The system should preserve historical integrity rather than create duplicates or overwrite prior facts.
 
-## 20. Boundary Testing
+---
 
-Boundary conditions should be tested explicitly.
+## 24. Boundary Testing
 
-Examples include:
+Explicitly test boundary conditions.
 
-### Time Boundaries
+Time:
 
 - due today
-- assessment deadline exactly reached
+- deadline exactly reached
 - playback heartbeat near idle threshold
 - session end boundary
 
-### Score Boundaries
+Scores:
 
-- exactly passing score
-- just below passing score
+- exactly passing
+- just below passing
 - perfect score
 
-### Numeric Boundaries
+Numeric values:
 
 - zero due period
 - very large due period
 - malformed numeric input
 
-Boundary bugs often appear where ordinary happy-path tests do not.
+Playback:
 
-## 21. Malformed Input Testing
+- minimum valid progress
+- anti-skip boundaries
+- idle threshold
+- session transitions
 
-Malformed input should not normally produce uncontrolled HTTP 500 responses.
+---
 
-Test examples include:
+## 25. Malformed Input Testing
+
+Malformed input should normally produce controlled errors rather than uncontrolled HTTP 500 responses.
+
+Test:
 
 - invalid IDs
 - missing IDs
@@ -445,294 +573,226 @@ Test examples include:
 - invalid query parameters
 - invalid dates
 - invalid state values
+- invalid authentication data
 
-Expected responses may include:
+Expected responses depend on context and may include:
 
 ```text
 400
+401
 403
 404
 409
 ```
 
-depending on the situation.
+---
 
-## 22. Concurrency Testing
+## 26. Concurrency Testing
 
 Concurrency-sensitive behavior should be tested where practical.
 
-Important areas include:
+Important areas:
 
 - employee state changes
 - assignment creation
-- assessment attempt creation
+- assessment attempts
 - question creation
 - video progress
 - certificate issuance
+- version lifecycle changes
 
-Tests should verify that:
+Verify that:
 
 - duplicate records are not created
-- expected race conditions are handled
-- unrelated validation errors are not swallowed
+- expected races are handled
+- unrelated errors are not swallowed
 - database state remains valid
+- historical records remain intact
 
-## 23. Bug-Fix Testing Workflow
+Use database locking and uniqueness constraints where justified.
+
+---
+
+## 27. Bug-Fix Testing Workflow
 
 For a reproduced bug:
 
 1. identify the failing behavior
-2. add a test that reproduces it
+2. add a regression test
 3. confirm the test fails before the fix
 4. implement the narrowest correct fix
-5. rerun the focused test
-6. run the affected app tests
+5. run the focused test
+6. run affected application tests
 7. run the complete MySQL suite
 8. run project checks
+9. perform runtime validation when risk warrants it
 
-This workflow was used during the interim backend bug hunt.
+---
 
-## 24. Interim Backend Bug-Hunt Results
+## 28. Current Backend Regression History
 
-The interim backend bug-hunt reproduced and fixed several defects.
+Important defects previously reproduced and fixed include:
 
-Examples include:
-
-- repeated employee deactivation overwriting historical information
+- repeated employee deactivation overwriting history
 - due-today assignment timestamp ordering
-- assignment duplicate race
-- due-period overflow
+- concurrent duplicate assignment creation
+- due-period datetime overflow
 - Training save-time uniqueness race
 - Question creation race
+- video idle-time credit vulnerability
+- cross-session playback tolerance issues
+- malformed playback metadata handling
 
-Each confirmed defect received regression coverage.
+These defects are protected by regression coverage where practical.
 
-The final suite increased from:
+---
 
-```text
-173 tests
-```
+## 29. Flutter Testing
 
-to:
+Flutter testing should cover meaningful application behavior, including:
 
-```text
-189 tests
-```
+- authentication
+- API error handling
+- secure token storage
+- dashboard data
+- assignment rendering
+- assignment status
+- training navigation
+- module navigation
+- lesson navigation
+- text lesson completion
+- progress refresh
+- stale-state protection
+- route identity changes
+- completion loading states
 
-All 189 tests passed on MySQL.
-
-## 25. Focused Test Runs
-
-During development, run the smallest relevant test set first.
-
-Example:
-
-```powershell
-python manage.py test training
-```
-
-or:
-
-```powershell
-python manage.py test assessments
-```
-
-Focused tests provide faster feedback.
-
-After the focused tests pass, run broader tests before final completion.
-
-## 26. Full Test Run
-
-Important completed work should finish with:
-
-```powershell
-python manage.py test
-```
-
-Current expected result:
+Current baseline:
 
 ```text
-189 tests passing
+81 / 81 passing
+flutter analyze: 0 issues
 ```
 
-If the number increases because new tests are added, the latest verified passing count becomes the new baseline.
+Do not duplicate backend business logic merely to create client-side tests.
 
-## 27. Migration Testing
+---
 
-After model or migration-related changes, run:
+## 30. Android Runtime Testing
 
-```powershell
-python manage.py makemigrations --check --dry-run
-```
+Runtime testing should be risk-based.
 
-Unexpected migration output should be investigated before commit.
+Higher-risk areas include:
 
-Do not create schema migrations unintentionally.
+- authentication
+- token refresh/logout
+- assignment loading
+- protected API calls
+- training navigation
+- video playback
+- playback session lifecycle
+- pause/resume
+- seeking
+- progress synchronization
+- completion
+- network interruption
+- Android lifecycle changes
 
-## 28. Dependency Testing
+Video runtime testing becomes a primary M16 concern.
 
-Run:
+---
 
-```powershell
-python -m pip check
-```
+## 31. JavaScript Playback Testing
 
-This verifies that installed Python dependencies are internally consistent.
+The existing web playback implementation remains part of the product.
 
-A full dependency vulnerability scan will be added during the final security milestone.
-
-## 29. Git Diff Testing
-
-Run:
-
-```powershell
-git diff --check
-```
-
-This catches common whitespace errors.
-
-Also review:
-
-```powershell
-git status --short
-```
-
-before commit to ensure only intended files are modified.
-
-## 30. Continuous Integration
-
-GitHub Actions will be added during Milestone 11.
-
-CI should run automatically on important repository events such as:
-
-- pushes to the main branch
-- pull requests targeting the main branch
-
-The CI environment should use MySQL.
-
-Minimum CI checks should include:
+Current baseline:
 
 ```text
-install dependencies
-start/configure MySQL
-Django system check
-migration consistency check
-full test suite
-dependency consistency check
+3 / 3 passing
+```
+
+Playback-related changes should run the JavaScript suite in addition to affected Django tests.
+
+---
+
+## 32. CI Testing
+
+GitHub Actions CI should validate the major automated surfaces.
+
+Minimum expectations:
+
+```text
+Backend dependencies
+MySQL
+Django check
+Migration consistency
+Django/MySQL test suite
+pip check
+Flutter dependencies
+Flutter analyze
+Flutter tests
+JavaScript playback tests
 ```
 
 CI must use disposable credentials.
 
-Real development or production secrets must never be stored directly in the workflow.
+Production secrets must never be stored directly in workflows.
 
-## 31. CI Success Criteria
+CI should use maintained action versions and a Flutter version compatible with the Dart SDK declared by `mobile/pubspec.yaml`.
 
-A CI run should be considered successful only when:
+---
 
-- dependencies install successfully
-- MySQL becomes healthy
-- Django settings load
-- `manage.py check` passes
-- migration check passes
-- automated tests pass
-- `pip check` passes
+## 33. Browser E2E Testing
 
-A failed CI run should block treating the branch as release-ready.
+Browser E2E testing remains relevant to the Django web application.
 
-## 32. Frontend Testing
+Where Playwright is used, prioritize complete workflows rather than isolated screenshots.
 
-Frontend testing becomes a larger focus during Milestone 12.
-
-Frontend testing should include:
-
-- page rendering
-- navigation
-- form errors
-- empty states
-- role-specific views
-- responsive behavior
-- JavaScript interactions
-- assessment experience
-- video experience
-
-Frontend tests must not assume that hidden controls provide security.
-
-Backend authorization remains mandatory.
-
-## 33. Playwright Testing
-
-Playwright is planned for Milestones 13 and 14.
-
-Playwright should test complete browser flows rather than only isolated pages.
-
-Important flows include:
+Important workflows include:
 
 ```text
 Login
 -> Dashboard
--> Assigned Training
+-> Assignment
+-> Training
 -> Lesson
 -> Video
--> Quiz
--> Final Assessment
+-> Assessment
 -> Completion
 -> Certificate
 ```
 
-Administrative flows may include:
+Administrative workflows should include appropriate training creation, versioning, publishing, assignment, and reporting flows.
 
-```text
-Login
--> Create Training
--> Create Version
--> Add Modules/Lessons
--> Configure Assessment
--> Publish
--> Assign Employee
--> Review Reports
-```
+---
 
-## 34. Playwright Role Coverage
+## 34. Negative E2E Testing
 
-E2E testing should cover representative users from important roles.
+Negative browser testing should cover:
 
-At minimum:
-
-- Administrator
-- Training Coordinator
-- Manager
-- Employee
-
-Trainer and Supervisor flows should be tested according to their actual implemented V1 permissions.
-
-## 35. Negative E2E Testing
-
-Playwright should also test negative scenarios.
-
-Examples:
-
-- unauthenticated protected page access
+- unauthenticated protected-page access
 - Employee opening administrative routes
 - Manager opening out-of-scope employee URLs
 - Employee opening another Employee's certificate
 - malformed direct URLs
-- state-changing operations without valid workflow
 - invalid form input
+- unauthorized state-changing operations
+- invalid workflow transitions
 
-## 36. Responsive Testing
+---
+
+## 35. Responsive Testing
 
 Responsive testing should cover practical viewport sizes.
 
-Examples include:
+At minimum:
 
 - desktop
 - laptop
 - tablet
 - mobile
 
-Important workflows should remain usable at smaller widths.
-
-Responsive testing is especially important for:
+Important areas:
 
 - dashboards
 - tables
@@ -741,9 +801,13 @@ Responsive testing is especially important for:
 - video
 - assessments
 
-## 37. Accessibility Testing
+Responsive validation should remain relevant to the Django web portal.
 
-Accessibility testing should include:
+---
+
+## 36. Accessibility Testing
+
+Accessibility checks should include:
 
 - keyboard navigation
 - visible focus
@@ -754,13 +818,13 @@ Accessibility testing should include:
 - button semantics
 - link semantics
 
-Automated accessibility tooling may assist, but manual checks remain important.
+Automated tooling can assist but does not replace manual verification.
 
-## 38. Deployment Smoke Testing
+---
 
-After deployment, run basic smoke tests.
+## 37. Deployment Smoke Testing
 
-Examples include:
+After deployment, verify:
 
 - application loads
 - login works
@@ -771,12 +835,15 @@ Examples include:
 - protected routes remain protected
 - HTTPS works
 - secure cookies behave correctly
+- protected media access behaves correctly
 
-Deployment smoke testing should not modify important production data unnecessarily.
+Smoke testing should avoid unnecessary modification of production data.
 
-## 39. Production Security Testing
+---
 
-Before V1 release, production-like or staging testing should verify:
+## 38. Production Security Testing
+
+Before release, production-like or staging testing should verify:
 
 - HTTPS
 - secure cookies
@@ -785,33 +852,43 @@ Before V1 release, production-like or staging testing should verify:
 - proxy behavior
 - redirects
 - media protection
-- session handling
+- authentication/session behavior
 - authorization boundaries
 - error handling
+- security headers
+- deployment configuration
 
-## 40. Final Bug Hunt
+---
 
-A complete whole-application bug hunt is intentionally scheduled after frontend and E2E development.
+## 39. Final Bug Hunt
 
-This prevents performing the same comprehensive review twice.
+The final whole-application bug hunt belongs to M21 after the major functional work is complete.
 
-The final bug hunt should cover:
+It should cover:
 
 - backend
-- frontend
+- API
+- Flutter application
+- Django web portal
 - browser interactions
-- integrations
 - permissions
 - malformed input
 - concurrency
+- playback
+- assessments
+- certificates
 - deployment behavior
 - repository state
 
-## 41. Final Security Review
+Avoid repeating a complete bug hunt unnecessarily before the system is sufficiently complete.
 
-Milestone 16 includes the final major security review.
+---
 
-Expected areas include:
+## 40. Final Security Review
+
+M21 includes the final broad security and repository review.
+
+Expected areas:
 
 - authentication
 - authorization
@@ -824,90 +901,101 @@ Expected areas include:
 - dependency vulnerabilities
 - input validation
 - playback
+- media access
 - assessments
 - certificates
 - reports
 - audit logs
-- production settings
+- deployment configuration
+- repository hygiene
 
-Additional authorized tools such as Strix may be used at that stage.
+Authorized security tooling may be used where appropriate.
 
-Automated findings must be manually reviewed.
+Automated findings must be manually reviewed before implementation.
 
-## 42. Release Testing Standard
+---
 
-V1 should not be released until:
+## 41. Release Acceptance Testing
 
-- backend automated tests pass
-- CI passes
-- E2E flows pass
-- responsive testing passes
-- important accessibility checks pass
-- deployment smoke tests pass
-- final bug hunt completes
-- final security review completes
-- no known important release-blocking bug remains unresolved
+M23 final acceptance should verify:
 
-## 43. Test Documentation
+- core workflows
+- backend/API integration
+- Android application
+- training playback
+- assessments
+- certificates
+- authorization
+- deployment
+- documentation
+- release configuration
 
-When major bugs are fixed, preserve enough context to understand:
+Release is blocked by unresolved high-impact defects.
 
-- what failed
-- why it failed
-- how it was fixed
-- what regression test now protects it
+---
 
-Important long-term lessons may also be recorded in:
+## 42. Test Data
 
-```text
-docs/MEMORY.md
-```
+Automated tests should create controlled data.
 
-## 44. Test Data
+Do not depend on manually created development records.
 
-Tests should create their own controlled data.
+Production and staging data must remain separate.
 
-Do not depend on manually created development records unless a specific live verification requires them.
+Deterministic seed scenarios may be used for production-like staging validation.
 
-Automated tests should remain reproducible.
+---
 
-## 45. Live Testing
+## 43. Live Testing
 
-Automated tests do not replace all live testing.
+Automated tests do not replace runtime verification.
 
-Live manual verification is useful for:
+Live testing is useful for:
 
 - UI behavior
 - navigation
-- visual state
+- visible errors
 - complete user flows
+- Android behavior
 - browser behavior
 - deployment configuration
+- media playback
 
-However, live testing should not replace regression tests for confirmed backend defects.
+However, a confirmed backend defect should receive regression coverage rather than being protected only by manual testing.
 
-## 46. Current Testing Status
+---
 
-Current state:
+## 44. Current Testing Status
+
+Current verified state:
 
 ```text
-Backend automated suite: 189 / 189 passing
-Database: MySQL
+Django/MySQL: 348 / 348 passing
+Flutter: 81 / 81 passing
+Flutter analyze: 0 issues
+JavaScript playback: 3 / 3 passing
+```
+
+Additional checks:
+
+```text
 Django check: passing
-Migration check: passing
-pip check: passing
-git diff --check: passing
+Migration drift: clean
+pip check: clean
+git diff --check: clean
+Android debug APK: successful
 ```
 
-Upcoming testing work:
+Current testing focus:
 
 ```text
-Milestone 11 - CI
-Milestone 12 - frontend functional testing
-Milestone 13 - responsive/accessibility/browser testing
-Milestone 14 - full Playwright E2E + integration testing
-Milestone 16 - final bug/security testing
-Milestone 19 - final acceptance testing
+M16: learning + secure video
+M17: assessment + certificates
+M18: notifications + resilience
+M19: Android release candidate
+M20: production/deployment hardening
+M21: final bug hunt + security/repository review
+M23: final acceptance
 ```
 
-The current backend baseline should be preserved while the application moves into frontend development.
+Testing baselines should always use the latest verified counts rather than historical counts from older documentation.

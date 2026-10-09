@@ -2,87 +2,138 @@
 
 Internal employee training, assessment, certification, and workforce development platform for Garden's Need.
 
-The application manages structured employee learning across departments and job roles while enforcing secure access, training versioning, assessment rules, progress tracking, certification, reporting, and auditability.
+The application manages structured employee learning across departments and job roles while enforcing secure access, training versioning, assignment rules, progress tracking, assessment scoring, certification, reporting, and auditability.
+
+---
 
 ## Project Status
 
-**Current development stage:** M12 complete, M13 Phases 1–3 complete
+**Current stage: M15 complete, M16 next**
 
-The current repository contains a substantially developed Django web application and a versioned REST API that is now being prepared for the employee mobile application.
+The project now consists of:
 
-### Confirmed current state
+- Django web application
+- Versioned REST API
+- Flutter Android employee application
+- MySQL-backed backend
+- Protected training-media architecture
+- Automated backend, mobile, and playback validation
 
-* M0–M12 completed
-* M13 Phase 1: API Foundation + Versioning completed
-* M13 Phase 2: Mobile Authentication + Security completed
-* M13 Phase 3: Employee Profile + Dashboard API completed
-* Versioned REST API available under `/api/v1/`
-* JWT-based mobile authentication implemented
-* Employee profile API implemented
-* Employee dashboard API implemented
-* Training, assessment, certificate, reporting, and audit workflows implemented in the backend/web application
-* Video progress tracking and anti-skip protections implemented
-* GitHub Actions CI configured
-* **328 automated tests passing against MySQL**
-* Android employee application is the next major development stage
-* iOS development is intentionally deferred until Android has been completed, tested, piloted, and stabilized
+### Completed milestones
 
-The repository is not yet considered production-ready. Staging, production deployment configuration, observability, remaining mobile APIs, the Android application, real employee pilot testing, and final release hardening remain.
+- M0-M12: Core web platform
+- M13: Mobile API Foundation & Versioning
+- M14: Flutter / Android Foundation
+- M15: Employee App Core
 
-## Technology Stack
+### Next milestones
 
-### Backend
+- **M16:** Learning + Secure Video
+- **M17:** Assessment + Certificates
+- **M18:** Notifications + Resilience
+- **M19:** Android Release Candidate
+- **M20:** Production + Deployment Hardening
+- **M21:** Final Bug Hunt + Security + Repository Review
+- **M22:** Readability + Refactor + Garden's Need Visual Polish
+- **M23:** Final Acceptance + Android V1 Release
 
-* Python 3.14
-* Django 5.2 LTS
-* Django REST Framework 3.18.1
-* MySQL 8
-* Django built-in authentication system
-* Django REST Framework SimpleJWT 5.5.1
-* Server-rendered Django templates
+`docs/ROADMAP.md` is the canonical milestone roadmap.
 
-### Frontend
-
-* HTML
-* CSS
-* Basic JavaScript
-* Django Templates
-
-A separate SPA framework such as React or Vue is intentionally not used for V1.
-
-### Development
-
-* Visual Studio Code
-* Git
-* GitHub
-* GitHub Actions
-* MySQL
-* Django test framework
-
-Automated Playwright/browser E2E testing is planned, but is not currently part of the CI pipeline.
-
-## Application Architecture
-
-The project follows a Django monolith architecture.
+### Current validation baseline
 
 ```text
-Garden's Need Training Module Application
-│
-├── Django Web Portal
-│   ├── Administration
-│   ├── Management
-│   ├── Training
-│   ├── Assessments
-│   ├── Certificates
-│   ├── Reports
-│   └── Audit
-│
-└── Versioned REST API
-    └── /api/v1/
-        └── Employee Mobile Application
+Django/MySQL:       348 / 348 passing
+Flutter:             81 / 81 passing
+Flutter analyze:      0 issues
+JavaScript playback:  3 / 3 passing
+Android debug APK:    successful
 ```
 
-Major Django applications include:
+Additional checks currently passing include:
+
+```text
+Django system check
+Migration drift check
+pip check
+git diff --check
+```
+
+The application is **not yet production-ready**.
+
+---
+
+# Technology Stack
+
+## Backend
+
+- Python
+- Django
+- Django REST Framework
+- MySQL 8
+- Django authentication
+- SimpleJWT
+- Server-rendered Django templates
+- Protected training-media endpoints
+
+## Web Frontend
+
+- Django Templates
+- HTML
+- CSS
+- JavaScript
+
+The existing web application remains a supported product surface.
+
+A separate React/Vue SPA is not required for V1.
+
+## Mobile
+
+- Flutter
+- Android-first
+- Flutter `video_player` for the planned V1 video experience
+- Secure token storage
+- REST API integration
+
+The Android application uses the existing versioned backend rather than duplicating business rules locally.
+
+iOS is intentionally deferred until Android has reached a stable release state.
+
+## Development
+
+- Visual Studio Code
+- Git
+- GitHub
+- GitHub Actions
+- MySQL
+- Django test framework
+- Flutter tooling
+
+---
+
+# Application Architecture
+
+The current system has two client surfaces sharing one authoritative backend.
+
+```text
+                    Garden's Need Training Platform
+                              │
+                    ┌─────────┴─────────┐
+                    │                   │
+             Django Web Portal    Flutter Android App
+                    │                   │
+                    └─────────┬─────────┘
+                              │
+                       Django REST API
+                           /api/v1/
+                              │
+                       Django Backend
+                              │
+                 ┌────────────┼────────────┐
+                 │            │            │
+              MySQL       Media Storage   Audit
+```
+
+Major backend applications include:
 
 ```text
 accounts/
@@ -96,102 +147,28 @@ api/
 config/
 ```
 
-The backend remains the authoritative source for:
+The backend remains authoritative for:
 
-* permissions
-* employee scope
-* training assignments
-* progress
-* assessment scores
-* completion
-* certificates
-* audit records
+- authentication
+- authorization
+- employee scope
+- Manager reporting scope
+- training versions
+- assignments
+- progress
+- playback sessions
+- assessment scoring
+- completion
+- certificates
+- audit records
 
-Client-side state is never trusted for security-sensitive decisions.
+Clients must not become authoritative for security-sensitive decisions.
 
-## Current API
+---
 
-The REST API is versioned under:
+# Training Version Lifecycle
 
-```text
-/api/v1/
-```
-
-Currently implemented endpoints include:
-
-```text
-GET  /api/v1/status/
-
-POST /api/v1/auth/login/
-POST /api/v1/auth/refresh/
-POST /api/v1/auth/logout/
-GET  /api/v1/auth/me/
-
-GET  /api/v1/dashboard/
-
-GET  /api/v1/assignments/
-GET  /api/v1/assignments/{assignment_id}/
-GET  /api/v1/assignments/{assignment_id}/lessons/{lesson_id}/progress/
-POST /api/v1/assignments/{assignment_id}/lessons/{lesson_id}/progress/
-POST /api/v1/assignments/{assignment_id}/lessons/{lesson_id}/complete/
-POST /api/v1/assignments/{assignment_id}/lessons/{lesson_id}/sessions/
-GET  /api/v1/assignments/{assignment_id}/lessons/{lesson_id}/sessions/{session_id}/media/
-POST /api/v1/assignments/{assignment_id}/lessons/{lesson_id}/sessions/{session_id}/end/
-```
-
-The API currently provides:
-
-* JWT authentication
-* refresh-token rotation and blacklisting
-* logout protection against cross-user token invalidation
-* active employee validation
-* employee profile information
-* employee-scoped dashboard data
-* standardized API error responses
-* throttling for authentication endpoints
-
-Assignment and learning endpoints require a JWT bearer token and an active linked Employee. Assignment results are restricted to that Employee. Curriculum detail includes persisted lesson progress; playback and completion updates reuse the existing server-side validation and session rules. Assessment and certificate API endpoints are not included in this API surface.
-
-## Core Features
-
-### Authentication and Authorization
-
-The application supports role-based access including:
-
-* Administrator
-* Training Coordinator
-* Manager
-* Trainer
-* Supervisor
-* Employee
-
-Authorization is enforced on the backend.
-
-Managers are restricted to employees within their authorized reporting hierarchy.
-
-Employees can access only their own permitted training-related information.
-
-For the mobile API, access is derived from the authenticated user and linked employee rather than arbitrary employee IDs supplied by the client.
-
-### Organization Management
-
-The system supports:
-
-* departments
-* job roles
-* employees
-* reporting relationships
-* recursive manager hierarchy
-* employee activation and deactivation
-* preservation of historical employee relationships
-
-Employee records are deactivated rather than deleted when historical information must be preserved.
-
-Employee hierarchy validation includes protection against invalid reporting cycles.
-
-### Training Management
-
-Training content follows this hierarchy:
+Training follows:
 
 ```text
 Training
@@ -200,12 +177,7 @@ Training
         └── Lesson
 ```
 
-Lessons currently support:
-
-* text content
-* video content
-
-Training versions use the lifecycle:
+Training versions use:
 
 ```text
 DRAFT
@@ -213,29 +185,183 @@ PUBLISHED
 RETIRED
 ```
 
-Published training versions and their protected child content cannot be modified unsafely.
+Rules:
 
-Publishing requires the configured training requirements to be satisfied, including the required final assessment structure.
+- Draft versions may be edited.
+- Published versions are immutable.
+- Retired versions remain immutable.
+- Anything that has been published cannot be deleted.
+- New assignments use the latest published version.
+- Existing assignments remain pinned to their assigned version.
+- Retired versions cannot receive new assignments.
+- Existing assignments may continue against a retired version.
+- Published assessments and answer keys remain frozen with their version.
+- Published media is immutable.
 
-### Training Assignments
+A corrected published training version requires a new version.
 
-Training can be assigned through supported assignment workflows, including:
+Employees are not automatically migrated to newer versions.
 
-* manual assignment
-* job-role requirements
+---
 
-Assignments preserve historical information such as assignment source and relevant snapshots.
+# Current REST API
 
-The backend validates:
+The REST API is versioned under:
 
-* employee eligibility
-* training version state
-* duplicate assignments
-* due dates
-* ownership
-* reporting scope
+```text
+/api/v1/
+```
 
-Assignments use explicit lifecycle states including:
+Current API areas include:
+
+```text
+Authentication
+Dashboard
+Assignments
+Learning
+Playback Sessions
+Protected Media
+```
+
+### Authentication
+
+```text
+POST /api/v1/auth/login/
+POST /api/v1/auth/refresh/
+POST /api/v1/auth/logout/
+GET  /api/v1/auth/me/
+```
+
+### Dashboard
+
+```text
+GET /api/v1/dashboard/
+```
+
+### Assignments
+
+```text
+GET /api/v1/assignments/
+GET /api/v1/assignments/<assignment_id>/
+```
+
+### Learning
+
+```text
+GET  /api/v1/assignments/<assignment_id>/lessons/<lesson_id>/progress/
+POST /api/v1/assignments/<assignment_id>/lessons/<lesson_id>/progress/
+
+POST /api/v1/assignments/<assignment_id>/lessons/<lesson_id>/complete/
+```
+
+### Playback Sessions
+
+```text
+POST /api/v1/assignments/<assignment_id>/lessons/<lesson_id>/sessions/
+
+POST /api/v1/assignments/<assignment_id>/lessons/<lesson_id>/sessions/<session_id>/end/
+```
+
+### Protected Media
+
+```text
+GET /api/v1/assignments/<assignment_id>/lessons/<lesson_id>/sessions/<session_id>/media/
+```
+
+The existing session-based media endpoint is the authoritative V1 protected-media route.
+
+Assessment and certificate APIs are planned for later milestones rather than being treated as complete mobile functionality today.
+
+---
+
+# Authentication and Authorization
+
+The application supports:
+
+- Administrator
+- Training Coordinator
+- Manager
+- Trainer
+- Supervisor
+- Employee
+
+Authorization is enforced on the backend.
+
+## Employee scope
+
+Employees access only their own permitted records.
+
+For the mobile API, the authenticated user and linked Employee record determine ownership.
+
+Clients must not select arbitrary employee IDs to obtain another employee's data.
+
+## Manager scope
+
+Managers are restricted to their recursive reporting hierarchy.
+
+Filters cannot broaden this scope.
+
+The same principle applies to:
+
+- dashboards
+- reports
+- assignments
+- direct URLs
+- API resources
+
+---
+
+# Core Features
+
+## Organization Management
+
+The system supports:
+
+- departments
+- job roles
+- employees
+- reporting relationships
+- recursive Manager hierarchy
+- employee activation/deactivation
+- historical relationship preservation
+
+Employee records are deactivated rather than destructively deleted when historical preservation is required.
+
+---
+
+## Training Management
+
+Training supports:
+
+- training versions
+- modules
+- lessons
+- text lessons
+- video lessons
+- publishing
+- retirement
+- version pinning
+- historical preservation
+
+Published content is protected from unsafe modification.
+
+---
+
+## Training Assignments
+
+Assignments support:
+
+- manual assignment
+- job-role requirements
+- version pinning
+- due dates
+- assignment status
+- assignment source
+- historical snapshots
+- ownership validation
+- Manager-scope validation
+
+Assignment states include:
 
 ```text
 ASSIGNED
@@ -244,346 +370,382 @@ COMPLETED
 CANCELLED
 ```
 
-### Video Progress Tracking
+---
 
-Video lessons support:
+## Learning Progress
 
-* resume position
-* watch sessions
-* heartbeat tracking
-* watched-range tracking
-* progress persistence
-* anti-skip protections
-* idle-time protections
-* controlled completion logic
+The backend tracks learning state.
 
-Video progress is validated and calculated by the backend.
+For text lessons, completion is persisted through the API.
 
-Browser or mobile clients must not be able to claim arbitrary watched time or completion simply by sending manipulated progress values.
+For video lessons, the backend will remain authoritative for:
 
-### Assessments
+- playback sessions
+- watched ranges
+- progress
+- completion
+- anti-skip validation
+- idle-time protection
 
-The assessment system includes:
+The mobile client must not manufacture completion locally.
 
-* question bank
-* question revisions
-* answer options
-* lesson quizzes
-* final assessments
-* attempt tracking
-* attempt limits
-* prerequisites
-* server-side scoring
-* pass/fail handling
-* assessment result tracking
+---
 
-Assessment scores and training completion are determined by trusted backend logic.
+## Secure Video Architecture
 
-Successful completion of the required final assessment can complete the related training assignment when all other completion conditions are satisfied.
+V1 video is:
 
-### Certificates
+```text
+Streaming only
+No unrestricted downloads
+Server-authoritative progress
+Session-based media access
+```
 
-Certificates are issued after authoritative training completion when all required conditions are satisfied.
+The existing media route is tied to:
 
-Certificates include information such as:
+- authenticated employee
+- authorized assignment
+- exact lesson
+- playback session
 
-* unique certificate number
-* issue timestamp
-* employee snapshot
-* training version snapshot
-* revocation support
+The architecture supports byte-range requests for seeking.
 
-Certificate issuance is designed to be idempotent.
+Published media is immutable.
 
-Revocation preserves the historical certificate record rather than deleting it.
+Replacing published media requires a new training version.
 
-### Dashboards and Reports
+Android-specific capture protection such as `FLAG_SECURE` may be used where appropriate, but no client platform can guarantee prevention of screenshots or external recording.
 
-Role-aware dashboards provide information based on the authenticated user's permissions and scope.
+---
 
-Reporting supports information such as:
+## Assessments
 
-* assignments
-* assignment status
-* completion
-* overdue assignments
-* departments
-* job roles
-* training
-* training versions
+The assessment system supports:
 
-Managers remain restricted to their authorized reporting hierarchy.
+- question banks
+- question revisions
+- answer options
+- lesson quizzes
+- final assessments
+- attempt tracking
+- attempt limits
+- prerequisites
+- server-side scoring
+- pass/fail handling
+- assessment history
 
-Employees cannot access administrative reporting functionality.
+The backend determines authoritative scores and completion.
 
-The employee dashboard API provides:
+The mobile client must never decide whether an answer is correct or whether an employee has passed.
 
-* assignment metrics
-* action-required assignments
-* overdue state
-* recent certificates
+Assessment and certificate mobile integration is planned for M17.
 
-Dashboard data is scoped to the authenticated employee.
+---
 
-### Audit Logging
+## Certificates
 
-Important application actions are recorded through the audit system.
+Certificates support:
+
+- unique certificate numbers
+- issue timestamps
+- employee information
+- training-version references
+- revocation
+- historical preservation
+- idempotent issuance
+
+Certificate revocation does not delete the historical certificate.
+
+---
+
+## Dashboards and Reports
+
+Role-aware dashboards and reporting support information such as:
+
+- assignments
+- completion
+- overdue work
+- departments
+- job roles
+- training
+- training versions
+- certificates
+
+Manager results remain limited to the authorized reporting hierarchy.
+
+Employees receive employee-scoped dashboard information.
+
+---
+
+## Audit Logging
+
+Important actions are recorded through the audit system.
 
 Examples include:
 
-* employee changes
-* department changes
-* job-role changes
-* training changes
-* training publishing
-* training retirement
-* assignments
-* question changes
-* assessment attempts
-* assessment results
-* lesson completion
-* training completion
-* certificate issuance
-* certificate revocation
+- employee changes
+- organization changes
+- training changes
+- training publishing
+- training retirement
+- assignments
+- question changes
+- assessment attempts
+- assessment results
+- lesson completion
+- training completion
+- certificate issuance
+- certificate revocation
 
-Audit records preserve accountability while avoiding unnecessary sensitive information such as assessment answers or training content.
+Audit records avoid unnecessary sensitive information.
 
-## Security Principles
+---
 
-The application follows these security principles:
+# Security Principles
 
-* authorization is enforced server-side
-* permissions are never based only on hidden UI controls
-* direct URL access is protected
-* ownership is derived from trusted backend state
-* manager scope is calculated on the backend
-* client-supplied progress and scores are not trusted
-* client-supplied employee IDs are not trusted for employee-scoped mobile resources
-* state-changing actions use appropriate HTTP methods
-* CSRF protection remains enabled
-* malformed input should return controlled errors rather than unexpected HTTP 500 responses
-* important operations use database transactions and locking when required
-* historical records are preserved where necessary
-* secrets are never committed to Git
-* production configuration fails closed when required security configuration is missing
-* secure cookies are enabled for production configuration
-* authentication refresh tokens are rotated and blacklisted
-* cross-user logout attempts are rejected
-* inactive employees cannot authenticate or continue using protected API functionality
-* audit metadata avoids unnecessary sensitive data
+The application follows these core principles:
 
-Security testing has specifically covered areas such as:
+- backend authorization is authoritative
+- hidden UI controls are not security controls
+- direct URLs are protected
+- ownership is derived from trusted backend state
+- Manager scope is enforced server-side
+- client-supplied progress is not trusted
+- client-supplied assessment scores are not trusted
+- client-supplied employee IDs do not override ownership
+- state-changing actions use appropriate HTTP methods
+- CSRF protection remains enabled
+- malformed input receives controlled errors
+- transactions and locking are used where correctness requires them
+- published content is immutable
+- historical records are preserved where required
+- secrets are never committed
+- production security configuration fails closed where required
+- authentication tokens are securely handled
+- inactive employees cannot use protected functionality
+- audit metadata avoids unnecessary sensitive data
 
-* IDOR and employee-scope isolation
-* JWT ownership
-* cross-user logout
-* inactive-user handling
-* token refresh behavior
-* sensitive serializer fields
-* playback anti-skip behavior
+Security-sensitive testing includes:
 
-A comprehensive release-time security and repository audit remains planned before V1 release.
+- IDOR
+- ownership isolation
+- Manager scope
+- JWT behavior
+- logout/token invalidation
+- inactive employee handling
+- playback security
+- progress validation
+- protected media access
 
-## Web Application
+The final broad security and repository review is scheduled for M21.
 
-The web application is implemented using Django templates, CSS, and JavaScript.
+---
+
+# Web Application
+
+The Django web application remains a complete product surface.
 
 Current workflows include:
 
-* authentication
-* role-aware navigation
-* dashboards
-* employee management
-* reporting hierarchy management
-* training management
-* training versioning
-* assignments
-* video learning
-* assessment taking
-* assessment results
-* certificates
-* certificate revocation
-* reporting
-* audit viewing
+- authentication
+- dashboards
+- employee management
+- organization management
+- reporting hierarchy
+- training management
+- training versioning
+- assignments
+- text learning
+- video learning
+- assessments
+- certificates
+- reporting
+- audit viewing
 
-The current web application is functionally mature for the completed training workflows but still requires additional visual refinement to reach the intended polished enterprise-application experience.
+The existing Django web application will be refined rather than replaced.
 
-The UI modernization direction is to improve the existing Django application rather than replace it with a separate SPA framework.
+Final Garden's Need visual polish is intentionally scheduled for M22 after the major functional work is complete.
 
-## Mobile Application Direction
+---
 
-The mobile employee application has not yet been started in the repository.
+# Android Employee Application
 
-There are currently no Android, Flutter, iOS, Kotlin, Java, or Dart application files in the project.
+The Flutter Android application is now an active part of the repository.
 
-The immediate mobile strategy is:
+M14 established:
 
-```text
-Complete required mobile APIs
-        ↓
-Build Android employee application
-        ↓
-Android testing and stabilization
-        ↓
-Comprehensive Android release-candidate audit
-        ↓
-Employee pilot
-        ↓
-Android release
-        ↓
-Revisit iOS
-```
+- Flutter Android project
+- networking
+- secure storage
+- authentication
+- application shell
+- base UI
+- dashboard integration
+- profile integration
 
-Flutter is the leading candidate for the mobile application because it can support a shared codebase for Android and future iOS development, but the toolchain should be validated before the framework is treated as permanently locked.
+M15 added:
 
-The Android application will use the versioned REST API and keep the backend authoritative for:
+- assignment list
+- assignment status
+- assignment detail
+- training entry
+- module navigation
+- lesson navigation
+- text lesson completion
+- learning progress
+- previous/next navigation
+- learning-flow integration QA
 
-* authentication
-* authorization
-* assignment state
-* progress
-* assessment scoring
-* completion
-* certificates
-
-## Current Testing Status
-
-The project uses Django's test framework with MySQL.
-
-### Current automated baseline
+Current mobile baseline:
 
 ```text
-328 tests passing on MySQL
-0 failures
-0 errors
+81 / 81 Flutter tests passing
+flutter analyze: 0 issues
+Android debug APK: successful
 ```
 
-The current suite covers areas including:
+---
 
-* authentication
-* organization
-* training
-* video playback
-* assessments
-* certificates
-* reporting
-* audit logging
-* API behavior
-* mobile authentication
-* employee profile API
-* dashboard API
-* security/ownership boundaries
+# Mobile Architecture Direction
 
-### Useful verification commands
+The Flutter application consumes the existing API.
 
-Run the complete automated test suite:
+The mobile client must not duplicate backend rules for:
+
+- authorization
+- assignment eligibility
+- versioning
+- playback security
+- completion
+- assessment scoring
+- certificate issuance
+
+The server remains authoritative.
+
+The application is Android-first.
+
+iOS development is deferred until Android has been released and stabilized.
+
+---
+
+# Offline Boundary
+
+V1 does not provide unrestricted offline course completion.
+
+The server remains authoritative for:
+
+- playback progress
+- lesson completion
+- assessments
+- certificates
+
+Offline caching may improve usability where safe, but it must not create a second authoritative completion system.
+
+---
+
+# Testing
+
+The project uses risk-based testing.
+
+### Current baseline
+
+```text
+Django/MySQL:       348 / 348
+Flutter:             81 / 81
+Flutter analyze:      0 issues
+JavaScript playback:  3 / 3
+```
+
+### Backend checks
 
 ```powershell
 python manage.py test
-```
-
-Run Django system checks:
-
-```powershell
 python manage.py check
-```
-
-Check for missing model migrations:
-
-```powershell
 python manage.py makemigrations --check --dry-run
-```
-
-Check installed Python package consistency:
-
-```powershell
 python -m pip check
-```
-
-Check the Git diff for whitespace errors:
-
-```powershell
 git diff --check
 ```
 
-Confirmed bugs should receive regression tests whenever practical.
+### Flutter checks
 
-Testing strategy is risk-based:
-
-* low-risk changes receive lightweight validation
-* medium-risk changes receive focused tests and targeted runtime QA
-* high-risk changes such as authentication, playback, progress, assessment, permissions, and data integrity receive immediate focused regression/security testing
-* the Android release candidate will receive a comprehensive final audit followed by full regression and real-employee pilot testing
-
-## CI
-
-GitHub Actions is configured to run the backend validation pipeline.
-
-The CI environment uses:
-
-* Ubuntu runner
-* MySQL 8 service
-* Python 3.14
-
-Current CI checks include:
-
-```text
-python -m pip check
-python manage.py check
-python manage.py makemigrations --check --dry-run
-python manage.py test
+```powershell
+flutter analyze
+flutter test
 ```
 
-The current CI pipeline does not yet include:
+### JavaScript
 
-* automated Playwright/browser E2E tests
-* deployment
-* production release automation
-* Android build/release validation
+Playback tests should be run whenever web playback code changes.
 
-These may be added as the corresponding project phases are implemented.
+---
 
-## Local Development Setup
+# CI
 
-### 1. Clone the Repository
+GitHub Actions validates the major automated surfaces.
 
-```bash
+Current CI direction includes:
+
+```text
+Django/MySQL tests
+Django system checks
+Migration consistency
+pip check
+Flutter analyze
+Flutter tests
+JavaScript playback tests
+```
+
+CI uses disposable credentials and must never contain production secrets.
+
+The Flutter CI version must remain compatible with the Dart SDK required by `mobile/pubspec.yaml`.
+
+---
+
+# Development Setup
+
+## 1. Clone the repository
+
+```powershell
 git clone https://github.com/ayuxhdev/Training-Module-Application.git
 
 cd Training-Module-Application
 ```
 
-### 2. Create a Virtual Environment
-
-On Windows PowerShell:
+## 2. Create the Python environment
 
 ```powershell
 python -m venv .venv
+```
 
+Windows PowerShell:
+
+```powershell
 .venv\Scripts\Activate.ps1
 ```
 
-### 3. Install Dependencies
+## 3. Install backend dependencies
 
 ```powershell
 python -m pip install --upgrade pip
-
 pip install -r requirements.txt
 ```
 
-### 4. Configure MySQL
+## 4. Configure MySQL
 
-The project uses MySQL rather than SQLite for normal development and automated backend testing.
+The project uses MySQL 8 for normal backend development and automated testing.
 
-Create the required development database and application database user according to the environment configuration used by the project.
+Create the development database and application user according to the configuration expected by `config/settings.py`.
 
-### 5. Configure Environment Variables
+Do not use SQLite as the normal backend test database.
+
+## 5. Configure environment variables
 
 Create a local `.env` file.
 
-The `.env` file must not be committed to Git.
+The `.env` file must not be committed.
 
-For local development:
+Local development may use:
 
 ```env
 DEBUG=true
@@ -593,33 +755,32 @@ Production must use:
 
 ```env
 DEBUG=false
-
 DJANGO_SECRET_KEY=<secure-random-secret>
 ```
 
-Database credentials and other required configuration must use the environment variable names expected by `config/settings.py`.
+Database credentials and other configuration must use the variable names expected by the current settings implementation.
 
 Never commit:
 
-* database passwords
-* production secrets
-* API keys
-* authentication tokens
-* private credentials
+- database passwords
+- production secrets
+- API keys
+- authentication tokens
+- private credentials
 
-### 6. Apply Migrations
+## 6. Apply migrations
 
 ```powershell
 python manage.py migrate
 ```
 
-### 7. Create a Superuser if Required
+## 7. Create a superuser if required
 
 ```powershell
 python manage.py createsuperuser
 ```
 
-### 8. Start the Development Server
+## 8. Start Django
 
 ```powershell
 python manage.py runserver
@@ -631,40 +792,84 @@ Default development address:
 http://127.0.0.1:8000/
 ```
 
-## Development Rules
+---
 
-Project development rules are documented in:
+# Mobile Development
+
+From the mobile directory:
+
+```powershell
+cd mobile
+```
+
+Install dependencies:
+
+```powershell
+flutter pub get
+```
+
+Analyze:
+
+```powershell
+flutter analyze
+```
+
+Run tests:
+
+```powershell
+flutter test
+```
+
+Build a debug APK:
+
+```powershell
+flutter build apk --debug
+```
+
+The Android application package identity is:
+
+```text
+com.gardensneed.training
+```
+
+Do not change the package identity casually. It is part of the Android release identity.
+
+---
+
+# Development Rules
+
+Read:
 
 ```text
 AGENTS.md
 ```
 
-Developers and coding agents should review that file before modifying the application.
+before making significant changes.
 
-Important principles include:
+Important rules:
 
-* inspect the existing implementation before editing
-* prefer the simplest correct solution
-* reuse existing models, helpers, permission logic, and established patterns
-* enforce authorization on the backend
-* never trust client state for permissions, progress, scores, completion, ownership, or parent relationships
-* validate input safely
-* preserve historical and security-sensitive data
-* avoid unrelated refactoring
-* avoid destructive schema or permission changes unless explicitly approved
-* add regression tests for reproduced bugs
-* run focused tests after changes
-* run the complete test suite before considering important work complete
-* do not commit or push unstable changes
-* AI coding agents must not commit or push unless explicitly instructed by the user
+- inspect existing code first
+- reuse established architecture
+- prefer the simplest correct solution
+- keep backend authority centralized
+- do not duplicate business rules in Flutter
+- avoid unrelated refactoring
+- avoid unnecessary migrations
+- preserve historical data
+- add regression tests for confirmed bugs
+- validate focused behavior first
+- validate the broader suite afterward
+- do not commit or push unless explicitly instructed
+- do not introduce production infrastructure prematurely
 
-## Project Documentation
+---
 
-Detailed documentation is stored under:
+# Documentation
+
+Primary documentation:
 
 ```text
 docs/
-
 ├── PRD.md
 ├── ARCHITECTURE.md
 ├── DESIGN.md
@@ -675,7 +880,7 @@ docs/
 └── DEPLOYMENT.md
 ```
 
-Additional root-level documentation includes:
+Root documentation:
 
 ```text
 README.md
@@ -683,197 +888,250 @@ AGENTS.md
 CHANGELOG.md
 ```
 
-### Documentation Purpose
+### Documentation roles
 
 `README.md`
 
-* project introduction
-* current status
-* setup
-* technology stack
-* high-level architecture
-* development entry point
+- project introduction
+- current status
+- setup
+- technology stack
+- high-level architecture
 
 `AGENTS.md`
 
-* coding and agent rules
-* security constraints
-* project-specific implementation rules
+- implementation rules
+- agent workflow
+- project constraints
 
 `docs/PRD.md`
 
-* product requirements
-* users
-* V1 scope
-* exclusions
-* future scope
+- product requirements
+- V1 scope
+- exclusions
+- future scope
 
 `docs/ARCHITECTURE.md`
 
-* Django applications
-* data model relationships
-* authorization architecture
-* training lifecycle
-* assignment flow
-* video progress
-* assessments
-* certificates
-* audit system
+- system architecture
+- API architecture
+- mobile architecture
+- data and authorization boundaries
+- media architecture
 
 `docs/DESIGN.md`
 
-* UI direction
-* Garden's Need visual system
-* layout rules
-* components
-* responsive behavior
-* accessibility
+- UI direction
+- visual system
+- responsive behavior
+- accessibility
+- final product polish
 
 `docs/TASKS.md`
 
-* development roadmap
-* current milestones
-* future tasks
-* known blockers
+- milestone execution
+- current tasks
+- future tasks
+- exit criteria
 
 `docs/MEMORY.md`
 
-* durable technical decisions
-* important bug history
-* implementation lessons
-* architectural rationale
+- durable technical decisions
+- important bugs
+- implementation lessons
+- architectural rationale
 
 `docs/SECURITY.md`
 
-* permission model
-* authorization boundaries
-* security decisions
-* CSRF and session protection
-* playback security
-* assessment security
-* audit considerations
-* production requirements
+- security model
+- authorization
+- media security
+- authentication
+- production security requirements
 
 `docs/TESTING.md`
 
-* testing strategy
-* MySQL test setup
-* regression testing
-* security testing
-* browser testing
-* Playwright strategy
+- test strategy
+- regression strategy
+- security testing
+- mobile testing
+- browser testing
+- release testing
 
 `docs/DEPLOYMENT.md`
 
-* production environment configuration
-* secret handling
-* HTTPS
-* static and media files
-* backups
-* deployment checks
-* rollback considerations
+- production configuration
+- HTTPS
+- secrets
+- media
+- backups
+- deployment
+- rollback
+- release gates
 
 `CHANGELOG.md`
 
-* meaningful project and release changes
+- meaningful project changes
+- milestone history
 
-## Current Development Direction
+---
 
-The next development stages are focused on making the existing backend fully consumable by the employee mobile application and then building the Android experience.
-
-The expected dependency direction is:
+# Roadmap
 
 ```text
-Mobile API Completion
-        ↓
-Android Foundation
-        ↓
-Employee Core Experience
-        ↓
-Learning + Secure Playback
-        ↓
-Assessment + Completion + Certificates
-        ↓
-Resilience + Operational Readiness
-        ↓
-Android Release Candidate
-        ↓
-Comprehensive Audit
-        ↓
-Employee Pilot
-        ↓
-Android Release
+M0-M12  Core Platform                         COMPLETE
+M13     Mobile API Foundation & Versioning    COMPLETE
+M14     Flutter / Android Foundation          COMPLETE
+M15     Employee App Core                     COMPLETE
+M16     Learning + Secure Video               NEXT
+M17     Assessment + Certificates             PLANNED
+M18     Notifications + Resilience            PLANNED
+M19     Android Release Candidate             PLANNED
+M20     Production + Deployment Hardening     PLANNED
+M21     Final Bug + Security Review            PLANNED
+M22     Refactor + Visual Polish              PLANNED
+M23     Final Acceptance + Android V1         PLANNED
 ```
 
-iOS is intentionally deferred until the Android application has reached a stable release state.
+---
 
-The detailed milestone roadmap will be maintained separately and should not be treated as final until the Android-first execution plan has been formally finalized.
+# Immediate Development Direction
 
-## Production and Staging Readiness
+The immediate next milestone is:
+
+## M16: Learning + Secure Video
+
+M16 builds on the completed M13 API and M15 learning flow.
+
+The primary goals are:
+
+- Flutter video lesson experience
+- protected playback session integration
+- secure media streaming
+- playback progress synchronization
+- pause/resume behavior
+- seeking behavior
+- heartbeat handling
+- server-authoritative completion
+- Android capture protection where appropriate
+- focused playback regression testing
+- runtime Android QA
+
+M16 must reuse the existing session-based protected media architecture.
+
+It must not introduce a parallel unrestricted media endpoint.
+
+---
+
+# Release Direction
+
+The intended release sequence is:
+
+```text
+M16
+Learning + Secure Video
+        ↓
+M17
+Assessment + Certificates
+        ↓
+M18
+Notifications + Resilience
+        ↓
+M19
+Android Release Candidate
+        ↓
+M20
+Production + Deployment Hardening
+        ↓
+M21
+Final Bug Hunt + Security + Repository Review
+        ↓
+M22
+Readability + Refactor + Garden's Need Visual Polish
+        ↓
+M23
+Final Acceptance + Android V1 Release
+```
+
+---
+
+# Production Readiness
 
 The application is not yet production-ready.
 
-Remaining infrastructure work includes areas such as:
+Remaining work includes:
 
-* staging environment
-* representative seed/demo data
-* explicit production static-file configuration
-* isolated media/video storage
-* structured production logging
-* production web server/deployment configuration
-* deployment health checks
-* database backup verification
-* rollback procedures
-* production observability
+- secure video completion
+- mobile assessments and certificates
+- resilience and operational features
+- Android release-candidate validation
+- production infrastructure
+- staging/production-like validation
+- backup and restore verification
+- deployment hardening
+- final security review
+- final bug hunt
+- visual polish
+- employee pilot
+- final acceptance
 
-These will be implemented at the appropriate stage rather than prematurely complicating local development.
+Do not represent these as completed until they have actually been implemented and validated.
 
-## V1 Release Standard
+---
 
-V1 should not be considered ready for release until:
+# V1 Release Standard
 
-* required functionality works end-to-end
-* automated tests pass
-* appropriate runtime testing passes
-* high-risk security boundaries have been tested
-* no known exploitable critical or high-severity security issue remains unresolved
-* important reproducible defects have been resolved or formally accepted
-* production configuration is secure
-* documentation reflects the actual system
-* deployment has been verified
-* Android real-device testing has passed
-* employee pilot testing has passed
-* final regression has passed
+V1 should not be released until:
 
-## Future Scope
+- core workflows work end-to-end
+- backend and mobile integration is stable
+- automated tests pass
+- high-risk security boundaries have been tested
+- protected media works correctly
+- Android real-device testing passes
+- production configuration is secure
+- backup and restore procedures are verified
+- final bug hunt is complete
+- final security/repository review is complete
+- documentation matches the actual implementation
+- employee pilot testing passes
+- final acceptance passes
 
-Potential future functionality includes:
+---
 
-* iOS employee application
-* employee skill matrix
-* practical skill assessments
-* supervisor verification
-* machine certifications
-* QR-based certification verification
-* shared-device workflows
-* multilingual training
-* AI-assisted factory knowledge
-* retrieval-augmented knowledge access
-* advanced workforce analytics
-* stronger platform-specific mobile content protection where justified
+# Future Scope
 
-These features are future scope and must not be treated as implemented functionality until they are explicitly developed and tested.
+Potential future capabilities include:
 
-## Repository
+- iOS employee application
+- skill matrices
+- practical skill assessments
+- supervisor verification
+- machine certifications
+- QR certificate verification
+- shared-device workflows
+- multilingual training
+- advanced workforce analytics
+- AI-assisted factory knowledge
+- retrieval-augmented internal knowledge access
+- additional mobile content-protection capabilities
 
-GitHub repository:
+These are future possibilities and are not considered implemented V1 functionality unless explicitly completed.
+
+---
+
+# Repository
+
+GitHub:
 
 ```text
 https://github.com/ayuxhdev/Training-Module-Application
 ```
 
-## Product
+---
+
+# Product
 
 **Garden's Need Internal Training Module Application**
 
-This application is intended for internal organizational use.
+An internal platform for structured employee learning, secure training delivery, assessment, certification, and workforce development.

@@ -2,17 +2,19 @@
 
 ## 1. Purpose
 
-This document stores durable technical decisions, important implementation lessons, significant bug history, and architectural rationale for the Garden's Need Training Module Application.
+This document stores durable technical decisions, important implementation lessons, significant bug history, security rationale, and architectural constraints for the Garden's Need Training Module Application.
 
 This is not:
 
 - a chat transcript
-- a task log
+- a daily task log
 - a place for secrets
 - a substitute for source code
 - a substitute for Git history
 
-Use this file to preserve information that future developers or coding agents may need in order to avoid repeating old mistakes.
+Use this file to preserve information that future developers and coding agents need in order to avoid repeating old mistakes.
+
+---
 
 ## 2. Project Identity
 
@@ -31,107 +33,79 @@ Internal employee training, assessment, certification, reporting, and workforce 
 Current architecture:
 
 ```text
-Django monolith
-Python 3.14
-Django 5.2 LTS
+Django web application
+Django REST API
+Flutter Android application
 MySQL 8
 Django templates
 HTML
 CSS
-Basic JavaScript
+JavaScript
+Protected training media
 ```
 
 Current backend baseline:
 
 ```text
-189 full tests passing on MySQL
+348 / 348 Django tests passing on MySQL
 ```
 
-## 3. Core Architectural Decision
-
-V1 uses a Django monolith.
-
-Do not introduce:
-
-- React
-- a separate SPA
-- microservices
-- a separate API architecture
-
-without an explicit architectural decision.
-
-The current architecture is intentionally simple.
-
-Reasons include:
-
-- small development team
-- lower operational complexity
-- easier authorization
-- easier deployment
-- faster V1 development
-- easier debugging
-- fewer moving parts
-
-## 4. Django Version Decision
-
-The project uses:
+Current mobile baseline:
 
 ```text
-Django 5.2 LTS
+81 / 81 Flutter tests passing
+Flutter analyze: 0 issues
+Android debug APK: successful
 ```
 
-An earlier Django 6.x setup conflicted with the project's MySQL 8.0 environment.
-
-The project was moved to Django 5.2 LTS for compatibility and stability.
-
-Do not casually upgrade Django without verifying:
-
-- MySQL compatibility
-- dependency compatibility
-- migrations
-- test suite
-- deployment implications
-
-## 5. Database Decision
-
-The project uses:
+Current JavaScript playback baseline:
 
 ```text
-MySQL 8
+3 / 3 playback tests passing
 ```
 
-Development and automated backend testing use MySQL.
+---
 
-Do not switch the main test suite to SQLite merely for convenience.
+## 3. Current Milestone State
 
-Important behavior already depends on realistic handling of:
-
-- transactions
-- uniqueness
-- locking
-- date/time behavior
-- constraints
-- concurrency
-
-## 6. User Model Decision
-
-The application uses Django's built-in User model.
-
-Do not introduce a custom User model unless there is a strong future requirement.
-
-Employee-specific business data belongs in:
+Completed:
 
 ```text
-Employee
+M0-M12: complete
+M13: Mobile API Foundation & Versioning: complete
+M14: Flutter / Android Foundation: complete
+M15: Employee App Core: complete
 ```
 
-rather than replacing the authentication model.
+Next:
 
-## 7. Backend Authority Rule
+```text
+M16: Learning + Secure Video
+```
+
+Planned:
+
+```text
+M17: Assessment + Certificates
+M18: Notifications + Resilience
+M19: Android Release Candidate
+M20: Production + Deployment Hardening
+M21: Final Bug Hunt + Security + Repository Review
+M22: Readability + Refactor + Garden's Need Visual Polish
+M23: Final Acceptance + Android V1 Release
+```
+
+`docs/ROADMAP.md` is the canonical roadmap.
+
+Do not reintroduce the old M11-M18 milestone structure from historical documentation.
+
+---
+
+## 4. Backend Authority Rule
 
 The backend is authoritative for security-sensitive state.
 
-Never trust the browser for:
+Never trust the browser or mobile client for:
 
 - permissions
 - ownership
@@ -144,13 +118,15 @@ Never trust the browser for:
 - certificate eligibility
 - parent relationships
 
-Frontend controls improve usability only.
+Client-side controls improve usability only.
 
-They do not replace backend authorization.
+They do not replace backend authorization or validation.
 
-## 8. Role Model
+---
 
-Current role groups:
+## 5. Role Model
+
+Current role groups include:
 
 ```text
 Administrator
@@ -161,24 +137,23 @@ Supervisor
 Employee
 ```
 
-Role names alone should not be treated as the whole authorization model.
+Role names alone are not the complete authorization model.
 
-Use actual:
+Security decisions must use the actual:
 
 - permissions
 - ownership
-- scope
+- reporting scope
 - object state
+- assignment state
 
-when making security decisions.
+---
 
-## 9. Manager Scope Decision
+## 6. Manager Scope
 
 Managers are restricted to their recursive reporting subtree.
 
-This includes descendants, not only direct reports.
-
-The correct pattern is:
+The correct authorization pattern is:
 
 ```text
 Start with authorized Manager scope
@@ -195,11 +170,15 @@ start from all employees
 
 Filters must never broaden authorization.
 
-## 10. Employee Scope Decision
+This rule applies to dashboards, reports, APIs, and direct object access.
 
-Employees should generally operate on their own records.
+---
 
-Where possible, ownership should be derived from:
+## 7. Employee Scope
+
+Employees generally operate only on their own records.
+
+Where possible:
 
 ```text
 request.user
@@ -207,13 +186,270 @@ request.user
 -> owned objects
 ```
 
-Do not trust an arbitrary employee ID from the browser when the backend can derive ownership directly.
+Do not trust arbitrary employee IDs supplied by the client when ownership can be derived from the authenticated user.
 
-## 11. Historical Data Principle
+---
+
+## 8. Training Version Lifecycle
+
+Training versions follow:
+
+```text
+DRAFT
+PUBLISHED
+RETIRED
+```
+
+Published training versions are immutable.
+
+Retired training versions remain immutable.
+
+Draft versions may be edited and may be deleted where permitted.
+
+Anything that has been published must not be deleted.
+
+---
+
+## 9. Assignment Version Pinning
+
+Assignments are pinned to the training version assigned to the employee.
+
+Rules:
+
+- existing assignments remain on their assigned version
+- new assignments use the latest published version
+- employees are not automatically migrated to newer versions
+- retired versions cannot receive new assignments
+- existing assignments may continue against a retired version
+
+Do not silently migrate employees to a newer version.
+
+---
+
+## 10. Published Assessment and Certificate History
+
+Published assessment structure and answer keys are frozen with the training version.
+
+Historical attempts must continue to reference the version and question revisions that were actually used.
+
+Certificates reference the earned training version.
+
+Certificate revocation does not modify the underlying training version or historical certificate record.
+
+---
+
+## 11. Version Correction Policy
+
+A corrected published training version requires a new version.
+
+Do not edit published media or published learning content in place.
+
+A separate business decision may be required if a safety-critical correction means employees who completed an older version must retrain.
+
+Do not invent automatic retraining behavior during implementation.
+
+---
+
+## 12. Media Immutability
+
+Published media is immutable.
+
+Replacing published media requires a new training version.
+
+V1 media is streaming-only.
+
+No unrestricted client-side downloads are part of the V1 requirement.
+
+---
+
+## 13. Media Architecture
+
+M13 introduced the protected session-based media architecture.
+
+The existing route is authoritative:
+
+```text
+assignments/<assignment_id>/lessons/<lesson_id>/sessions/<session_id>/media/
+```
+
+The route must remain tied to:
+
+- authenticated employee
+- authorized assignment
+- exact lesson
+- valid playback session
+
+Do not create a parallel unrestricted media route.
+
+Media access, playback session activity, and completion should remain auditable.
+
+Storage should remain behind an abstraction so local storage can later move to protected object storage without changing authorization rules.
+
+---
+
+## 14. Media Upload Validation
+
+Training media upload validation should fail closed.
+
+Current validation direction includes:
+
+- permitted video formats
+- maximum size
+- extension sanity checks
+- actual file signature/magic-byte validation
+- controlled validation failures
+
+Do not rely only on a filename extension or client-supplied MIME type.
+
+Do not silently accept files when validation encounters an unexpected read or parsing failure.
+
+The same video checksum may be reused where the product permits it. Do not introduce a global checksum uniqueness rule without an explicit business requirement.
+
+---
+
+## 15. Video Progress Authority
+
+Video completion is server-authoritative.
+
+The client sends playback observations.
+
+The server decides:
+
+- valid watched ranges
+- valid progression
+- completion
+- allowable playback tolerance
+
+Never trust:
+
+```text
+completed = true
+```
+
+from a client as an authoritative completion decision.
+
+---
+
+## 16. Video Idle-Time Security
+
+A serious playback vulnerability previously allowed idle time between requests to become valid playback credit.
+
+The fix rejects excessive idle gaps and prevents inactive time from replenishing playback allowance.
+
+Cross-session state also matters.
+
+Creating repeated playback sessions must not regenerate unlimited progression tolerance.
+
+Do not weaken this security behavior merely to simplify mobile heartbeat logic.
+
+The Flutter client should send heartbeats comfortably within the server's idle boundary.
+
+---
+
+## 17. Playback Metadata
+
+Session and device metadata must remain bounded and controlled strings.
+
+Do not blindly stringify:
+
+- arrays
+- objects
+- arbitrary structured payloads
+
+Malformed playback metadata must result in controlled client errors rather than uncontrolled server failures.
+
+---
+
+## 18. Assessment Authority
+
+Assessment scoring remains server-side.
+
+The client must never decide:
+
+- correct answer
+- score
+- pass
+- fail
+- authoritative completion
+
+The backend calculates results using stored question revisions and answer data.
+
+---
+
+## 19. Question Revision History
+
+Question revisions preserve historical assessment meaning.
+
+An old assessment attempt must not silently change because the current Question was edited later.
+
+Do not replace revision-based historical behavior with mutable direct Question references without redesigning the assessment history model.
+
+---
+
+## 20. Certificate Issuance
+
+Certificate issuance is authoritative and idempotent.
+
+Repeated completion processing must not create duplicate certificates.
+
+A revoked certificate remains a historical record.
+
+Preserve:
+
+- certificate identifier
+- issue information
+- earned version
+- historical snapshot
+- revocation state
+
+---
+
+## 21. Audit Architecture
+
+Audit events use server-derived:
+
+- actor
+- target
+- timestamp
+- event type
+
+The client must never become authoritative for these values.
+
+Important success events should be recorded only after the associated business transaction succeeds.
+
+Transaction commit hooks may be used where appropriate.
+
+Audit-write failures are intentionally handled separately from already-successful business transactions. Do not change this tradeoff without considering both business integrity and audit guarantees.
+
+Do not store unnecessary sensitive data in audit metadata.
+
+Never store:
+
+- passwords
+- authentication tokens
+- secrets
+- unnecessary assessment answers
+- unnecessary private information
+
+Backend terminology:
+
+```text
+actor
+```
+
+User-facing terminology:
+
+```text
+Performed By
+```
+
+---
+
+## 22. Historical Data Principle
 
 The application preserves historical facts.
 
-Examples include:
+Important examples include:
 
 - training versions
 - question revisions
@@ -232,208 +468,7 @@ Prefer:
 
 over destructive deletion.
 
-## 12. Training Versioning Decision
-
-Training follows:
-
-```text
-Training
-└── TrainingVersion
-    └── Module
-        └── Lesson
-```
-
-TrainingVersion states:
-
-```text
-DRAFT
-PUBLISHED
-RETIRED
-```
-
-Important rationale:
-
-A completed employee record must continue to reference the training version that was actually completed.
-
-New edits should not rewrite historical training.
-
-## 13. Published Content Rule
-
-Published and retired training content must remain protected from unsafe editing.
-
-Do not loosen this rule to simplify forms or frontend development.
-
-If changes are needed after publication, versioning is the intended mechanism.
-
-## 14. Publishing Rule
-
-Publishing requires valid training structure.
-
-A valid final assessment is required according to the current backend publishing rules.
-
-Do not bypass publishing validation from:
-
-- admin UI
-- direct URL
-- custom frontend
-- scripts
-
-without intentionally changing the product rule.
-
-## 15. State-Changing Request Rule
-
-Mutating actions should not use GET.
-
-Examples include:
-
-- employee deactivation
-- training publishing
-- training retirement
-- certificate revocation
-- assignment creation
-
-Use POST or another appropriate mutation method.
-
-## 16. Permission Migration Rule
-
-Permission migrations should remain:
-
-- additive
-- non-destructive
-
-Preferred pattern:
-
-```python
-group.permissions.add(permission)
-```
-
-Avoid:
-
-- clearing permission sets
-- deleting unrelated permissions
-- destructive reverse migrations
-
-Where reversal could damage legitimate production permissions, a no-op reverse migration may be safer.
-
-## 17. Employee Deactivation Decision
-
-Employees are deactivated rather than casually deleted.
-
-Historical relationships must remain intact.
-
-Important regression:
-
-Repeated deactivation previously:
-
-- returned success again
-- overwrote the original deactivation reason
-- created another success audit event
-
-The fix:
-
-- locks the Employee row
-- detects already-inactive state
-- returns HTTP 409
-- preserves original history
-
-Do not reintroduce repeated-success behavior.
-
-## 18. Assignment Timestamp Lesson
-
-A role assignment with:
-
-```text
-due_in_days = 0
-```
-
-previously failed because:
-
-- `due_at` was calculated first
-- `assigned_at` was generated later
-- `due_at` could become slightly earlier than `assigned_at`
-
-This violated validation/database expectations.
-
-The fix uses one authoritative timestamp for both calculations.
-
-Lesson:
-
-When two persisted timestamps must have a defined relationship, derive them from the same base timestamp.
-
-## 19. Role Assignment Race Lesson
-
-Role-based batch assignment originally:
-
-1. checked existing assignments
-2. attempted creation
-
-A concurrent request could create the assignment between those two steps.
-
-This could cause an uncaught validation/uniqueness error and HTTP 500.
-
-Current behavior:
-
-- detects the conflict
-- verifies whether the exact Employee/TrainingVersion assignment now exists
-- treats only that case as a skipped duplicate
-- allows unrelated validation errors to surface
-
-Do not broadly suppress:
-
-```text
-ValidationError
-IntegrityError
-```
-
-without checking the real cause.
-
-## 20. Due-Period Overflow Lesson
-
-A valid stored role requirement could contain a due period large enough to exceed Python's datetime range.
-
-This caused:
-
-```text
-OverflowError
-```
-
-and HTTP 500.
-
-Current behavior validates the due period before creating assignments.
-
-Lesson:
-
-Model-valid integers are not automatically safe for date arithmetic.
-
-## 21. Training Creation Race Lesson
-
-A Training may pass form validation and still encounter a uniqueness conflict at save time because of concurrency.
-
-Previously this could return HTTP 500.
-
-Current behavior converts expected save-time uniqueness/validation conflicts into form errors.
-
-Important:
-
-A success audit event must not be recorded when the save did not succeed.
-
-## 22. Question Creation Race Lesson
-
-Question creation may also fail at save time after form validation.
-
-Previously, revision creation could continue even though the Question was not successfully saved.
-
-Current behavior:
-
-```text
-Question save fails
--> form receives error
--> revision creation stops
-```
-
-Lesson:
-
-Dependent writes must never continue after the parent creation fails.
+---
 
 ## 23. Concurrency Strategy
 
@@ -447,350 +482,172 @@ validation
 specific conflict handling
 ```
 
-where correctness depends on concurrent state.
+when correctness depends on concurrent state.
 
 Do not add locking automatically everywhere.
 
-Use it where a demonstrated or plausible race affects:
+Locking is especially important where races affect:
 
 - security
 - data integrity
 - idempotency
 - lifecycle state
+- playback state
 
-## 24. Lock Ordering Lesson
+Maintain consistent lock ordering.
 
-Video progress previously required corrections to locking order.
+Video progress historically required parent-first locking corrections. Do not casually change established lock ordering.
 
-Current approach prefers consistent parent-first locking.
+---
 
-Conceptual order:
+## 24. Important Concurrency Lessons
+
+### Employee deactivation
+
+Repeated deactivation previously:
+
+- returned success again
+- overwrote the original reason
+- created another success audit event
+
+Current behavior:
+
+- locks the Employee row
+- detects the already-inactive state
+- returns HTTP 409
+- preserves the original history
+
+Do not reintroduce repeated-success behavior.
+
+### Assignment timestamps
+
+`due_in_days = 0` previously produced timestamp ordering problems.
+
+Use one authoritative timestamp when calculating related persisted timestamps.
+
+### Role assignment race
+
+Do not broadly suppress `ValidationError` or `IntegrityError`.
+
+When a uniqueness race occurs:
+
+- identify the actual conflict
+- verify the expected Employee/TrainingVersion assignment
+- treat only the legitimate duplicate as a skipped assignment
+- allow unrelated errors to surface
+
+### Due-period overflow
+
+Model-valid integers can still exceed Python's datetime range.
+
+Validate date arithmetic before creating assignments.
+
+### Training creation race
+
+A save-time uniqueness conflict may occur after form validation.
+
+Expected conflicts should become controlled form errors.
+
+Do not record a success audit event when the save failed.
+
+### Question creation race
+
+Dependent revision creation must stop if the parent Question save fails.
+
+---
+
+## 25. Security Configuration
+
+Production security defaults include:
 
 ```text
-Employee
--> TrainingVersion
--> Assignment / Progress / Session
+DEBUG = False
 ```
 
-Avoid changing locking order casually.
-
-Inconsistent lock ordering may increase deadlock risk.
-
-## 25. Video Progress Authority
-
-Video completion is server-authoritative.
-
-The client sends observations.
-
-The server decides:
-
-- valid watched ranges
-- valid progression
-- completion
-
-Never trust the client to send:
-
-```text
-completed = true
-```
-
-as an authoritative decision.
-
-## 26. Video Idle-Time Vulnerability
-
-A serious playback bug was found during security hardening.
-
-Previous behavior allowed idle time between requests to be converted into valid playback credit.
-
-A user could potentially manufacture video completion without actually watching the required duration.
-
-The fix:
-
-- rejects playback credit across excessive idle gaps
-- prevents idle time from replenishing playback allowance
-- shares relevant observation allowance across sessions
-
-Current expected playback heartbeat frequency should remain comfortably below the idle threshold.
-
-Frontend target:
-
-```text
-approximately every 10-15 seconds
-```
-
-Current server idle boundary is stricter than long inactive gaps.
-
-Do not weaken this security logic merely to simplify frontend heartbeat code.
-
-## 27. Playback Session Lesson
-
-Creating new video sessions must not regenerate unlimited progress tolerance.
-
-Cross-session state matters.
-
-A client must not be able to gain additional fake watch credit simply by repeatedly creating sessions.
-
-## 28. Playback Metadata Rule
-
-Session/device metadata must remain bounded strings.
-
-Do not blindly stringify:
-
-- arrays
-- objects
-- arbitrary structured payloads
-
-Malformed playback metadata should return controlled client errors.
-
-## 29. Assessment Authority
-
-Assessment scoring is server-side.
-
-The client must never decide:
-
-- correct answer
-- score
-- pass
-- fail
-- authoritative completion
-
-The backend calculates results using stored question revisions and answers.
-
-## 30. Question Revision Rationale
-
-Question revisions preserve historical assessment consistency.
-
-A historical attempt should not silently change meaning because the current Question was edited later.
-
-Do not replace revision-based history with a direct mutable Question reference without redesigning the assessment history model.
-
-## 31. Assessment Attempt Rule
-
-Attempt creation must enforce:
-
-- ownership
-- prerequisites
-- attempt limits
-- assessment eligibility
-
-Concurrency around attempt creation must remain safe.
-
-## 32. Certificate Issuance Decision
-
-Certificate issuance is automatic after authoritative completion when requirements are satisfied.
-
-Certificate issuance is idempotent.
-
-Repeated completion processing should return or preserve the existing certificate rather than creating duplicates.
-
-## 33. Certificate Revocation Decision
-
-Revocation does not delete the certificate.
-
-A revoked certificate remains a historical record.
-
-Preserve:
-
-- certificate identifier
-- issue information
-- snapshots
-- revocation state
-
-## 34. Audit Architecture Decision
-
-Audit events use server-derived:
-
-- actor
-- target
-- timestamp
-- event type
-
-The client must never become authoritative for these values.
-
-## 35. Audit Commit Rule
-
-Important success events are recorded after the related business transaction commits.
-
-Current design uses transaction commit hooks where appropriate.
-
-This prevents:
-
-```text
-business action rolled back
-+
-success audit event persisted
-```
-
-## 36. Robust Audit Logging Decision
-
-Audit logging is intentionally configured so that an audit-write failure does not necessarily undo an already-successful business transaction.
-
-This is a deliberate tradeoff.
-
-Do not change this behavior without considering:
-
-- data integrity
-- operational impact
-- audit guarantees
-
-## 37. Audit Metadata Rule
-
-Do not store unnecessary sensitive data.
-
-Avoid audit metadata containing:
-
-- passwords
-- tokens
-- secrets
-- assessment answers
-- complete training text
-- unnecessary private information
-
-Only store useful, controlled metadata.
-
-## 38. Audit UI Terminology
-
-Backend model field:
-
-```text
-actor
-```
-
-Visible UI terminology:
-
-```text
-Performed By
-```
-
-Do not rename the backend field merely to match the UI label unless there is a real schema reason.
-
-## 39. Reports Scope Rule
-
-Reports must start from an authorized queryset.
-
-Then apply filters.
-
-This applies especially to Manager reports.
-
-A crafted filter value must never widen the underlying authorization scope.
-
-## 40. Empty Live Data Lesson
-
-Several live tests were partially limited because the development database contained no published training or assignments.
-
-Do not create fake long-lived development records merely to make a manual test look more complete unless useful.
-
-Automated tests should create controlled test data.
-
-## 41. Production DEBUG Decision
-
-Production DEBUG defaults to:
-
-```text
-False
-```
-
-This was intentionally changed during security hardening.
-
-Local development must explicitly use:
-
-```env
-DEBUG=true
-```
-
-Do not restore an unsafe default of DEBUG=True.
-
-## 42. Secret Key Decision
-
-No committed fallback Django secret should exist.
-
-When DEBUG is disabled, production requires explicit:
+Production must provide an explicit:
 
 ```text
 DJANGO_SECRET_KEY
 ```
 
-Failing closed is intentional.
+There must be no committed fallback production secret.
 
-## 43. Secure Cookie Decision
+When DEBUG is disabled, secure cookies must remain enabled.
 
-When DEBUG is disabled, production security defaults should use secure:
+Do not weaken secure-cookie behavior to compensate for incorrect HTTPS deployment.
 
-- session cookies
-- CSRF cookies
+Final HSTS, proxy, and HTTPS settings must be verified against the actual hosting architecture.
 
-Do not disable secure-cookie defaults to work around an HTTPS deployment problem.
+---
 
-Fix the deployment environment instead.
+## 26. Browser Capture Boundary
 
-## 44. HTTPS and HSTS Decision
-
-Final values for:
-
-- SSL redirect
-- HSTS
-- proxy HTTPS configuration
-
-should be chosen during the real deployment milestone.
-
-Do not invent final production values before the hosting architecture is known.
-
-## 45. Media Security Boundary
-
-Internal training video may require protected delivery.
-
-Potential future V1 deployment approaches include:
-
-- authenticated media routes
-- signed URLs
-- protected reverse-proxy delivery
-- temporary playback authorization
-
-Do not claim a specific media-security implementation exists until it is built and verified.
-
-## 46. Browser Capture Boundary
-
-A browser application cannot guarantee prevention of:
+A browser cannot guarantee prevention of:
 
 - screenshots
 - OS-level screen recording
-- external camera capture
+- external camera recording
 
-Web security can reduce casual misuse but cannot provide absolute prevention.
+Web protections can reduce casual misuse but cannot provide absolute prevention.
 
-Native Android security features may be considered later if capture prevention becomes a stronger requirement.
+Android-specific capture protection may be implemented where appropriate, including `FLAG_SECURE`, but this does not guarantee prevention of every form of capture.
 
-## 47. Readability Decision
+---
 
-The project deliberately postponed the deep readability/refactor pass until late in V1.
+## 27. Mobile Architecture
 
-Reason:
+The current mobile client is:
 
-Doing a major cleanup while functionality is still changing creates unnecessary churn.
-
-Current approach:
-
-- keep new code readable
-- make small local readability improvements
-- defer broad restructuring to Milestone 17
-
-## 48. Preferred Code Style
-
-Prefer open formatting.
-
-Example:
-
-```python
-actor = forms.ModelChoiceField(
-    queryset=get_user_model().objects.none(),
-    required=False,
-    label="Performed By",
-)
+```text
+Flutter
+Android-first
 ```
 
-Avoid dense one-line code when expanded formatting improves readability.
+Backend business rules remain authoritative.
 
-## 49. Dependency Philosophy
+Flutter should not duplicate:
+
+- authorization rules
+- completion rules
+- scoring rules
+- versioning rules
+- playback security rules
+
+The mobile client consumes the existing M13 API foundation.
+
+iOS is deferred until Android is stable and released.
+
+---
+
+## 28. Flutter Testing Baseline
+
+Current Flutter baseline:
+
+```text
+81 / 81 tests passing
+flutter analyze: 0 issues
+debug APK: successful
+```
+
+The mobile test suite should grow only where behavior warrants meaningful regression protection.
+
+Avoid writing large numbers of low-value tests solely to increase coverage.
+
+---
+
+## 29. JavaScript Playback Baseline
+
+Current JavaScript playback tests:
+
+```text
+3 / 3 passing
+```
+
+These remain part of the validation baseline because the existing Django web learner playback implementation is still supported.
+
+---
+
+## 30. Dependency Philosophy
 
 Prefer:
 
@@ -799,19 +656,17 @@ Prefer:
 3. existing project packages
 4. new dependencies only when justified
 
-Every new package creates:
+Every new package introduces maintenance, compatibility, and security considerations.
 
-- maintenance cost
-- security surface
-- compatibility risk
+Do not add dependencies merely to save a small amount of code.
 
-Do not add dependencies merely to save a few lines of code.
+---
 
-## 50. Testing Philosophy
+## 31. Testing Philosophy
 
-Confirmed defects should receive regression tests whenever practical.
+Confirmed defects should receive regression coverage whenever practical.
 
-Preferred bug-fix process:
+Preferred process:
 
 ```text
 Reproduce
@@ -820,38 +675,43 @@ Reproduce
 -> Focused tests
 -> Broader tests
 -> Full MySQL suite
+-> Required project checks
 ```
 
-## 51. Current Test History
+Use risk-based testing.
 
-Important milestone test baselines:
+High-risk security, playback, authorization, concurrency, and data-integrity changes deserve stronger validation than cosmetic or low-risk changes.
+
+---
+
+## 32. Current Verification Baseline
+
+Current known passing baseline:
 
 ```text
-Milestone 1  -> 84
-Milestone 2  -> 104
-Milestone 3  -> 109
-Milestone 4  -> 127
-Milestone 5  -> 150
-Milestone 6  -> 154
-Milestone 7  -> 159
-Milestone 8  -> 164
-Milestone 9  -> 164
-Milestone 10 -> 173
+Django/MySQL: 348 / 348
+Flutter: 81 / 81
+Flutter analyze: 0 issues
+JavaScript playback: 3 / 3
 ```
 
-Interim backend bug hunt:
+Also verified during recent M16 preparation:
 
 ```text
-189 tests passing on MySQL
+manage.py check: passing
+migration drift check: clean
+pip check: clean
+git diff --check: clean
+Android debug APK: successful
 ```
 
-The 189 count is the starting baseline for Milestone 11.
+Do not replace these current counts with historical counts from old documentation.
 
-It is not the Milestone 11 closing test count.
+---
 
-## 52. Verification Standard
+## 33. Verification Commands
 
-Important backend work should normally finish with:
+Backend:
 
 ```powershell
 python manage.py test
@@ -861,328 +721,50 @@ python -m pip check
 git diff --check
 ```
 
-Review:
+Review repository state:
 
 ```powershell
 git status --short
 ```
 
-before commit.
+Flutter:
 
-## 53. Live Testing Rule
-
-Automated tests are not the only validation.
-
-Live browser testing is useful for:
-
-- user flows
-- navigation
-- visible errors
-- forms
-- deployment behavior
-
-However:
-
-A manual live test is not a replacement for a regression test when a backend bug has been reproduced.
-
-## 54. Git Workflow
-
-Preferred sequence:
-
-```text
-Implement
--> Test
--> Review
--> Live test when useful
--> Commit
--> Push
+```powershell
+flutter analyze
+flutter test
 ```
 
-Do not push unstable changes.
+JavaScript playback tests should also be run when playback-related code changes.
 
-Take a stable commit before beginning risky work.
+---
 
-## 55. CI Decision
+## 34. CI
 
-GitHub Actions CI is part of Milestone 11.
+CI now covers the project's major automated validation surfaces.
 
-CI should use MySQL.
-
-Do not use SQLite in CI just to simplify the workflow.
-
-Minimum CI goals:
+The CI direction includes:
 
 ```text
-install dependencies
-MySQL 8
-manage.py check
-migration check
-full test suite
+Django/MySQL tests
+Django checks
+migration consistency
 pip check
+Flutter analyze
+Flutter tests
+JavaScript playback tests
 ```
 
-## 56. Frontend Decision
+CI should use disposable credentials.
 
-The V1 frontend remains:
+Real production or development secrets must never be committed into workflow files.
 
-```text
-Django Templates
-HTML
-CSS
-Basic JavaScript
-```
+GitHub Actions setup should use maintained action versions.
 
-Do not introduce React automatically.
+The Flutter CI version must remain compatible with the Dart SDK required by `mobile/pubspec.yaml`.
 
-The main reason is that the current product does not need the extra architectural complexity.
+---
 
-## 57. Frontend Development Order
-
-The frontend is deliberately staged.
-
-### Milestone 12
-
-```text
-Functionality
-```
-
-Make every required user flow usable.
-
-### Milestone 13
-
-```text
-Usability + responsiveness + accessibility
-```
-
-Improve interaction quality.
-
-### Milestone 18
-
-```text
-Premium visual polish
-```
-
-Apply final brand treatment.
-
-This avoids rebuilding polished UI while functionality is still changing.
-
-## 58. Design Direction
-
-Current intended visual direction:
-
-```text
-Deep forest green
-Ivory / white
-Charcoal
-Restrained brass
-```
-
-Desired character:
-
-```text
-professional
-calm
-premium
-practical
-```
-
-Avoid excessive decorative styling.
-
-## 59. Playwright Timing
-
-Playwright is installed but should become a major tool during:
-
-```text
-Milestone 13
-Milestone 14
-```
-
-Use it for:
-
-- browser flows
-- responsive testing
-- direct URL testing
-- role isolation
-- E2E workflows
-
-Do not distract current documentation work with premature E2E setup.
-
-## 60. Context7 Timing
-
-Context7 is available for current framework/library documentation.
-
-Use it when:
-
-- Django behavior may have changed
-- GitHub Actions syntax needs current confirmation
-- third-party library documentation is needed
-
-Do not use it for facts already clearly established by the current codebase.
-
-## 61. Strix Timing
-
-Strix is reserved for the final major security review.
-
-Target milestone:
-
-```text
-Milestone 16
-```
-
-Use it only against authorized:
-
-- local
-- staging
-- owned environments
-
-Automated findings must be reviewed.
-
-Do not blindly apply security-agent patches.
-
-## 62. GitBook Decision
-
-GitBook is optional.
-
-Repository Markdown remains the source of truth.
-
-GitBook may later provide a nicer documentation surface, but it should not become a second conflicting documentation source.
-
-## 63. Linear Decision
-
-Linear is optional.
-
-Use it only if the backlog becomes large enough that repository tasks and the Excel roadmap are no longer sufficient.
-
-Do not add project-management overhead before it provides real value.
-
-## 64. OmniRoute Decision
-
-OmniRoute is optional backup tooling.
-
-It is not required for the application architecture.
-
-Do not block development milestones on OmniRoute configuration.
-
-Use it only if it provides useful additional model capacity without consuming significant setup time.
-
-## 65. Full Bug Hunt Timing
-
-A comprehensive whole-application bug hunt is intentionally deferred until after:
-
-- frontend completion
-- browser testing
-- E2E integration
-
-Reason:
-
-A final bug hunt is more valuable against the complete product.
-
-Avoid performing the same comprehensive review twice unless a specific current risk justifies it.
-
-## 66. Final Security Review Timing
-
-The final broad security review is scheduled for:
-
-```text
-Milestone 16
-```
-
-It should review the completed system including:
-
-- backend
-- frontend
-- browser flows
-- dependencies
-- secrets
-- repository
-- deployment configuration
-
-## 67. Final Readability Timing
-
-Deep readability/refactor work belongs in:
-
-```text
-Milestone 17
-```
-
-Work one important file at a time.
-
-Preserve behavior.
-
-Run tests after each meaningful refactor.
-
-## 68. Premium Polish Timing
-
-Premium visual styling belongs in:
-
-```text
-Milestone 18
-```
-
-Do not mix major backend logic changes into that milestone.
-
-If a genuine bug is discovered during visual work, fix it separately and test it.
-
-## 69. V1 Release Standard
-
-V1 should not release until:
-
-```text
-functional flows complete
-automated tests pass
-CI passes
-E2E tests pass
-deployment is secure
-final bug hunt complete
-final security review complete
-documentation accurate
-premium visual pass complete
-final acceptance passes
-```
-
-## 70. Future Scope
-
-Future versions may add:
-
-- skill matrix
-- practical assessments
-- supervisor verification
-- machine certifications
-- QR verification
-- notifications
-- multilingual content
-- AI knowledge assistant
-- RAG over internal factory knowledge
-- native mobile application
-- stronger mobile capture protections
-
-These are not implemented V1 features.
-
-## 71. Long-Term Product Direction
-
-A possible future hierarchy is:
-
-```text
-Company
-└── Department
-    └── Role
-        └── Training Path
-            └── Training
-                └── Training Version
-                    └── Module
-                        └── Lesson
-                            └── Quiz
-                                └── Final Assessment
-                                    └── Practical Assessment
-                                        └── Certification
-                                            └── Skill Level
-```
-
-This is product direction only.
-
-It does not describe the complete current database schema.
-
-## 72. Documentation Rule
+## 35. Documentation Rule
 
 When documentation and code disagree:
 
@@ -1190,19 +772,122 @@ When documentation and code disagree:
 Inspect the current implementation.
 ```
 
-Do not automatically assume documentation is correct.
+Do not modify production behavior merely to satisfy stale documentation.
 
 Update documentation when implementation intentionally changes.
 
-Do not silently change production behavior just to make it match stale documentation.
+`docs/ROADMAP.md` is the canonical milestone roadmap.
 
-## 73. Memory Maintenance Rule
+---
 
-Add information to this file only when it is likely to matter later.
+## 36. Agent Workflow
+
+Implementation agents must:
+
+- inspect existing code before changing it
+- preserve established architecture
+- avoid unrelated refactors
+- avoid unnecessary migrations
+- validate their changes
+- report failures honestly
+
+Agents must not commit or push unless explicitly instructed.
+
+Preferred workflow:
+
+```text
+Implement
+-> Validate
+-> CodeRabbit review
+-> Fix legitimate findings
+-> Revalidate
+-> Inspect staged diff
+-> Commit
+-> Push
+```
+
+CodeRabbit is a review system, not an implementation agent.
+
+---
+
+## 37. UI and Product Design Timing
+
+The mobile app's current M14-M15 UI is functional foundation work.
+
+The final Garden's Need visual identity is intentionally not locked yet.
+
+The eventual product should be:
+
+- polished
+- animated where useful
+- beautiful
+- interactive
+- professional
+- aligned with Garden's Need branding
+
+Final visual direction belongs primarily to M22.
+
+Do not prematurely rebuild functional screens merely to impose final visual styling.
+
+---
+
+## 38. Offline Boundary
+
+V1 does not support authoritative offline course completion.
+
+The server remains authoritative for:
+
+- playback progress
+- completion
+- assessments
+- certificates
+
+Offline caching may improve resilience and usability where safe, but it must not create an alternate authoritative completion path.
+
+---
+
+## 39. Release Architecture
+
+V1 is Android-first.
+
+Before release:
+
+- Android identity must remain correct
+- production configuration must be verified
+- protected media must be verified
+- backend and mobile integration must be tested
+- release candidate validation must pass
+- final security and repository review must pass
+
+---
+
+## 40. Future Scope
+
+Potential future capabilities include:
+
+- notifications
+- practical assessments
+- supervisor verification
+- skill matrices
+- machine certifications
+- QR verification
+- multilingual content
+- AI knowledge assistant
+- RAG over internal factory knowledge
+- stronger mobile capture controls
+- iOS client
+
+These are not assumed to be implemented V1 features.
+
+---
+
+## 41. Memory Maintenance Rule
+
+Add information only when it is likely to matter later.
 
 Good candidates:
 
-- important architecture decisions
+- architecture decisions
 - security decisions
 - difficult bugs
 - concurrency lessons
@@ -1220,37 +905,50 @@ Do not add:
 - passwords
 - tokens
 
-## 74. Current Project State
+When an old decision is superseded, update or remove it rather than accumulating contradictory instructions.
 
-At the time this document was created:
+---
 
-```text
-Milestones 0-10: complete
-Interim backend bug hunt: complete
-Milestone 11: in progress
-Backend baseline: 189 tests passing on MySQL
-CI: pending
-Functional frontend: next major milestone
-Production deployment: pending
-V1 release: pending
-```
+## 42. Current Project State
 
-## 75. Current Next Step
-
-Immediate next step after documentation:
+Current state:
 
 ```text
-Add GitHub Actions CI.
+M0-M12: complete
+M13: complete
+M14: complete
+M15: complete
+M16: next
+M17-M23: planned
 ```
 
-After CI is verified:
+Current validation:
 
 ```text
-Close Milestone 11.
+Django/MySQL: 348 / 348
+Flutter: 81 / 81
+Flutter analyze: 0 issues
+JavaScript playback: 3 / 3
 ```
 
-Then begin:
+Current architectural direction:
 
 ```text
-Milestone 12 - Functional Frontend
+Django web
++
+Django REST API
++
+Flutter Android
++
+MySQL
++
+protected session-based training media
 ```
+
+Immediate next development milestone:
+
+```text
+M16 - Learning + Secure Video
+```
+
+M16 must build on the existing M13 API and media architecture rather than introducing duplicate backend rules or parallel media endpoints.

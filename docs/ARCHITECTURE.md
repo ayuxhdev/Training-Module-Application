@@ -2,368 +2,457 @@
 
 ## 1. Purpose
 
-This document describes the current architecture of the Garden's Need Training Module Application.
+This document describes the current architecture of the Garden's Need Training Module Application, the boundaries between its major components, and the architectural principles that govern future development.
 
-The application is intentionally implemented as a Django monolith rather than as separate frontend and backend services.
+The application consists of:
 
-The architecture prioritizes:
+- a Django web application
+- a Django REST API under `/api/v1/`
+- a Flutter Android employee application
+- MySQL as the authoritative relational database
+- protected training-media delivery
+- server-side business rules and audit controls
 
-- secure backend authorization
-- maintainable business logic
-- strong data integrity
-- clear ownership boundaries
-- historical record preservation
-- predictable deployment
-- minimal unnecessary complexity
+The architecture is intentionally designed so that security-sensitive business logic remains on the backend.
 
-## 2. Technology Architecture
+---
 
-Current stack:
+## 2. Architectural Principles
 
-- Python 3.14
-- Django 5.2 LTS
-- MySQL 8
-- Django built-in User model
-- Django Templates
-- HTML
-- CSS
-- basic JavaScript
-- Git
-- GitHub
-- GitHub Actions
-- Playwright for later browser and E2E testing
+The application follows these core principles:
 
-The V1 application does not use:
+1. **Backend authoritative**
+   - The server owns security-sensitive business state.
+   - Clients do not determine authoritative completion, scoring, ownership, or permissions.
 
-- React
-- a separate SPA
-- a separate REST frontend/backend architecture
-- microservices
+2. **Server-side authorization**
+   - Permissions and ownership are enforced by backend views, services, querysets, and model constraints.
+   - UI visibility is never treated as authorization.
 
-## 3. High-Level Structure
+3. **Immutable published training**
+   - Published TrainingVersions are immutable.
+   - Corrections require a new version.
 
-The project is organized into Django applications with separate business responsibilities.
+4. **Assignment version pinning**
+   - An assignment remains attached to the TrainingVersion it was created against.
+   - New assignments use the appropriate latest published version.
+
+5. **Protected media**
+   - Training video is not exposed through unrestricted public media URLs.
+   - Playback uses the existing session-based protected media architecture.
+
+6. **Explicit lifecycle**
+   - Training versions follow Draft → Published → Retired.
+
+7. **Narrow changes**
+   - New features should build on existing architecture rather than introducing parallel systems unnecessarily.
+
+8. **Auditability**
+   - Security-sensitive business operations should leave an appropriate audit trail.
+
+9. **Production-oriented validation**
+   - MySQL is the authoritative backend test environment for full-suite validation.
+   - Flutter and JavaScript validation are part of the repository validation workflow.
+
+---
+
+## 3. High-Level System
+
+```text
+                    Garden's Need Training System
+                              |
+              +---------------+---------------+
+              |                               |
+        Django Web App                    Flutter Android
+              |                               |
+              +---------------+---------------+
+                              |
+                       Django REST API
+                           /api/v1/
+                              |
+                     +--------+--------+
+                     |                 |
+                  Services          Models
+                     |                 |
+                     +--------+--------+
+                              |
+                            MySQL
+                              |
+                  +-----------+-----------+
+                  |                       |
+             Audit Records          Training Media
+                                          |
+                                Protected Media Delivery
+```
+
+The Django application remains the central authority.
+
+The Flutter application is a client of the API, not an independent business-rule engine.
+
+---
+
+## 4. Current Product Surfaces
+
+The application currently has two primary client surfaces.
+
+### 4.1 Django Web Application
+
+The web application provides browser-based workflows for administrative, training, management, and learner operations.
+
+It includes functionality for areas such as:
+
+- authentication
+- Employees
+- organization hierarchy
+- training management
+- training versions
+- modules and lessons
+- assignments
+- learning progress
+- assessments
+- certificates
+- reporting
+- audit access
+- protected video playback
+
+The web application uses Django's authentication, authorization, CSRF, ORM, templates, forms, and server-side business logic.
+
+### 4.2 Flutter Android Application
+
+The Flutter application is the employee-facing mobile client.
+
+Current completed foundation includes:
+
+- Android project foundation
+- API networking
+- secure credential storage
+- authentication
+- application shell
+- dashboard
+- profile
+- assignment list
+- assignment detail
+- module navigation
+- lesson navigation
+- TEXT lesson completion
+- learning progress
+- previous/next navigation
+- learning-flow integration handling
+
+M16 extends this foundation with secure learning/video behavior.
+
+Android is the V1 mobile target. iOS is deferred until Android is stable and released.
+
+---
+
+## 5. Backend Architecture
+
+The backend is a Django application backed by MySQL.
+
+Conceptually:
+
+```text
+HTTP Request
+    |
+    v
+Django URL routing
+    |
+    +-------------------+
+    |                   |
+ Web Views           DRF API Views
+    |                   |
+    +---------+---------+
+              |
+       Authorization
+              |
+       Business Logic
+              |
+       Django Models
+              |
+            MySQL
+```
+
+The backend is responsible for:
+
+- authentication
+- authorization
+- ownership
+- lifecycle validation
+- assignment state
+- learning state
+- progress validation
+- assessment scoring
+- certificate eligibility
+- audit events
+- protected media authorization
+- concurrency controls
+
+---
+
+## 6. Django Application Structure
+
+The project is organized around Django applications and supporting API/configuration modules.
+
+Major conceptual areas include:
 
 ```text
 config/
-accounts/
-organization/
 training/
-assessments/
-certifications/
-reports/
-audit/
+api/
+mobile/
 ```
 
-At a high level:
+The exact source-file organization may evolve, but architectural responsibilities should remain clear.
 
-```text
-Browser
-   |
-   v
-Django Views
-   |
-   +--> Forms / Validation
-   |
-   +--> Permission / Scope Logic
-   |
-   +--> Models / Business Rules
-   |
-   +--> Audit Logging
-   |
-   v
-MySQL
-```
+### 6.1 Training Domain
 
-Django templates render the user interface.
-
-The backend remains authoritative for all security-sensitive state.
-
-## 4. Application Responsibilities
-
-### 4.1 `config`
-
-The `config` package contains project-level Django configuration.
-
-Responsibilities include:
-
-- settings
-- root URL configuration
-- environment-based settings
-- database configuration
-- security configuration
-- application registration
-
-Production settings are designed to fail closed when required security configuration is missing.
-
-### 4.2 `accounts`
-
-The accounts application handles authentication-related concerns.
-
-Responsibilities include:
-
-- login
-- logout
-- user-facing authentication behavior
-- authentication tests
-- role-aware entry behavior
-
-The project uses Django's built-in User model rather than a custom user model.
-
-### 4.3 `organization`
-
-The organization application manages the company structure used by training and authorization logic.
-
-Core models include:
-
-- Department
-- JobRole
-- Employee
-
-Responsibilities include:
-
-- departments
-- job roles
-- employees
-- reporting relationships
-- employee activation status
-- manager hierarchy
-- organization permissions
-
-Employee records are preserved historically rather than casually deleted.
-
-### 4.4 `training`
-
-The training application contains the core learning-domain models and workflows.
-
-Core models include:
+The training domain owns concepts including:
 
 - Training
 - TrainingVersion
 - Module
 - Lesson
-- RoleTrainingRequirement
 - TrainingAssignment
 - LessonProgress
 - VideoWatchSession
-
-Responsibilities include:
-
-- training creation
-- training versioning
-- module ordering
-- lesson ordering
-- lesson content
-- publishing
-- retirement
-- assignments
-- role-based assignment requirements
-- video progress
-- watched ranges
-- anti-skip logic
-- training completion integration
-
-### 4.5 `assessments`
-
-The assessments application contains question and assessment functionality.
-
-Core models include:
-
-- Question
-- QuestionRevision
-- QuestionOption
 - Assessment
 - AssessmentQuestion
+- QuestionRevision
 - AssessmentAttempt
-- AttemptAnswer
-
-Responsibilities include:
-
-- question bank
-- question revisions
-- answer options
-- lesson quizzes
-- final assessments
-- attempt creation
-- attempt limits
-- prerequisites
-- answer submission
-- server-side scoring
-- pass/fail evaluation
-- training completion integration
-
-### 4.6 `certifications`
-
-The certifications application manages training certificates.
-
-Core model:
-
 - Certificate
+- audit-related records
 
-Responsibilities include:
+Business rules should remain close to the domain they govern.
 
-- automatic certificate issuance
-- unique certificate identifiers
-- historical snapshots
-- employee certificate access
-- certificate revocation
-- idempotent issuance
+### 6.2 API Layer
 
-### 4.7 `reports`
+The API layer exposes mobile-facing functionality through `/api/v1/`.
 
-The reports application contains dashboard and reporting behavior.
+API views should:
 
-Responsibilities include:
+- authenticate the request
+- validate authorization
+- resolve trusted backend relationships
+- validate input
+- invoke appropriate business logic
+- return stable API responses
 
-- role-aware dashboards
-- assignment reports
-- overdue reporting
-- completion percentages
-- filtering
-- manager scope enforcement
-- employee-specific dashboard information
+The API should not become a second implementation of the same business rules already enforced by the domain.
 
-Report filtering must never broaden the user's authorized scope.
+---
 
-### 4.8 `audit`
+## 7. API Architecture
 
-The audit application records important application actions.
-
-Core model:
-
-- AuditLog
-
-Responsibilities include:
-
-- audit-event creation
-- controlled metadata
-- server-derived actors
-- server-derived targets
-- transaction-aware logging
-- read-only audit history
-- audit permissions
-
-Audit records are not intended to be edited or deleted through normal application workflows.
-
-## 5. Core Data Model
-
-The main business relationships can be viewed as:
+The mobile API is path-versioned:
 
 ```text
-User
- |
- v
-Employee
- |
- +--> Department
- |
- +--> JobRole
- |
- +--> Manager / Reporting Relationship
- |
- +--> TrainingAssignment
-        |
-        v
-   TrainingVersion
-        |
-        +--> Training
-        |
-        +--> Module
-              |
-              v
-            Lesson
+/api/v1/
 ```
 
-Assessment relationships:
+The current API foundation includes authentication and employee learning workflows.
+
+Representative endpoints include:
 
 ```text
-TrainingVersion / Lesson
-        |
-        v
-    Assessment
-        |
-        +--> AssessmentQuestion
-        |       |
-        |       v
-        |    QuestionRevision
-        |
-        v
-AssessmentAttempt
-        |
-        v
-AttemptAnswer
+POST /api/v1/auth/login/
+POST /api/v1/auth/refresh/
+POST /api/v1/auth/logout/
+GET  /api/v1/auth/me/
+
+GET  /api/v1/dashboard/
+
+GET  /api/v1/assignments/
+GET  /api/v1/assignments/<id>/
+
+POST /api/v1/assignments/<id>/lessons/<lesson_id>/complete/
+GET  /api/v1/assignments/<id>/lessons/<lesson_id>/progress/
+
+POST /api/v1/assignments/<id>/lessons/<lesson_id>/sessions/
+POST /api/v1/assignments/<id>/lessons/<lesson_id>/progress/
+POST /api/v1/assignments/<id>/lessons/<lesson_id>/sessions/<session_id>/end/
+
+Protected session-based media delivery
 ```
 
-Certificate relationship:
+The exact endpoint set may expand as later milestones are implemented.
+
+API versioning is currently URL-based rather than header-negotiated.
+
+---
+
+## 8. Authentication Architecture
+
+### Web
+
+The Django web application uses:
+
+- Django authentication
+- session middleware
+- CSRF protection
+- permission/group authorization
+
+### Mobile API
+
+The mobile API uses Simple JWT.
+
+The authentication flow is conceptually:
 
 ```text
-TrainingAssignment
-        |
-        v
-   Completion
-        |
-        v
-   Certificate
-```
-
-Audit relationship:
-
-```text
-Authenticated User
-        |
-        v
-    Business Action
-        |
-        v
-      AuditLog
-```
-
-## 6. Training Versioning Architecture
-
-Training uses explicit versioning.
-
-```text
-Training
+Flutter
    |
-   +--> TrainingVersion 1
+   | credentials
+   v
+POST /api/v1/auth/login/
    |
-   +--> TrainingVersion 2
+   v
+Django authentication
    |
-   +--> TrainingVersion N
+   v
+Active Employee validation
+   |
+   v
+Access + Refresh tokens
 ```
 
-This allows:
+Refresh tokens are rotated and blacklisted according to the configured Simple JWT policy.
 
-- historical assignments to remain attached to the version actually completed
-- new content to be introduced without rewriting history
-- published content to remain stable
-- retired content to remain available for historical records
+API logout blacklists the supplied refresh token after validating ownership.
 
-Training version states are:
+Already-issued access tokens are not immediately revoked by logout. Active Employee validation remains an additional server-side protection.
+
+---
+
+## 9. Flutter Architecture
+
+The Flutter application follows a layered client architecture.
+
+Conceptually:
 
 ```text
-DRAFT
-PUBLISHED
-RETIRED
+Screens / Widgets
+       |
+Providers / State
+       |
+Repositories
+       |
+API Client
+       |
+Secure Storage / HTTP
+       |
+Django REST API
 ```
 
-### Draft
+### Presentation Layer
 
-Draft versions may be edited according to permission rules.
+Responsible for:
 
-### Published
+- rendering screens
+- user interaction
+- navigation
+- loading/error states
+- temporary UI state
 
-Published versions represent released training content.
+It must not become the authority for business security rules.
 
-Published versions are protected from unsafe modification.
+### State Layer
 
-### Retired
+Responsible for:
 
-Retired versions are no longer intended for new normal usage but remain preserved for historical consistency.
+- holding server-backed state
+- coordinating screen updates
+- invalidating stale data
+- managing loading and mutation states
 
-## 7. Training Content Hierarchy
+### Repository Layer
 
-Content follows:
+Responsible for:
+
+- API operations
+- translating API responses into application models
+- keeping network concerns out of widgets
+
+### API Client
+
+Responsible for:
+
+- HTTP requests
+- authentication headers
+- token handling
+- API error interpretation
+- common network behavior
+
+### Secure Storage
+
+Sensitive authentication material is stored using the appropriate secure storage mechanism rather than ordinary application preferences.
+
+---
+
+## 10. Flutter Navigation
+
+The employee application uses a structured navigation flow.
+
+Conceptually:
+
+```text
+Dashboard
+   |
+   +--> Assignments
+           |
+           +--> Assignment Detail
+                    |
+                    +--> Module
+                           |
+                           +--> Lesson
+                                  |
+                                  +--> Learning / Completion
+```
+
+Navigation should derive available actions from server-backed state.
+
+The client must not use navigation restrictions as the only authorization mechanism.
+
+---
+
+## 11. Backend and Flutter Responsibility Boundary
+
+The responsibility boundary is deliberate.
+
+### Backend owns
+
+- authentication validity
+- authorization
+- Employee ownership
+- Manager scope
+- assignment ownership
+- TrainingVersion selection
+- lifecycle state
+- lesson completion authority
+- video progress authority
+- assessment scoring
+- pass/fail
+- certificate eligibility
+- audit actor and target
+- security-sensitive validation
+
+### Flutter owns
+
+- presentation
+- navigation
+- local UI state
+- loading indicators
+- optimistic usability behavior where safe
+- API communication
+- local caching where appropriate
+- playback UI
+- temporary playback state
+
+Flutter must never turn a locally calculated value into authoritative business state.
+
+---
+
+## 12. Training Domain Model
+
+The primary training structure is:
 
 ```text
 Training
@@ -372,20 +461,45 @@ Training
         └── Lesson
 ```
 
-Modules and lessons have defined ordering.
+A TrainingVersion represents a concrete version of training content.
 
-The parent-child relationship is derived and validated by the backend.
+Published versions are immutable.
 
-Clients must not be trusted to assign arbitrary parents.
+---
 
-## 8. Assignment Architecture
+## 13. Training Version Lifecycle
 
-Training assignments connect employees with a specific published training version.
+TrainingVersion follows:
 
-Assignments may originate from:
+```text
+DRAFT
+   |
+   v
+PUBLISHED
+   |
+   v
+RETIRED
+```
 
-- manual assignment
-- job-role requirement
+### Draft
+
+Draft versions may be edited according to authorization rules.
+
+### Published
+
+Published versions are frozen.
+
+Content, assessment structure, answer keys, and published media associated with the version must not be modified in place.
+
+### Retired
+
+Retired versions remain available for historical integrity and existing assignments but cannot receive normal new assignments.
+
+---
+
+## 14. Assignment Version Pinning
+
+Assignments are pinned to the TrainingVersion selected when the assignment is created.
 
 Conceptually:
 
@@ -395,799 +509,912 @@ Employee
    v
 TrainingAssignment
    |
-   v
-TrainingVersion
+   +----> TrainingVersion
+              |
+              +----> Modules
+              |
+              +----> Lessons
+              |
+              +----> Assessment
 ```
 
-Assignment records preserve important historical context.
+If a newer TrainingVersion is published later:
 
-Assignment creation validates:
+```text
+Old Assignment ----> Old Version
+New Assignment ----> New Version
+```
 
-- employee status
-- training-version eligibility
-- duplicate assignment
-- due date
-- source
-- authorization scope
+Existing assignments are not automatically migrated.
 
-Role-based assignment operations also account for concurrent duplicate creation.
+This preserves historical training integrity and makes completion reproducible.
 
-## 9. Role Training Requirements
+---
 
-Role training requirements associate job roles with required training.
+## 15. Training Content Immutability
+
+Anything that has been published must be treated as historical content.
+
+This includes:
+
+- lesson content
+- training structure
+- assessment questions
+- answer keys
+- relevant question revisions
+- published media
+
+If a published training requires correction, the preferred architecture is:
+
+```text
+Published V1
+     |
+     | correction
+     v
+Draft V2
+     |
+     v
+Published V2
+```
+
+The old published version remains unchanged.
+
+---
+
+## 16. Learning State
+
+Learning state is associated with the assignment and its exact TrainingVersion.
 
 Conceptually:
 
 ```text
-JobRole
-   |
-   v
-RoleTrainingRequirement
-   |
-   v
-TrainingVersion
+TrainingAssignment
+       |
+       +---- LessonProgress
+       |
+       +---- VideoWatchSession
+       |
+       +---- AssessmentAttempt
+       |
+       +---- Certificate
 ```
 
-These requirements can be used to create employee assignments for employees belonging to the relevant role.
+This prevents progress from one training version from silently becoming progress for another.
 
-Stored due-period configuration is validated before assignment creation.
+---
 
-## 10. Authorization Architecture
+## 17. Lesson Architecture
 
-Authorization is layered.
+Lessons may contain different content types.
 
-The system does not depend on only one permission mechanism.
+Current learning flow supports TEXT lessons and is being extended for VIDEO learning.
 
-Typical checks may include:
+The client should determine presentation from the server-provided lesson type.
 
-1. authentication
-2. Django permission
-3. role/group permission
-4. object ownership
-5. organizational scope
-6. object lifecycle state
-7. parent-child validity
+The backend remains responsible for determining whether the lesson is actually complete.
 
-Example:
+---
 
-```text
-Request
-  |
-  v
-Authenticated?
-  |
-  v
-Required permission?
-  |
-  v
-Object inside allowed scope?
-  |
-  v
-Requested action valid for current state?
-  |
-  v
-Proceed
-```
+## 18. Text Lesson Completion
 
-## 11. Manager Scope
-
-Manager access is based on the reporting hierarchy.
-
-Managers are limited to their recursive reporting subtree.
+TEXT lesson completion is a server-authorized mutation.
 
 Conceptually:
 
 ```text
-Manager
- |
- +--> Direct Report A
- |      |
- |      +--> Report A1
- |
- +--> Direct Report B
-        |
-        +--> Report B1
+Flutter
+   |
+   | complete lesson
+   v
+API
+   |
+   +--> authenticated?
+   |
+   +--> active Employee?
+   |
+   +--> owns assignment?
+   |
+   +--> lesson belongs to assignment/version?
+   |
+   +--> state permits completion?
+   |
+   v
+Persist completion
 ```
 
-The authorized scope may include descendants, not only direct reports.
+The client may update its local presentation after successful server confirmation, but the server remains authoritative.
 
-This scope is enforced by backend queries.
+---
 
-Filters must be applied inside the already-authorized queryset.
+## 19. Video Architecture
 
-A filter must never be allowed to enlarge the queryset.
+Video is designed as protected streaming rather than downloadable training content.
 
-## 12. Employee Scope
+The V1 architecture reuses the existing M13 session-based protected media endpoint.
 
-Employees operate primarily on their own records.
-
-Employee authorization is conceptually:
+Conceptually:
 
 ```text
-Authenticated User
+Flutter Video Player
         |
         v
-     Employee
+Playback Session API
         |
         v
-Own assignments / progress / attempts / certificates
+Open Watch Session
+        |
+        v
+Protected Media Endpoint
+        |
+        +--> Employee authorization
+        +--> Assignment authorization
+        +--> Lesson/version validation
+        +--> Session validation
+        |
+        v
+Video bytes
 ```
 
-The browser must not be trusted to provide the employee identity for sensitive actions.
+No unrestricted public media route should be introduced.
 
-Where possible, ownership should be derived from the authenticated user and trusted backend relationships.
+---
 
-## 13. Video Progress Architecture
+## 20. Video Watch Sessions
 
-Video progress is designed to be server authoritative.
+A VideoWatchSession represents an authorized playback context.
 
-Main components:
+It provides a server-side boundary around media access and playback progress.
 
-- LessonProgress
-- VideoWatchSession
-- watched ranges
-- heartbeat endpoint
-- start endpoint
-- resume endpoint
-- end endpoint
+A session is associated with the relevant:
+
+- Employee
+- assignment
+- lesson
+- TrainingVersion
+
+The backend validates session state before serving protected media or accepting relevant playback mutations.
+
+Closed or stale sessions must not continue to provide unrestricted access.
+
+---
+
+## 21. Video Progress
+
+The backend records observed playback coverage.
+
+The architecture does not trust the client to submit:
+
+- total watched seconds
+- arbitrary watched ranges
+- completion state
+
+The backend instead derives progress from validated observations.
 
 Conceptually:
 
 ```text
-Video Player
-   |
-   | start
-   v
-VideoWatchSession
-   |
-   | heartbeat
-   v
-Observed Playback Position
-   |
-   v
-Server Validation
-   |
-   +--> watched ranges
-   |
-   +--> resume position
-   |
-   +--> completion state
+Playback observation
+        |
+        v
+Server validation
+        |
+        v
+Position / elapsed-time checks
+        |
+        v
+Watched interval
+        |
+        v
+Interval merge
+        |
+        v
+Authoritative coverage
 ```
 
-## 14. Video Anti-Skip Design
+---
 
-The browser cannot directly declare that the video is complete.
+## 22. Anti-Skip Model
 
-The backend evaluates observed playback progression.
+The existing playback system protects against simple forged progress.
 
-Protections include:
+Forward movement is constrained by server-observed playback progression and elapsed time.
 
-- controlled watch-session creation
-- validated session ownership
-- position validation
-- watched-range merging
-- tolerance limits
-- idle-gap limits
-- cross-session allowance controls
-- assignment validation
-- lesson validation
+Already-watched areas may be replayed without creating additional unique coverage.
 
-Long periods without valid heartbeats must not generate watch credit.
+A large heartbeat gap resets the position baseline rather than awarding continuous playback credit.
 
-A previously identified issue allowed idle time to contribute excessive playback credit. The backend now rejects credit across excessive idle gaps and controls tolerance across sessions.
+The backend also validates:
 
-## 15. Assessment Architecture
+- session state
+- ownership
+- lesson
+- TrainingVersion
+- assignment state
+- position bounds
+- progress history
 
-Assessments are separated from individual attempts.
+The system is not DRM.
 
-Conceptually:
+It cannot prevent:
+
+- screen recording
+- external cameras
+- determined local capture
+
+---
+
+## 23. Video Completion
+
+Video completion is calculated by the backend using validated watched coverage and the lesson's configured completion threshold.
+
+The Flutter client may display progress and completion status, but it cannot directly set authoritative completion.
+
+This is important because a mobile client can be modified or manipulated outside the application's normal UI.
+
+---
+
+## 24. Media Storage Boundary
+
+Development/local media storage may use the existing application storage architecture.
+
+The storage implementation should remain behind a clear boundary so that production storage can later move to object storage or another infrastructure service.
+
+The authorization rule must not depend on the storage implementation.
+
+The architectural requirement is:
+
+```text
+Authorized application request
+          |
+          v
+Authorization boundary
+          |
+          v
+Storage implementation
+```
+
+Not:
+
+```text
+Public object URL
+      |
+      v
+Training video
+```
+
+---
+
+## 25. Assessments
+
+Assessments are tied to the relevant TrainingVersion.
+
+The structure is conceptually:
 
 ```text
 Assessment
-   |
-   +--> AssessmentQuestion
-           |
-           v
-     QuestionRevision
+└── AssessmentQuestion
+    └── QuestionRevision
 ```
 
-A Question may have multiple revisions.
+Assessment attempts are associated with the Employee's assignment and the exact assessment/version context.
 
-Using a revision allows historical assessments to reference stable question content rather than silently changing when a question is edited later.
+The backend calculates:
 
-## 16. Assessment Attempts
-
-Attempts represent employee execution of an assessment.
-
-```text
-Employee
-   |
-   v
-AssessmentAttempt
-   |
-   +--> AttemptAnswer
-   |
-   v
-Server-side Score
-```
-
-The backend controls:
-
-- eligibility
-- attempt count
-- prerequisite status
-- answers used for scoring
-- correct answers
+- correctness
+- points
 - score
 - pass/fail
-- completion effects
 
-The client is never authoritative for the final score.
+The client does not provide authoritative scoring.
 
-## 17. Training Completion Flow
+---
 
-A simplified completion flow is:
+## 26. Assessment Immutability
 
-```text
-Assigned Employee
-        |
-        v
-Completes required learning
-        |
-        v
-Meets assessment requirements
-        |
-        v
-Passes required final assessment
-        |
-        v
-TrainingAssignment completed
-        |
-        v
-Certificate issuance evaluated
-```
+Published assessment content is frozen with the TrainingVersion.
 
-Completion must be based on trusted persisted state.
+Attempts retain the question/revision context required to reproduce what the learner was assessed against.
 
-## 18. Certificate Architecture
+Later changes to future training versions must not rewrite the historical meaning of an existing attempt.
 
-Certificates are tied to authoritative completion.
+---
+
+## 27. Certificates
+
+Certificates are generated by backend rules.
 
 Conceptually:
 
 ```text
-Completed TrainingAssignment
-        |
-        v
-Certificate Service / Logic
-        |
-        +--> existing certificate?
-        |        |
-        |        +--> return existing
-        |
-        +--> otherwise create
+Assignment
+    |
+    +--> Required learning complete
+    |
+    +--> FINAL assessment passed
+    |
+    +--> Same TrainingVersion
+    |
+    v
+Certificate
 ```
 
-Certificate issuance is idempotent.
+A certificate references the earned TrainingVersion.
 
-This prevents repeated completion handling from generating duplicate certificates.
+Certificate issuance does not modify the underlying TrainingVersion.
 
-Certificates preserve historical snapshots such as:
+Revocation preserves the certificate record and records the revocation event.
 
-- employee information
-- training-version information
+---
 
-Revocation changes certificate state but does not erase the historical record.
+## 28. Authorization Architecture
 
-## 19. Audit Architecture
-
-Audit logging is designed around server-controlled events.
+Authorization uses multiple layers.
 
 Conceptually:
 
 ```text
-Business Operation
-       |
-       v
-Database Transaction
-       |
-       v
-Successful Commit
-       |
-       v
-Audit Event
+Authentication
+      |
+      v
+Permission
+      |
+      v
+Object ownership
+      |
+      v
+Manager/reporting scope
+      |
+      v
+Lifecycle/state
+      |
+      v
+Business validation
 ```
 
-Where appropriate, audit logging uses `transaction.on_commit`.
+No single UI role check should be treated as sufficient.
 
-This prevents a failed business transaction from leaving behind a misleading success audit event.
+---
 
-Audit logging is configured to be robust so that an audit-write problem does not necessarily undo an otherwise valid business operation.
+## 29. Manager Scope
 
-## 20. Audit Event Content
+Manager access is based on the Manager's actual Employee relationship and reporting hierarchy.
 
-Audit events should contain controlled information such as:
+The backend computes the authorized employee scope and applies it before additional filters.
 
-- event type
+Conceptually:
+
+```text
+Manager
+   |
+   v
+Own Employee record
+   |
+   v
+Reporting descendants
+   |
+   v
+Authorized queryset
+   |
+   v
+User filters
+```
+
+Filters cannot expand the underlying authorization scope.
+
+---
+
+## 30. Audit Architecture
+
+Security-sensitive business operations may generate audit events.
+
+Audit data uses server-derived:
+
 - actor
 - target
 - timestamp
-- approved metadata
+- action
+- controlled before/after information
 
-The application intentionally avoids storing unnecessary sensitive information.
+Audit writes are transaction-aware where required so that rolled-back business operations do not create false success history.
 
-Examples that should not be placed into audit metadata include:
+Audit records are application-protected but are not intended to be tamper-proof against privileged database access.
 
-- passwords
-- authentication tokens
-- secrets
-- assessment answers
-- unnecessary training body content
+---
 
-## 21. Dashboard Architecture
+## 31. Concurrency Architecture
 
-The application uses role-aware dashboard behavior.
+Concurrency-sensitive operations use database-backed integrity controls.
 
-The root application flow is conceptually:
-
-```text
-/
- |
- +--> anonymous --> login
- |
- +--> authenticated --> role-aware dashboard
-```
-
-Dashboard querysets are constrained before metrics are calculated.
-
-Examples:
-
-```text
-Administrator
-    -> company-level permitted data
-
-Manager
-    -> recursive reporting subtree
-
-Employee
-    -> own data only
-```
-
-## 22. Reporting Architecture
-
-Reports are based on scoped querysets.
-
-Correct flow:
-
-```text
-All records
-   |
-   v
-Apply authorization scope
-   |
-   v
-Apply user-selected filters
-   |
-   v
-Calculate report output
-```
-
-Incorrect flow:
-
-```text
-All records
-   |
-   v
-Apply arbitrary user filter
-   |
-   v
-Attempt permission check afterward
-```
-
-Authorization scope must come first.
-
-## 23. Form and Validation Architecture
-
-Django Forms are used where appropriate for validation.
-
-Validation may occur at multiple levels:
-
-- form validation
-- model validation
-- database constraints
-- view/service logic
-
-Save-time failures are still possible due to concurrency.
-
-For expected conflicts, the application should convert those failures into controlled user-facing errors.
-
-It must not assume that successful form validation guarantees that a later database save cannot fail.
-
-## 24. Concurrency Strategy
-
-Concurrency-sensitive operations are handled through combinations of:
+Depending on the operation, this may include:
 
 - `transaction.atomic`
 - `select_for_update`
-- database uniqueness
-- validation
-- narrow exception handling
-- post-conflict existence checks
+- uniqueness constraints
+- model validation
+- narrow integrity-error handling
 
-Examples include:
+The system must not rely on a check-then-save sequence alone when concurrent requests can modify the same logical state.
 
-- employee deactivation
-- assignment creation
-- assessment attempts
-- video progress
-- certificate issuance
+---
 
-The application must not broadly swallow database or validation errors.
+## 32. Database Architecture
 
-Only expected conflicts should be converted into normal application behavior.
-
-## 25. Database Strategy
-
-The project uses MySQL 8 for development and automated backend testing.
-
-This is deliberate.
-
-The project should not switch tests to SQLite merely because SQLite is easier to configure.
-
-Reasons include:
-
-- locking behavior
-- date/time behavior
-- constraints
-- uniqueness
-- transaction behavior
-- MySQL-specific integration confidence
-
-Current test baseline:
-
-```text
-189 full tests passing on MySQL
-```
-
-## 26. Environment Configuration
-
-Runtime configuration is environment based.
-
-Local development uses a `.env` file.
-
-The `.env` file is excluded from Git.
-
-Important configuration includes:
-
-- DEBUG
-- Django secret key
-- database name
-- database user
-- database password
-- database host
-- database port
-- allowed hosts
-- HTTPS/security options
-
-Production uses fail-closed security behavior.
-
-For example, missing required production secret configuration should prevent unsafe startup rather than silently using a committed fallback.
-
-## 27. Security Settings Strategy
-
-Development and production settings have different requirements.
-
-Development may use:
-
-```text
-DEBUG=True
-```
-
-Production must use:
-
-```text
-DEBUG=False
-```
-
-Production configuration should enable or configure:
-
-- secure session cookies
-- secure CSRF cookies
-- HTTPS redirect as appropriate
-- HSTS
-- explicit allowed hosts
-- strong secret key
-
-These settings should be environment configurable without weakening secure defaults.
-
-## 28. Frontend Architecture
-
-The V1 frontend remains server rendered.
-
-```text
-Django View
-    |
-    v
-Django Template
-    |
-    +--> HTML
-    +--> CSS
-    +--> Basic JavaScript
-```
-
-JavaScript may improve usability but must not become the authority for security-sensitive state.
-
-Examples:
-
-JavaScript may:
-
-- update visual progress
-- submit playback heartbeats
-- improve forms
-- provide client-side feedback
-
-JavaScript must not become authoritative for:
-
-- authorization
-- score
-- completion
-- ownership
-- certificate eligibility
-
-## 29. URL and Request Design
-
-State-changing operations should use POST or another appropriate mutation method.
-
-Examples include:
-
-- employee deactivation
-- training publishing
-- training retirement
-- certificate revocation
-- assignment creation
-
-GET should remain safe and non-mutating.
-
-Directly entering a URL must not bypass backend authorization.
-
-## 30. Error Handling Strategy
-
-Expected invalid input should produce controlled responses.
-
-Typical responses include:
-
-```text
-400 - malformed or invalid request
-403 - authenticated but not authorized
-404 - object unavailable or outside allowed scope
-409 - conflicting state
-```
-
-Unexpected programming failures may still produce HTTP 500, but known invalid user actions should not.
-
-Regression tests should be added when an uncontrolled 500 is reproduced and fixed.
-
-## 31. Historical Integrity
-
-The architecture prioritizes preserving business history.
-
-Examples include:
-
-- versioned training
-- assignment snapshots
-- question revisions
-- certificate snapshots
-- certificate revocation
-- employee deactivation
-- training retirement
-- immutable audit history
-
-Historical facts should not be silently rewritten because current data later changes.
-
-## 32. Testing Architecture
-
-Tests are currently implemented using Django's test framework.
-
-Testing covers areas such as:
-
-- authentication
-- authorization
-- organization scope
-- training lifecycle
-- assignments
-- playback
-- assessments
-- certificates
-- dashboards
-- reports
-- audit logging
-- malformed requests
-- concurrency-sensitive behavior
-- regressions
-
-Current baseline:
-
-```text
-189 / 189 tests passing on MySQL
-```
-
-Future browser and workflow testing will use Playwright.
-
-## 33. Continuous Integration
-
-GitHub Actions is planned as part of Milestone 11.
-
-CI should eventually run at minimum:
-
-```text
-dependency installation
-Django system check
-migration consistency check
-MySQL-backed automated tests
-dependency consistency check
-```
-
-CI should use disposable credentials.
-
-Real local or production credentials must never be committed into workflow files.
-
-## 34. Deployment Architecture
-
-The initial deployment should remain straightforward.
+MySQL is the authoritative relational database.
 
 Conceptually:
 
 ```text
-Browser
-   |
- HTTPS
-   |
-   v
-Web Server / Reverse Proxy
-   |
-   v
-Django Application
-   |
-   v
+Django ORM
+    |
+    v
 MySQL
+    |
+    +--> Users / Employees
+    +--> Training
+    +--> Assignments
+    +--> Progress
+    +--> Sessions
+    +--> Assessments
+    +--> Certificates
+    +--> Audit records
 ```
 
-Exact infrastructure will be decided during the deployment milestone.
+Database constraints are used as the final integrity layer where appropriate.
 
-Production architecture must also account for:
+Full backend validation is performed against MySQL rather than relying only on SQLite-style development behavior.
 
-- static files
-- protected media
-- backups
-- logging
-- HTTPS
-- secrets
-- rollback
+---
 
-## 35. Architectural Principles
+## 33. Transaction Boundaries
 
-The current project follows these architectural principles:
+Transactions are used around operations where multiple writes must remain consistent.
 
-### Backend Authority
+Examples include:
 
-The backend is authoritative for all sensitive state.
+- assignment creation
+- Employee deactivation
+- assessment attempt operations
+- playback progress/session mutations
+- certificate issuance
+- lifecycle transitions
 
-### Least Privilege
+Lock ordering should remain consistent within related operations to reduce race conditions and deadlock risk.
 
-Users should receive only the access needed for their role and scope.
+---
 
-### Preserve History
+## 34. API Error Architecture
 
-Historical training and certification information should not be casually rewritten or deleted.
+API errors use the project's structured error response model.
 
-### Simple Before Complex
+Conceptually:
 
-Prefer straightforward Django solutions over additional frameworks and abstractions.
+```json
+{
+  "error": {
+    "code": "...",
+    "message": "...",
+    "fields": {}
+  }
+}
+```
 
-### Database Integrity
+HTTP status remains meaningful.
 
-Use database constraints, transactions, validation, and locking together where appropriate.
+Typical statuses include:
 
-### Explicit Lifecycle
+- 400 for invalid input
+- 401 for unauthenticated requests
+- 403 for forbidden actions
+- 404 for unavailable/out-of-scope resources
+- 409 for conflicts
+- 429 for throttling
 
-Training content and certificates use explicit lifecycle concepts rather than destructive replacement.
+Unexpected server failures remain server errors and must not be disguised as successful responses.
 
-### Test Real Behavior
+---
 
-Important backend behavior is tested against MySQL rather than a simplified database substitute.
+## 35. Security Boundary
 
-## 36. Known Architectural Boundaries
-
-The current system intentionally does not yet provide:
-
-- REST API architecture
-- React frontend
-- microservices
-- native mobile application
-- full skill matrix
-- practical-assessment workflow
-- machine-certification workflow
-- AI knowledge layer
-
-These should not be added casually during unrelated V1 work.
-
-## 37. Future Architectural Extensions
-
-Later versions may introduce additional domains such as:
+The security boundary is primarily the backend.
 
 ```text
-Skill
-EmployeeSkill
-PracticalAssessment
-PracticalVerification
-MachineCertification
-Notification
-KnowledgeDocument
+                 UNTRUSTED CLIENT
+                        |
+          +-------------+-------------+
+          |                           |
+       Browser                    Flutter
+          |                           |
+          +-------------+-------------+
+                        |
+                        v
+                 Django Backend
+                        |
+             +----------+----------+
+             |                     |
+       Authorization          Validation
+             |                     |
+             +----------+----------+
+                        |
+                        v
+                     MySQL
 ```
 
-Potential long-term hierarchy:
+The clients are treated as untrusted execution environments.
+
+---
+
+## 36. Offline Boundary
+
+V1 does not make the Flutter application an authoritative offline training engine.
+
+Offline behavior may support usability such as:
+
+- retaining non-sensitive UI state
+- caching appropriate read data
+- handling temporary connectivity loss
+
+However, authoritative completion and security-sensitive state remain server-controlled.
+
+The architecture must not introduce a client-only offline completion path that bypasses backend validation.
+
+---
+
+## 37. Secure Storage
+
+The Flutter application uses secure storage for sensitive authentication material.
+
+Ordinary preferences/local state must not be treated as a secure credential vault.
+
+Local storage does not become authoritative for:
+
+- permissions
+- Employee identity
+- completion
+- assessment score
+- certificate eligibility
+
+---
+
+## 38. Android Security Boundary
+
+Android-specific protections may supplement backend controls.
+
+Where appropriate, the application may use platform protections such as `FLAG_SECURE` for sensitive screens or video playback.
+
+These protections are defense-in-depth.
+
+They do not replace:
+
+- backend authorization
+- protected media delivery
+- session validation
+- server-side progress calculation
+
+They also cannot guarantee prevention of all forms of capture.
+
+---
+
+## 39. CI Architecture
+
+Repository validation includes multiple technology surfaces.
+
+The CI workflow should validate at least:
+
+### Backend
+
+- Django checks
+- MySQL-backed test suite
+- migration consistency
+- dependency consistency where configured
+
+### Flutter
+
+- dependency resolution
+- static analysis
+- Flutter tests
+- Android build validation where configured
+
+### JavaScript Playback
+
+- existing playback-related JavaScript tests
+
+CI should use versions compatible with the project's declared SDK requirements.
+
+The current workflow uses a Flutter release compatible with the project's Dart SDK requirement and modern Node setup.
+
+---
+
+## 40. Testing Architecture
+
+Testing is risk-based.
+
+### Backend
+
+The Django test suite validates:
+
+- authentication
+- authorization
+- ownership
+- lifecycle
+- assignments
+- progress
+- playback
+- assessments
+- certificates
+- reporting
+- audit behavior
+- concurrency-sensitive paths
+
+### Flutter
+
+Flutter tests validate:
+
+- state behavior
+- repositories
+- models
+- screens
+- learning flow
+- integration behavior
+
+### JavaScript
+
+Existing playback JavaScript tests validate browser playback behavior where applicable.
+
+### Runtime QA
+
+High-risk features receive runtime validation in addition to automated tests.
+
+The testing strategy should favor meaningful coverage over indiscriminate test volume.
+
+---
+
+## 41. Current Validation Baseline
+
+The current project baseline includes:
+
+- Django/MySQL full suite: 348 tests
+- Flutter suite: 81 tests
+- JavaScript playback tests: 3 tests
+- Django checks passing
+- migration consistency validated
+- dependency compatibility validated
+- Flutter analysis passing
+- Android debug build validated
+- repository diff checks passing
+
+These counts are a snapshot and will increase as later milestones add functionality.
+
+The latest CI/local output is authoritative if these numbers change.
+
+---
+
+## 42. Current Milestone State
+
+Completed:
 
 ```text
-Company
-└── Department
-    └── Role
-        └── Training Path
-            └── Training
-                └── Training Version
-                    └── Module
-                        └── Lesson
-                            └── Quiz
-                                └── Final Assessment
-                                    └── Practical Assessment
-                                        └── Certification
-                                            └── Skill Level
+M0-M12  Core web/backend platform
+M13     Mobile API Foundation & Versioning
+M14     Flutter / Android Foundation
+M15     Employee App Core
 ```
 
-This hierarchy represents product direction, not the current implemented database schema.
-
-## 38. Architecture Change Policy
-
-Major architectural changes should not be introduced silently.
-
-Examples requiring explicit consideration include:
-
-- replacing Django authentication
-- replacing MySQL
-- adding a separate API layer
-- introducing React
-- introducing microservices
-- replacing current permission architecture
-- removing historical versioning
-- changing certificate ownership semantics
-- weakening video progress validation
-
-If an architecture change becomes necessary, document:
-
-1. current problem
-2. proposed change
-3. security implications
-4. migration implications
-5. testing implications
-6. deployment implications
-7. rollback plan
-
-## 39. Current Architecture Status
-
-Core backend architecture is implemented and tested.
-
-Current backend baseline:
+Next:
 
 ```text
-189 full tests passing on MySQL
+M16     Learning + Secure Video
 ```
 
-The next architectural work is primarily:
+Planned:
 
-- documenting the implemented system
-- adding CI
-- completing the frontend
-- adding browser/E2E testing
-- preparing production deployment
-- performing the final whole-application security review
+```text
+M17     Assessment + Certificates
+M18     Notifications + Resilience
+M19     Android Release Candidate
+M20     Production + Deployment Hardening
+M21     Final Bug Hunt + Security + Repository Review
+M22     Readability + Refactor + Garden's Need Visual Polish
+M23     Final Acceptance + Android V1 Release
+```
 
-The current monolithic Django architecture remains the intended V1 architecture.
+The roadmap document is the canonical source for milestone sequencing.
+
+---
+
+## 43. M16 Architectural Direction
+
+M16 should extend the existing architecture rather than introduce a parallel media system.
+
+The intended flow is:
+
+```text
+Flutter
+   |
+   +--> assignment/lesson API
+   |
+   +--> start watch session
+   |
+   +--> protected media request
+   |
+   +--> playback observations
+   |
+   +--> progress/session updates
+   |
+   v
+Django backend
+   |
+   +--> authorization
+   +--> session validation
+   +--> progress calculation
+   +--> completion calculation
+   |
+   v
+MySQL + protected media storage
+```
+
+M16 should reuse the existing M13 session-based protected media endpoint.
+
+It should not create an unrestricted `/media/...` playback route or duplicate the backend's existing playback rules in Flutter.
+
+---
+
+## 44. M16 Media Rules
+
+M16 follows these rules:
+
+- V1 media is streaming-only.
+- Published media is immutable.
+- Replacing published media requires a new TrainingVersion.
+- Upload validation must reject unsupported/unsafe media.
+- Media access remains authenticated and authorized.
+- Watch sessions remain part of the media authorization boundary.
+- Progress remains server-authoritative.
+- Completion remains server-authoritative.
+- Android playback protections are defense-in-depth.
+- Storage remains replaceable behind an abstraction where practical.
+
+---
+
+## 45. Future Production Architecture
+
+The production architecture may eventually separate infrastructure concerns such as:
+
+```text
+                    Internet
+                       |
+                 Reverse Proxy
+                       |
+              +--------+--------+
+              |                 |
+          Django Web        Django API
+              |                 |
+              +--------+--------+
+                       |
+                     MySQL
+                       |
+              Protected Storage
+```
+
+A CDN or object-storage layer may be introduced later.
+
+If it is introduced, it must preserve the authorization boundary established by the application.
+
+A storage optimization must never silently turn protected training media into publicly accessible objects.
+
+---
+
+## 46. Deployment Configuration
+
+Production configuration is environment-driven.
+
+Sensitive configuration includes:
+
+- Django secret key
+- database credentials
+- allowed hosts
+- HTTPS settings
+- secure cookies
+- HSTS
+- proxy behavior
+- storage configuration
+- API/infrastructure limits
+
+Development defaults must not be treated as production configuration.
+
+Production deployment must explicitly verify Django deployment checks and the complete HTTPS/proxy topology.
+
+---
+
+## 47. Dependency Boundaries
+
+Dependencies should be introduced only when they provide meaningful functionality that is not already available through the platform or existing project stack.
+
+New dependencies should be evaluated for:
+
+- security
+- maintenance
+- compatibility
+- licensing where applicable
+- bundle/build impact
+- operational impact
+
+M16 should continue using the existing Flutter video architecture unless actual requirements demonstrate that the current implementation cannot satisfy the required playback behavior.
+
+A new playback library should not be introduced merely for convenience.
+
+---
+
+## 48. Architectural Change Policy
+
+Architecture-sensitive changes require focused review.
+
+Examples include:
+
+- authentication
+- authorization
+- API versioning
+- TrainingVersion lifecycle
+- assignment versioning
+- playback
+- media delivery
+- assessment scoring
+- certificate issuance
+- audit behavior
+- database locking
+- storage architecture
+- production security settings
+
+The preferred process is:
+
+1. inspect current implementation
+2. identify the affected boundary
+3. determine whether existing architecture already solves the problem
+4. make the narrowest correct change
+5. add or update focused tests
+6. run the relevant full validation
+7. review the final diff
+8. run automated review where applicable
+
+Do not introduce a second implementation of an existing business rule without a concrete architectural reason.
+
+---
+
+## 49. Documentation Architecture
+
+Documentation must reflect the actual repository state.
+
+`ROADMAP.md` is the canonical milestone roadmap.
+
+Other documentation should remain consistent with it.
+
+When architecture or product decisions change, update the relevant documentation rather than leaving contradictory historical instructions in active sections.
+
+Historical information may remain where useful, but it must be clearly historical and must not be presented as the current architecture.
+
+---
+
+## 50. Current Architectural Status
+
+The current architecture is stable enough to proceed into M16.
+
+The major foundations are in place:
+
+- Django web application
+- MySQL-backed domain model
+- versioned REST API
+- JWT mobile authentication
+- Flutter Android client
+- assignment/learning flow
+- server-authoritative business rules
+- protected playback/session architecture
+- assessment and certificate backend
+- audit architecture
+- CI validation across backend, Flutter, and playback JavaScript
+
+The next architectural focus is secure video learning in M16.
+
+The project should continue to favor incremental development over architectural replacement.
+
+The final Garden's Need visual design, animation system, and broader UI polish are intentionally deferred until the dedicated M22 readability/refactor/visual-polish phase unless an earlier feature requires a functional UI treatment.
+
+The architecture should therefore remain flexible enough to support that later visual layer without prematurely locking the final design system.

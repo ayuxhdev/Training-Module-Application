@@ -2,95 +2,94 @@
 
 ## 1. Purpose
 
-This document defines the production deployment requirements and deployment checklist for the Garden's Need Training Module Application.
+This document defines deployment requirements for the Garden's Need Training Module Application.
 
-The application is still pre-release.
+The application is currently pre-release.
 
-The exact production infrastructure may change later, but the deployment must preserve the application's existing security, database, and authorization assumptions.
+Production infrastructure is not yet finalized. This document therefore distinguishes established security requirements from deployment-specific decisions that must be verified when the hosting architecture is selected.
+
+---
 
 ## 2. Current Deployment Status
 
-Current status:
+Current state:
 
 ```text
-Production deployment not yet completed.
+Production deployment: not completed
+Production hardening: planned
 ```
 
-Deployment hardening is scheduled for:
+The current roadmap schedules production and deployment hardening in:
 
 ```text
-Milestone 15 - Production + Deployment Hardening
+M20 - Production + Deployment Hardening
 ```
 
-The current application should be treated as a development/pre-release system until that milestone is complete.
+The system must be treated as development/pre-release until the production release gates are completed.
 
-## 3. Production Architecture
+---
 
-The initial production deployment should remain simple.
+## 3. Current Production Architecture Direction
+
+The intended production architecture remains deliberately simple.
 
 Conceptually:
 
 ```text
-User Browser
-     |
-   HTTPS
-     |
-     v
-Reverse Proxy / Web Server
-     |
-     v
+User
+ |
+HTTPS
+ |
+Reverse Proxy / Hosting Router
+ |
 Django Application
-     |
-     v
+ |
 MySQL 8
 ```
 
 Additional infrastructure may include:
 
 ```text
-Static File Storage
-Media / Training Video Storage
-Database Backup Storage
-Application Logs
+Static storage
+Protected media storage
+Database backup storage
+Operational logs
 Monitoring
 ```
 
-The exact hosting provider and server layout should be finalized during the deployment milestone.
+The exact provider, server, reverse proxy, application server, and storage architecture must be documented only after they are selected and verified.
+
+---
 
 ## 4. Production Requirements
 
-Production deployment must include:
+Production must provide:
 
-- Python-compatible production environment
-- Django 5.2 LTS
+- Python runtime compatible with the application
+- current supported Django version used by the project
 - MySQL 8
 - HTTPS
 - secure secret management
 - explicit allowed hosts
 - secure cookies
-- static file handling
-- media file strategy
+- static-file handling
+- protected media strategy
 - database backups
 - operational logging
-- migration procedure
+- deliberate migration procedure
 - rollback procedure
 - smoke testing
+- release monitoring
 
-Production must not depend on local development assumptions.
+Production must not depend on developer-machine assumptions.
 
-## 5. Environment Variables
+---
 
-Production configuration must use environment variables.
+## 5. Environment Configuration
 
-Do not commit production configuration values into Git.
+Production configuration must be supplied through environment variables or the hosting platform's secure configuration system.
 
-Required configuration should follow the variable names used by:
-
-```text
-config/settings.py
-```
-
-Important production configuration includes:
+Important settings include:
 
 - DEBUG
 - DJANGO_SECRET_KEY
@@ -102,33 +101,39 @@ Important production configuration includes:
 - allowed hosts
 - HTTPS/security settings
 
-The exact variable names must be verified against the current implementation before deployment.
+The exact variable names must always be verified against the current `config/settings.py`.
+
+Do not invent configuration names in deployment documentation.
+
+---
 
 ## 6. DEBUG
 
-Production must use:
+Production must run with:
 
 ```env
 DEBUG=false
 ```
 
-The application should never run production traffic with:
+Production traffic must never run with DEBUG enabled.
 
-```env
-DEBUG=true
-```
+Debug pages may expose:
 
-Django debug pages may expose sensitive internal information.
+- configuration
+- filesystem paths
+- stack traces
+- database information
+- internal application details
 
-The current settings are intentionally designed so that DEBUG defaults to disabled.
+Local development may explicitly enable DEBUG through the local environment.
 
-Local development explicitly enables it through the local environment.
+---
 
 ## 7. Django Secret Key
 
-Production requires a strong secret key.
+Production requires a strong unique secret.
 
-Example configuration:
+Conceptually:
 
 ```env
 DJANGO_SECRET_KEY=<strong-random-secret>
@@ -137,119 +142,101 @@ DJANGO_SECRET_KEY=<strong-random-secret>
 Requirements:
 
 - unique to the production environment
-- generated securely
+- securely generated
 - not committed to Git
-- not shared in screenshots
 - not stored in source code
-- protected through the hosting environment's secret-management mechanism
+- not exposed in screenshots or logs
+- stored through the hosting platform's secret mechanism
 
 Do not reuse a development secret.
 
+---
+
 ## 8. Allowed Hosts
 
-Production must define explicit allowed hosts.
+Production must use explicit allowed hosts.
 
-Example concept:
+Conceptually:
 
 ```env
 ALLOWED_HOSTS=training.example.com
 ```
 
-The actual format must match the parsing implemented in `config/settings.py`.
+The actual syntax must match the current settings implementation.
 
-Do not deploy using unrestricted host configuration unless the deployment architecture specifically requires it and the risk is understood.
+Do not use unrestricted hosts without a documented reason and security review.
 
-## 9. Database Configuration
+---
+
+## 9. Database
 
 Production uses MySQL 8.
 
-The application should use a dedicated MySQL user.
+Use a dedicated application database and a dedicated application database user.
 
-Do not run the Django application using:
+Do not run Django using:
 
 ```text
 root
 ```
 
-or another broad database administrator account.
+The application database user should receive only the privileges required by the application.
 
-The production database user should have only the privileges required by the application.
+---
 
 ## 10. Database Credentials
 
-Database credentials must be stored securely.
+Database credentials must be supplied securely.
 
-Do not:
+Never:
 
-- commit them to Git
-- put them directly in documentation
-- paste production passwords into issue trackers
-- reuse local development passwords
+- commit passwords
+- store credentials in Markdown
+- paste production passwords into issues
+- reuse development passwords
+- expose credentials in logs
 
-Credentials should be provided through the production environment.
+If a real production credential is ever committed, remove it and rotate it.
 
-## 11. Database Name
+---
 
-Production should use a dedicated application database.
+## 11. Database Backups
 
-Example concept:
+A verified backup strategy is required before production release.
 
-```text
-gardens_training
-```
+The strategy must define:
 
-The final production name may differ.
-
-Do not assume the development database should automatically become the production database.
-
-## 12. Database Backups
-
-A backup plan is required before production use.
-
-Backups should include the MySQL database.
-
-The backup plan should define:
-
-- backup frequency
-- retention period
+- frequency
+- retention
 - storage location
-- encryption/access protection
+- access control
+- encryption where appropriate
 - restore procedure
 - restore testing
 
-A backup that has never been successfully restored should not be considered fully verified.
+A backup that has never been restored successfully is not fully verified.
 
-## 13. Backup Security
+---
 
-Backups contain internal employee and training data.
+## 12. Database Restore Test
 
-They should be treated as sensitive.
+Before V1 release, perform at least one restore test in a non-production environment.
 
-Protect backups using:
+Verify:
 
-- restricted access
-- secure storage
-- encryption where available
-- retention controls
-
-Do not place backups in public directories.
-
-## 14. Database Restore Test
-
-Before release, perform at least one restore test in a non-production environment.
-
-Verify that:
-
-- the database restores successfully
+- database restoration succeeds
 - migrations remain consistent
-- the application can start
+- application starts
 - important records are readable
+- required relationships remain intact
 
-Document the restore procedure after it has been verified.
+Document the verified restore procedure.
 
-## 15. Migrations
+---
 
-Production deployment must run Django migrations deliberately.
+## 13. Database Migrations
+
+Production migrations must be deliberate.
 
 Typical command:
 
@@ -257,144 +244,174 @@ Typical command:
 python manage.py migrate
 ```
 
-Before running migrations:
+Before applying migrations:
 
-1. ensure the correct environment is loaded
-2. ensure the database backup is current
-3. review migration files
-4. verify the target database
-5. understand whether the migration is reversible
+1. verify the target environment
+2. confirm the database backup
+3. inspect migration files
+4. verify the current schema state
+5. understand data transformations
+6. understand rollback implications
 
-Do not run migrations blindly against production.
+Never run migrations blindly against production.
 
-## 16. Migration Check Before Deployment
+---
 
-Before deployment, run:
+## 14. Migration Consistency
+
+Before deployment:
 
 ```powershell
 python manage.py makemigrations --check --dry-run
 ```
 
-Expected result:
+Unexpected migration output must be investigated.
 
-```text
-No changes detected
-```
+Do not create schema changes accidentally during deployment.
 
-Unexpected migrations should be investigated before release.
+---
 
-## 17. Static Files
+## 15. Static Files
 
-Production must have a proper static-file strategy.
+Django development static serving must not be treated as the final production solution.
 
-Django development static serving must not be treated as the final production architecture.
+Production may use:
 
-Production static handling may use:
-
-- reverse proxy
-- hosting platform static service
+- reverse proxy/static server
+- hosting-platform static storage
 - object storage/CDN
-- another deployment-specific solution
+- another verified deployment-specific solution
 
-The final implementation should be chosen during Milestone 15.
+The selected implementation must be documented after it is tested.
 
-## 18. Collecting Static Files
+---
 
-If the selected deployment requires Django's static collection process, run:
+## 16. Collectstatic
+
+Where required:
 
 ```powershell
 python manage.py collectstatic
 ```
 
-The actual command and destination depend on the final static-file configuration.
+The exact command and destination depend on the final static-file architecture.
 
-This should be tested in staging or a production-like environment first.
+Test the process in staging or an equivalent production-like environment first.
 
-## 19. Media Files
+---
 
-Media requires more careful handling than normal public static assets.
+## 17. Training Media
 
-The application may eventually contain:
+Training videos are protected internal learning content.
 
-- training videos
-- training media
-- internal learning content
+Do not expose them through an unrestricted public media URL.
 
-Internal training media must not be assumed safe simply because the file URL is difficult to guess.
+The existing M13 architecture provides a protected session-based endpoint:
 
-## 20. Protected Training Media
+```text
+assignments/<assignment_id>/lessons/<lesson_id>/sessions/<session_id>/media/
+```
 
-The final deployment should evaluate authenticated or controlled access to training media.
+It verifies the authenticated employee's assignment, lesson, and active/recent watch-session state, including byte-range requests.
 
-The application now has an authenticated Django video endpoint for local playback. It checks the
-employee's assignment, the exact video lesson, and a recent open watch session for each request,
-including byte-range requests. It reads the file through Django storage and does not publish a
-general media URL. Keep training media outside any public static or web-server alias. For production
-traffic, evaluate a protected reverse-proxy or private object-storage delivery path that preserves
-these checks before handing off the bytes; direct Django streaming may be inefficient for large videos.
-The current endpoint requires storage that supports seeking for byte-range playback.
+This endpoint is the authoritative V1 media path.
 
-Possible approaches may include:
+Do not create a second unrestricted video route.
 
-- authenticated Django access
-- protected reverse-proxy routes
-- temporary signed URLs
-- controlled object-storage access
-- short-lived playback authorization
+---
 
-The exact solution must match the final hosting architecture.
+## 18. Production Media Delivery
 
-Do not document one of these as implemented until it has actually been built and tested.
+The current protected Django media path is suitable for the existing architecture and local/development validation.
 
-## 21. Video Security Boundary
+For production, large video delivery should be evaluated carefully.
 
-A browser-based application cannot fully prevent:
+Potential production approaches include:
 
-- OS-level screen recording
+- protected reverse-proxy delivery
+- private object storage
+- temporary signed access
+- controlled storage handoff
+- authenticated Django streaming where appropriate
+
+Any production optimization must preserve the existing authorization rules.
+
+Do not document an alternative media architecture as implemented until it has actually been built and verified.
+
+---
+
+## 19. Media Storage Boundary
+
+Training media should remain behind a storage abstraction.
+
+This allows a future move from local filesystem storage to protected object storage without changing the authorization model.
+
+Production media should not be placed in a public static directory.
+
+The selected production storage must support the required byte-range/seek behavior for video playback.
+
+---
+
+## 20. Video Security Boundary
+
+A browser or mobile application cannot absolutely prevent:
+
 - screenshots
+- OS-level recording
 - external camera recording
 - determined local capture
 
-Web protections can reduce casual misuse but do not provide absolute prevention.
+Web and Android controls reduce casual misuse but do not provide absolute capture prevention.
 
-Potential future controls include:
+Possible future controls include:
 
-- employee watermark
-- temporary playback tokens
+- watermarking
+- short-lived playback authorization
 - session restrictions
-- access logging
+- additional access logging
+- Android `FLAG_SECURE` where appropriate
 
-Native mobile capture protection remains future scope.
+These controls must not be represented as complete capture prevention.
 
-## 22. HTTPS
+---
+
+## 21. HTTPS
 
 Production must use HTTPS.
 
-Plain HTTP should not be used for authenticated production traffic.
+Authenticated traffic must not rely on plain HTTP.
 
 HTTPS protects:
 
-- login credentials
-- session cookies
+- credentials
+- cookies
 - CSRF tokens
-- employee data
+- employee information
 - training activity
+- API traffic
 
-A valid TLS certificate must be installed and maintained.
+A valid TLS certificate must be maintained.
 
-## 23. HTTPS Redirect
+---
 
-Production may enable HTTP-to-HTTPS redirect.
+## 22. HTTPS Redirect
 
-This should be verified with the real deployment environment.
+HTTP-to-HTTPS redirect may be enabled after the production proxy configuration is verified.
 
-Incorrect reverse-proxy configuration can cause redirect loops.
+Test for:
 
-Do not enable production redirect behavior blindly without testing.
+- redirect loops
+- incorrect proxy headers
+- mixed-content problems
+- incorrect secure-request detection
 
-## 24. Secure Session Cookies
+Do not enable redirect behavior blindly.
 
-Production session cookies should be secure.
+---
+
+## 23. Secure Cookies
+
+When DEBUG is disabled, secure session cookies must remain enabled.
 
 Expected production behavior includes:
 
@@ -402,27 +419,31 @@ Expected production behavior includes:
 SESSION_COOKIE_SECURE = True
 ```
 
-The current project settings default secure cookies appropriately when DEBUG is disabled.
+Do not weaken secure cookies to work around deployment problems.
 
-Do not weaken this setting to work around an HTTPS configuration problem.
+Fix the HTTPS/proxy configuration instead.
 
-## 25. Secure CSRF Cookies
+---
 
-Production CSRF cookies should also use secure transport.
+## 24. Secure CSRF Cookies
 
-Expected production behavior includes:
+Production CSRF cookies should use secure transport.
+
+Expected behavior includes:
 
 ```text
 CSRF_COOKIE_SECURE = True
 ```
 
-This must be tested through the actual deployed HTTPS environment.
+Verify this through the real HTTPS environment.
 
-## 26. HSTS
+---
 
-HTTP Strict Transport Security should be evaluated during production hardening.
+## 25. HSTS
 
-Relevant settings may include:
+HSTS should be configured deliberately during production hardening.
+
+Relevant settings include:
 
 ```text
 SECURE_HSTS_SECONDS
@@ -430,204 +451,225 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS
 SECURE_HSTS_PRELOAD
 ```
 
-Do not immediately choose an aggressive long-term HSTS configuration without verifying HTTPS behavior.
+Do not enable aggressive long-term HSTS settings until the HTTPS configuration has been verified.
 
-A staged rollout is safer.
+---
 
-## 27. Reverse Proxy
+## 26. Reverse Proxy
 
-A production Django application will commonly run behind a reverse proxy or hosting platform router.
+The production Django application will commonly operate behind a reverse proxy or hosting router.
 
-The proxy may be responsible for:
+The proxy may provide:
 
-- HTTPS termination
+- TLS termination
 - static files
 - request forwarding
 - security headers
 - rate limiting
 
-Django must correctly understand whether the original request was secure.
+Django must correctly determine whether the original request was secure.
 
-## 28. Proxy Security Header
+---
 
-If HTTPS terminates at a trusted reverse proxy, the application may require appropriate secure proxy configuration.
+## 27. Proxy Trust
 
-This must only be configured when the proxy is trusted and known.
+Secure proxy configuration must only trust a known and controlled proxy.
 
-Incorrect proxy trust can create security problems.
+Incorrect forwarded-header trust can create security problems.
 
-Final settings must reflect the actual infrastructure.
+Final proxy settings must match the actual hosting architecture.
 
-## 29. Application Server
+---
 
-Django's development server:
+## 28. Application Server
+
+Do not use:
 
 ```powershell
 python manage.py runserver
 ```
 
-must not be used as the production application server.
+for production traffic.
 
-The final production environment should use a supported production server appropriate to the operating system and hosting platform.
+Use a supported production application server appropriate to the final hosting platform.
 
-The exact server choice will be decided during deployment implementation.
+The exact server should be documented after selection and validation.
 
-## 30. Windows vs Linux Deployment
+---
+
+## 29. Operating System
 
 Local development currently occurs on Windows.
 
-Production does not have to use Windows.
+Production may use Linux or another supported environment.
 
-A Linux deployment is generally suitable for Django and MySQL, but the actual environment should be chosen based on:
+A Linux deployment is a reasonable option, but the final decision should consider:
 
 - hosting
-- administration skills
-- maintenance requirements
+- administration
+- maintenance
 - cost
 - security
 - backup strategy
+- team familiarity
 
-Deployment documentation should be updated once the target platform is selected.
+Do not document an unselected platform as final.
 
-## 31. Dependency Installation
+---
 
-Production dependencies should be installed from the project's dependency file.
+## 30. Dependency Installation
 
-Typical process:
+Use a clean production environment.
+
+Dependencies should come from the project's dependency files.
+
+Conceptually:
 
 ```powershell
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-Use a clean environment.
+Do not depend on packages that happen to exist globally on a developer machine.
 
-Do not rely on packages that happen to be installed globally on a developer machine.
+---
 
-## 32. Virtual Environment
+## 31. Dependency Verification
 
-Production should use an isolated Python environment where appropriate.
-
-Example concept:
-
-```text
-.venv
-```
-
-The actual mechanism may differ depending on the hosting platform.
-
-## 33. Dependency Verification
-
-Before deployment, run:
+Before deployment:
 
 ```powershell
 python -m pip check
 ```
 
-This verifies basic installed-package dependency consistency.
+This verifies installed-package consistency.
 
-A dedicated vulnerability scan will be included during the final security milestone.
+A vulnerability scan such as `pip-audit` should be included in the final release-security workflow after the tool is selected and adopted.
 
-## 34. Application Checks
+---
 
-Before deployment, run:
+## 32. Django Deployment Checks
+
+Before production:
 
 ```powershell
 python manage.py check
 ```
 
-For production-specific validation, additional Django deployment checks should also be considered.
-
-Example:
+Also evaluate:
 
 ```powershell
 python manage.py check --deploy
 ```
 
-Any warnings must be reviewed in the context of the actual production configuration.
+Deployment warnings must be reviewed against the actual environment.
 
-Do not ignore deployment warnings automatically.
+Do not blindly suppress warnings.
 
-## 35. Automated Tests
+---
 
-The complete automated suite must pass before release.
+## 33. Automated Test Requirement
+
+The latest verified automated baseline must pass before release.
 
 Current baseline:
 
 ```text
-189 full tests passing on MySQL
+Django/MySQL: 348 / 348
+Flutter: 81 / 81
+Flutter analyze: 0 issues
+JavaScript playback: 3 / 3
 ```
 
 The baseline may increase as development continues.
 
-The final release should use the latest verified passing test count.
+Always use the latest verified counts.
 
-## 36. CI Requirement
+---
 
-GitHub Actions CI will be added during Milestone 11.
+## 34. CI Requirement
 
-CI should verify at minimum:
+GitHub Actions CI covers the major automated validation surfaces.
+
+The expected CI coverage includes:
 
 - dependency installation
-- MySQL startup
-- Django system check
+- MySQL
+- Django checks
 - migration consistency
-- automated tests
-- dependency consistency
+- Django/MySQL tests
+- pip check
+- Flutter analyze
+- Flutter tests
+- JavaScript playback tests
 
-CI must pass before a release candidate is considered stable.
+CI must pass before a release candidate is treated as stable.
 
-## 37. E2E Requirement
+---
 
-Playwright E2E testing will be added during later milestones.
+## 35. E2E Requirement
 
-Before production release, critical browser workflows should pass.
+Browser E2E validation should cover critical Django web workflows.
 
-Examples include:
+Important flows include:
 
 ```text
 Login
-Dashboard
-Training Assignment
-Lesson
-Video
-Assessment
-Training Completion
-Certificate
-Reports
-Logout
+-> Dashboard
+-> Assignment
+-> Training
+-> Lesson
+-> Video
+-> Assessment
+-> Completion
+-> Certificate
+-> Reports
+-> Logout
 ```
 
-Negative authorization flows should also be tested.
+Negative authorization flows must also be tested.
 
-## 38. Production Data
+Android runtime testing becomes especially important for the M19 release candidate.
 
-Do not use uncontrolled fake data in production.
+---
 
-Development and staging data should remain clearly separated from production records.
+## 36. Production Data
 
-If test data must be created temporarily in production for deployment verification, it should be minimal, deliberate, and cleaned up safely.
+Never use uncontrolled fake data in production.
 
-Prefer smoke testing that does not alter important production records.
+Keep staging and production data separate.
 
-## 39. Superuser
+If a production smoke test requires data creation:
 
-A production superuser may be required for initial administration.
+- keep it minimal
+- make it deliberate
+- document it
+- clean it up safely where appropriate
+
+Prefer read-only or low-impact verification.
+
+---
+
+## 37. Production Administrative Access
+
+A production administrative account may be required.
 
 If created:
 
-- use a strong password
-- protect the credentials
-- do not share the account unnecessarily
-- do not use the account for ordinary employee activity
+- use a strong unique credential
+- protect it
+- avoid unnecessary sharing
+- use named accounts for ordinary operational activity
 
-Named user accounts are preferable for normal operational accountability.
+Do not use a shared superuser for routine employee operations.
 
-## 40. Initial Groups and Permissions
+---
 
-After deployment, verify that expected application groups and permissions exist.
+## 38. Groups and Permissions
 
-Current role groups include:
+After deployment, verify expected role groups and permissions.
+
+Current groups:
 
 ```text
 Administrator
@@ -638,28 +680,34 @@ Supervisor
 Employee
 ```
 
-Permission migrations must be applied before relying on these roles.
+Permission migrations must be applied before relying on the final role configuration.
 
-## 41. Initial Production Verification
+---
 
-After deployment, verify:
+## 39. Initial Deployment Verification
+
+After deployment verify:
 
 - application starts
 - database connection works
-- migrations are applied
-- static files load
+- migrations are correct
+- static assets load
 - login page loads
-- login succeeds
+- valid login succeeds
+- invalid login fails safely
 - logout succeeds
-- expected dashboard loads
-- unauthorized pages remain protected
+- authorized dashboard loads
+- unauthorized routes remain protected
 - HTTPS works
 - secure cookies are present
-- no debug page is exposed
+- DEBUG is not exposed
+- protected media remains protected
 
-## 42. Smoke Test
+---
 
-A basic smoke-test checklist may include:
+## 40. Smoke Test
+
+Basic smoke test:
 
 ```text
 [ ] Homepage responds
@@ -667,113 +715,131 @@ A basic smoke-test checklist may include:
 [ ] Valid login succeeds
 [ ] Invalid login fails safely
 [ ] Dashboard loads
-[ ] Static CSS loads
+[ ] Static assets load
 [ ] Database reads work
-[ ] Permission-protected URL rejects unauthorized account
+[ ] Protected URL rejects unauthorized account
 [ ] Logout works
 [ ] HTTPS remains active
+[ ] Secure cookies behave correctly
+[ ] Protected media remains inaccessible without authorization
 ```
 
-The checklist should be expanded when the final frontend is complete.
+Expand this checklist after the final product workflows are complete.
 
-## 43. Logging
+---
 
-Production needs operational logging.
+## 41. Operational Logging
 
-Logging should help diagnose:
+Production logs should help diagnose:
 
 - startup failures
 - database failures
-- unexpected HTTP 500 errors
-- deployment issues
-
-Logging must avoid unnecessary sensitive information.
+- unexpected HTTP errors
+- application failures
+- deployment problems
 
 Do not log:
 
 - passwords
 - secret keys
 - raw authentication tokens
-- assessment answers
+- unnecessary assessment answers
+- sensitive employee information
 
-## 44. Error Monitoring
+---
 
-A production error-monitoring solution may be considered later.
+## 42. Audit Logs vs Operational Logs
 
-Do not add a third-party monitoring dependency until:
+These serve different purposes.
 
-- the deployment architecture is known
-- privacy implications are understood
-- the operational need is clear
-
-Basic server and application logs are still required.
-
-## 45. Audit Logs vs Operational Logs
-
-Application audit logs and operational server logs have different purposes.
-
-Audit logs answer questions such as:
+Audit logs answer:
 
 ```text
 Who performed an important business action?
 ```
 
-Operational logs answer questions such as:
+Operational logs answer:
 
 ```text
 Why did the application fail or behave unexpectedly?
 ```
 
-Do not use one as a substitute for the other.
+Neither should be treated as a replacement for the other.
 
-## 46. Rate Limiting
+---
 
-Production exposure should include a review of rate limiting.
+## 43. Error Monitoring
 
-Areas to consider include:
+A third-party error-monitoring service may be evaluated after the deployment architecture is known.
+
+Before adding one, consider:
+
+- privacy
+- employee data
+- operational value
+- retention
+- cost
+- integration complexity
+
+Do not add a monitoring dependency without a justified requirement.
+
+---
+
+## 44. Rate Limiting
+
+Production exposure should include a rate-limiting review.
+
+Consider:
 
 - login
-- repeated malformed requests
-- expensive endpoints
+- malformed requests
+- expensive API endpoints
+- authentication endpoints
 
-Rate limiting may be implemented at:
+Rate limiting may be provided by:
 
 - reverse proxy
 - hosting platform
 - application layer
 
-Do not claim this protection exists until verified.
+Do not claim rate limiting exists until verified.
 
-## 47. Session Policy
+---
 
-Before production, review:
+## 45. Session Policy
+
+Before production release, review:
 
 - session lifetime
 - logout behavior
 - concurrent sessions
-- session invalidation
-- shared device use
+- token invalidation
+- shared-device behavior
+- credential persistence
 
-The final policy should reflect actual Garden's Need operational requirements.
+The final policy should match actual Garden's Need operational requirements.
 
-## 48. Shared Devices
+---
 
-Factory environments may eventually use shared devices.
+## 46. Shared Devices
 
-Shared-device behavior requires additional consideration, including:
+Factory environments may use shared devices.
+
+Shared-device concerns include:
 
 - rapid logout
-- session leakage
-- remembered credentials
 - employee switching
+- remembered credentials
+- stale sessions
+- session leakage
 
-A dedicated shared-device workflow remains future scope unless added before release.
+A dedicated shared-device workflow remains future scope unless explicitly added before V1.
 
-## 49. Monitoring Database Capacity
+---
 
-Production should monitor database health over time.
+## 47. Database Capacity
 
-Useful indicators include:
+Monitor:
 
 - disk usage
 - backup size
@@ -781,28 +847,35 @@ Useful indicators include:
 - connection count
 - error rate
 
-Optimization should be driven by measured problems.
+Database optimization should be driven by measured behavior.
 
-## 50. File Storage Capacity
+---
 
-Training videos may consume significantly more storage than normal application data.
+## 48. Media Capacity
+
+Training videos may consume significantly more storage and bandwidth than ordinary application data.
 
 Before large-scale rollout, estimate:
 
 - number of videos
 - average video size
 - expected growth
+- storage requirements
 - backup implications
 - bandwidth requirements
 
-Video storage may eventually belong outside the application server filesystem.
+Production media may eventually need object storage rather than application-server filesystem storage.
 
-## 51. Security Review Before Deployment
+---
 
-Before production release, review:
+## 49. Security Review Before Release
+
+The final broad security review belongs to M21.
+
+Review:
 
 - secrets
-- repository
+- repository state
 - dependencies
 - authentication
 - permissions
@@ -810,7 +883,7 @@ Before production release, review:
 - CSRF
 - cookies
 - HTTPS
-- headers
+- security headers
 - sessions
 - direct URLs
 - media access
@@ -819,42 +892,45 @@ Before production release, review:
 - certificates
 - reports
 - audit logs
+- deployment configuration
 
-This review is scheduled primarily for Milestone 16.
+---
 
-## 52. Secret Scan
+## 50. Secret Scan
 
-Before release, inspect the repository for accidental secrets.
-
-Check for:
+Before release inspect the repository for:
 
 - `.env`
 - database passwords
-- secret keys
+- Django secret keys
 - API keys
 - access tokens
 - private certificates
 - copied credentials
 
-If a real secret was ever committed, rotating the secret is required.
+If a real secret was committed, rotation is required.
 
-Simply deleting it from the current source file is not sufficient.
+Deleting it from the current source is not sufficient because it may remain in Git history.
 
-## 53. Dependency Vulnerability Scan
+---
+
+## 51. Dependency Vulnerability Scan
 
 Before production release, run a trusted dependency vulnerability scanner.
 
-A likely option is:
+A candidate tool is:
 
 ```text
 pip-audit
 ```
 
-The actual selected tool should be documented after adoption.
+The selected tool and workflow should be documented once adopted.
 
-Findings should be reviewed rather than blindly patched.
+Findings must be reviewed rather than blindly patched.
 
-## 54. Staging Environment
+---
+
+## 52. Staging Environment
 
 A staging or production-like environment is strongly recommended before V1 release.
 
@@ -866,136 +942,159 @@ Staging should resemble production in:
 - environment settings
 - static handling
 - media access
+- proxy behavior
 
 Do not use real sensitive production data unless necessary and properly protected.
 
-## 55. Deployment Sequence
+---
 
-A typical deployment sequence may be:
+## 53. Deployment Sequence
+
+A typical deployment sequence is:
 
 ```text
 1. Confirm stable Git commit
 2. Confirm CI passes
 3. Back up production database
-4. Load production environment variables
+4. Load production environment configuration
 5. Install/update dependencies
 6. Apply migrations
 7. Collect/deploy static assets
 8. Restart application
 9. Run smoke tests
 10. Review logs
+11. Confirm protected media behavior
 ```
 
-The exact process must be adapted to the final hosting environment.
+Adapt the sequence to the final hosting platform.
 
-## 56. Rollback Strategy
+---
 
-Every production deployment should have a rollback plan.
+## 54. Rollback Strategy
 
-Rollback planning should consider:
+Every production deployment must have a rollback plan.
+
+Consider:
 
 - application code
 - database migrations
 - static assets
 - configuration
+- media changes
 
-Code rollback may involve returning to the previous stable Git commit.
+Code rollback may involve returning to a previous stable Git commit.
 
 Database rollback is more complicated.
 
-Do not assume every migration can safely be reversed.
+Never assume a migration is safely reversible.
 
-## 57. Migration Rollback
+---
 
-Before applying a production migration, understand:
+## 55. Migration Rollback
+
+Before applying a migration, understand:
 
 - whether it is reversible
 - whether data is transformed
-- whether old code can run against the new schema
+- whether old application code can run against the new schema
+- whether a backup restore is the safer recovery mechanism
 
-For dangerous migrations, a database backup may be the safest recovery mechanism.
+For dangerous migrations, database backup and restore may be preferable to reverse migration.
 
-## 58. Failed Deployment
+---
+
+## 56. Failed Deployment
 
 If deployment fails:
 
 1. stop further changes
-2. identify whether the failure is code, configuration, database, or infrastructure
+2. identify whether the problem is code, configuration, database, or infrastructure
 3. preserve logs
 4. roll back if necessary
 5. verify database integrity
 6. rerun smoke tests
-7. document the failure if it reveals a reusable lesson
+7. document reusable lessons
 
-Do not improvise multiple production changes simultaneously.
+Do not improvise multiple unrelated production changes simultaneously.
 
-## 59. Zero-Downtime Deployment
+---
 
-Zero-downtime deployment is not a V1 requirement unless business operations demand it.
+## 57. Zero-Downtime Deployment
 
-Prefer a simpler, reliable deployment process first.
+Zero-downtime deployment is not a V1 requirement unless business operations require it.
 
-If short maintenance windows are acceptable, complexity can be reduced significantly.
+Prefer a simple, reliable deployment process.
 
-## 60. Production Release Gate
+A short controlled maintenance window may be acceptable if operational requirements permit it.
 
-Production release should occur only when:
+---
+
+## 58. Production Release Gate
+
+Production release requires:
 
 ```text
-[ ] Core functionality is complete
-[ ] Full automated test suite passes
+[ ] Core functionality complete
+[ ] Latest automated test suites pass
 [ ] GitHub Actions CI passes
-[ ] Playwright E2E tests pass
-[ ] Final bug hunt is complete
-[ ] Final security review is complete
-[ ] Dependency scan is reviewed
-[ ] DEBUG is false
-[ ] Strong secret is configured
-[ ] Allowed hosts are configured
-[ ] HTTPS is working
-[ ] Secure cookies are verified
-[ ] Database backup is configured
-[ ] Restore procedure has been tested
-[ ] Static files work
-[ ] Protected media strategy is verified
-[ ] Deployment smoke tests pass
-[ ] Documentation is current
-[ ] Rollback procedure exists
+[ ] Critical browser E2E flows pass
+[ ] Android release-candidate validation passes
+[ ] Final bug hunt complete
+[ ] Final security/repository review complete
+[ ] Dependency vulnerability scan reviewed
+[ ] DEBUG disabled
+[ ] Strong production secret configured
+[ ] Allowed hosts configured
+[ ] HTTPS verified
+[ ] Secure cookies verified
+[ ] Database backup configured
+[ ] Restore procedure tested
+[ ] Static files verified
+[ ] Protected media strategy verified
+[ ] Smoke tests pass
+[ ] Rollback procedure documented
+[ ] Documentation current
 ```
 
-## 61. Post-Deployment Verification
+---
 
-Immediately after a production release:
+## 59. Post-Deployment Verification
+
+Immediately after release:
 
 1. inspect application health
 2. verify login
 3. verify important dashboards
 4. verify static assets
-5. check application logs
-6. check database connectivity
+5. inspect logs
+6. verify database connectivity
 7. verify HTTPS
 8. verify secure cookies
-9. test at least one protected route
-10. confirm no unexpected migration or startup errors occurred
+9. verify protected routes
+10. verify protected media
+11. confirm no unexpected migration/startup errors
 
-## 62. Post-Release Monitoring
+---
 
-After V1 release, observe actual usage.
+## 60. Post-Release Monitoring
 
-Pay attention to:
+After V1 release monitor:
 
 - unexpected errors
 - performance bottlenecks
 - confusing workflows
-- permission issues
+- permission problems
 - training completion problems
+- playback problems
 - assessment problems
-- certificate issues
+- certificate problems
 - support requests
 
-Future changes should be prioritized using real operational evidence.
+Prioritize future changes using actual operational evidence.
 
-## 63. Production Incident Preparation
+---
+
+## 61. Production Incident Preparation
 
 The team should know how to:
 
@@ -1006,16 +1105,20 @@ The team should know how to:
 - roll back deployment
 - inspect audit records
 - inspect operational logs
+- investigate protected media access
 
-More detailed incident procedures may be added after the hosting architecture is finalized.
+More detailed incident procedures can be added after the hosting architecture is finalized.
 
-## 64. Deployment Documentation Maintenance
+---
 
-This file must be updated when the real production architecture is selected.
+## 62. Documentation Maintenance
+
+Update this file whenever the real production architecture changes.
 
 Replace assumptions with verified information such as:
 
 - hosting provider
+- operating system
 - server type
 - domain
 - reverse proxy
@@ -1026,25 +1129,32 @@ Replace assumptions with verified information such as:
 - backup schedule
 - deployment commands
 - rollback commands
+- monitoring
 
 Do not leave deployment-specific guesses in the final production documentation.
 
-## 65. Current Deployment Readiness
+---
 
-Current status:
+## 63. Current Deployment Readiness
+
+Current state:
 
 ```text
-Backend core: complete
-Backend baseline: 189 tests passing on MySQL
-Documentation: in progress
-CI: pending
-Frontend: pending completion
-E2E: pending
-Production hardening: pending
-Final security review: pending
-Deployment: not yet production-ready
+Backend/API: complete through M15
+Flutter Android foundation: complete through M15
+Current backend tests: 348 / 348
+Current Flutter tests: 81 / 81
+Current JavaScript playback tests: 3 / 3
+CI: implemented and part of current validation
+Frontend/web: existing and maintained
+M16: next
+Production hardening: planned for M20
+Final bug/security review: M21
+Android release candidate: M19
+Final acceptance: M23
+Production V1 release: pending
 ```
 
-The next immediate deployment-related task is GitHub Actions CI during Milestone 11.
+The application is not yet production-ready.
 
-Full deployment implementation remains scheduled for Milestone 15.
+Deployment-specific infrastructure should be finalized during M20 rather than invented prematurely.

@@ -6,21 +6,86 @@ These rules apply unless a task explicitly overrides them.
 
 ## Project Context
 
-The project is an internal employee training, assessment, certification, reporting, and workforce development platform for Garden's Need.
+The Garden's Need Training Module Application is an internal employee training, assessment, certification, reporting, and workforce development platform.
 
-Current architecture:
+The project currently contains:
 
-- Python 3.14
-- Django 5.2 LTS
+- Django backend
 - MySQL 8
 - Django templates
-- HTML
-- CSS
-- basic JavaScript
-- Django built-in User model
-- monolithic Django architecture
+- HTML/CSS/JavaScript
+- REST API under `/api/v1/`
+- Flutter Android application under `mobile/`
+- Existing browser playback functionality
+- Session-based protected video media
+- Automated backend, Flutter, and JavaScript validation
 
-The backend is the authoritative source for security-sensitive state.
+The backend is authoritative for security-sensitive state and business rules.
+
+Current major state:
+
+- M0-M12: complete
+- M13: Mobile API Foundation + Versioning, complete
+- M14: Flutter / Android Foundation, complete
+- M15: Employee App Core, complete
+- M16: Learning + Secure Video, next
+- M17-M23: planned
+
+Current validation baseline:
+
+- Django/MySQL: 348 tests
+- Flutter: 81 tests
+- JavaScript playback: 3 tests
+
+Do not assume these numbers remain unchanged after future work. Use the current repository output as authoritative.
+
+## Agent Operating Rules
+
+Before editing:
+
+1. Inspect the relevant existing implementation.
+2. Inspect nearby tests.
+3. Inspect existing helpers, models, services, API patterns, and permission rules.
+4. Understand current behavior before proposing replacement behavior.
+5. State a brief implementation plan.
+6. Identify the expected files to change.
+
+Use the existing architecture unless there is a demonstrated reason to change it.
+
+Do not:
+
+- perform unrelated refactoring
+- introduce speculative abstractions
+- rebuild working systems unnecessarily
+- duplicate backend business rules in the mobile client
+- modify unrelated configuration
+- create parallel implementations of existing functionality
+- silently change established business rules
+
+Keep changes narrow, reviewable, and reversible where practical.
+
+## Git and Review Workflow
+
+Coding agents must not commit or push unless explicitly instructed.
+
+The normal workflow is:
+
+1. Inspect
+2. Implement
+3. Validate
+4. Run CodeRabbit review
+5. Fix confirmed findings when necessary
+6. Re-run relevant validation
+7. Confirm CodeRabbit is clear
+8. Inspect the final diff
+9. User commits
+10. User pushes
+
+Never reset, discard, or overwrite unrelated user work.
+
+Do not create commits merely because a milestone is complete.
+
+Do not provide instructions pretending that CodeRabbit is a prompt-driven coding agent. CodeRabbit findings should be treated as review findings and addressed by the implementation agent when appropriate.
 
 ## Core Development Principles
 
@@ -29,8 +94,8 @@ Follow these principles for every change:
 - inspect the existing codebase before editing
 - understand the current implementation before proposing replacements
 - prefer the simplest correct implementation
-- use Django and Python built-ins before adding packages or custom abstractions
-- reuse existing models, forms, helpers, permissions, and patterns
+- reuse existing models, serializers, repositories, services, helpers, permissions, and patterns
+- use existing dependencies before adding new ones
 - avoid unnecessary architectural changes
 - avoid unrelated refactoring
 - preserve existing behavior unless the task explicitly requires a change
@@ -65,6 +130,8 @@ The backend must determine or validate:
 - assessment scores
 - certificate eligibility
 - progress state
+- playback authorization
+- media access
 
 ## Authorization
 
@@ -79,15 +146,22 @@ Important roles include:
 - Supervisor
 - Employee
 
-Authorization must be enforced at the view/service/model level as appropriate.
+Authorization must be enforced at the appropriate backend layer.
 
-Direct URL access must never bypass permission checks.
+Direct URL or API access must never bypass permission checks.
 
 Manager access must remain restricted to the authorized reporting hierarchy.
 
-Employee access must remain restricted to the employee's own permitted records.
+Employee access must remain restricted to the employee's permitted records.
 
-Do not broaden access through filters, query parameters, forms, or crafted URLs.
+Do not broaden access through:
+
+- query parameters
+- filters
+- forms
+- crafted URLs
+- API payloads
+- client-controlled identifiers
 
 ## Input Validation
 
@@ -103,19 +177,18 @@ Validate:
 - ownership
 - parent relationships
 - uploaded metadata
+- media identifiers
 - session identifiers
 - assessment data
 - playback data
 
-Malformed input should return:
+Malformed input should produce an appropriate controlled response such as:
 
-- a controlled form error
+- form validation error
 - HTTP 400
 - HTTP 403
 - HTTP 404
 - HTTP 409
-
-as appropriate.
 
 Malformed user input should not normally result in HTTP 500.
 
@@ -131,15 +204,16 @@ Do not use GET for:
 - revocation
 - assignment creation
 - completion
-- destructive or mutating actions
+- destructive actions
+- other state-changing operations
 
-Maintain CSRF protection.
+Maintain CSRF protection where applicable.
 
 ## Database Safety
 
 Use transactions where multiple related writes must succeed or fail together.
 
-Use locking when concurrency can affect correctness.
+Use locking or database constraints when concurrency can affect correctness.
 
 Examples include:
 
@@ -148,13 +222,15 @@ Examples include:
 - assessment attempts
 - progress updates
 - certificate issuance
+- lifecycle transitions
 
 When handling uniqueness or race conditions:
 
-- reproduce the failure
-- handle the specific expected conflict
-- do not suppress unrelated validation errors
-- preserve database integrity
+1. reproduce the failure
+2. identify the exact conflict
+3. handle the expected conflict explicitly
+4. do not suppress unrelated validation errors
+5. preserve database integrity
 
 Do not make destructive schema changes unless explicitly approved.
 
@@ -166,11 +242,7 @@ Permission migrations must be:
 - non-destructive
 - safe to rerun through Django migrations
 
-Use existing permission APIs such as:
-
-```python
-group.permissions.add(permission)
-```
+Use existing Django permission APIs where possible.
 
 Do not:
 
@@ -193,8 +265,9 @@ Do not casually delete:
 - certificates
 - assessment history
 - audit logs
+- published media
 
-Use deactivation, retirement, revocation, or historical snapshots where the existing architecture requires them.
+Use deactivation, retirement, revocation, or historical snapshots where the architecture requires them.
 
 ## Audit Logging
 
@@ -209,22 +282,22 @@ Do not trust the client to supply:
 - timestamp
 - authoritative event type
 
-Avoid storing unnecessary sensitive content in audit metadata.
-
 Do not log:
 
-- assessment answers
 - passwords
 - secrets
 - tokens
 - private credentials
+- assessment answers
 - complete training content unless explicitly required
 
 Audit logging must not create misleading success events for failed or rolled-back operations.
 
-## Training Rules
+Media access, playback session lifecycle, and other security-sensitive playback events should remain auditable.
 
-Respect the training hierarchy:
+## Training Versioning
+
+The training hierarchy is:
 
 ```text
 Training
@@ -233,23 +306,33 @@ Training
         └── Lesson
 ```
 
-Training version states:
+Training version lifecycle:
 
 ```text
-DRAFT
-PUBLISHED
-RETIRED
+DRAFT → PUBLISHED → RETIRED
 ```
 
-Published and retired content must remain protected according to existing immutability rules.
+Rules:
 
-Do not weaken publishing validation.
+- Draft versions may be edited.
+- Draft versions may be deleted when safe.
+- Published versions are immutable.
+- Retired versions remain historically available.
+- Published versions cannot be deleted.
+- Retired versions cannot receive new assignments.
+- Existing assignments remain pinned to their assigned version.
+- Existing learners may continue working on a retired version.
+- New assignments use the latest published version.
+- Assessment questions and answer keys are frozen with the assigned version.
+- Certificates reference the version actually earned.
 
-Do not create unsafe shortcuts around versioning.
+Do not silently redesign version lifecycle behavior.
+
+If a published training version requires correction, determine the required new-version behavior rather than mutating the published version.
 
 ## Assignment Rules
 
-Assignments may come from:
+Assignments may originate from:
 
 - manual assignment
 - role-based assignment
@@ -263,22 +346,67 @@ Always validate:
 - role scope
 - manager scope
 
-Handle concurrency safely.
+Assignments remain pinned to their assigned training version.
 
-If a duplicate appears because another request created the same assignment after an initial lookup, only treat it as a duplicate when the exact expected assignment now exists.
+Do not automatically migrate employees to a newer version unless an explicit business rule is introduced and approved.
+
+Handle concurrent assignment creation safely.
+
+If a duplicate appears because another request created the same assignment after an initial lookup, only treat it as a duplicate when the exact expected assignment exists.
 
 Do not hide unrelated validation failures.
+
+## Video and Media Rules
+
+V1 media is streaming-only.
+
+Do not introduce media downloads unless explicitly approved.
+
+Published media is immutable.
+
+Replacing published media requires a new training version.
+
+The existing M13 session-based protected media endpoint is the authoritative media access mechanism.
+
+Do not create a parallel unrestricted media route when the existing session-based architecture can be reused.
+
+Media access must remain authorized against:
+
+- authenticated user
+- assignment
+- lesson
+- training version
+- playback session
+
+Media upload validation must remain fail-closed.
+
+Where applicable, validate:
+
+- file size
+- file type
+- extension
+- actual file content
+- checksum
+
+Storage must remain behind a suitable abstraction where practical so local storage can later be replaced by object storage without changing authorization rules.
+
+Preferred V1 video format is MP4/H.264/AAC with HTTP range streaming.
+
+Reuse the existing playback architecture and Flutter `video_player` unless a demonstrated requirement requires a different implementation.
+
+Do not add a new playback library speculatively.
 
 ## Video Progress Rules
 
 The backend controls video progress.
 
-Do not trust the browser to declare:
+Do not trust the browser or mobile client to declare:
 
 - watched duration
 - completion
 - valid coverage
 - playback ownership
+- session validity
 
 Preserve:
 
@@ -292,13 +420,23 @@ Preserve:
 
 Do not weaken anti-skip protections for convenience.
 
-Playback clients should send heartbeats frequently enough to stay within the server's idle-gap rules.
+Playback clients must send heartbeats frequently enough to satisfy the server's idle-gap rules.
+
+The server remains authoritative for completion.
+
+## Screen Capture
+
+Android screen-capture protection should be applied where appropriate using platform-supported mechanisms such as `FLAG_SECURE`.
+
+Do not claim that screen capture can be made impossible.
+
+Do not introduce screen-capture behavior that breaks legitimate application functionality without validating the affected flows.
 
 ## Assessment Rules
 
 Assessment scoring must remain server-side.
 
-Never trust the browser to supply:
+Never trust the client to supply:
 
 - score
 - pass/fail result
@@ -317,7 +455,7 @@ Assessment creation and submission must handle concurrency and duplicate state s
 
 ## Certificate Rules
 
-Certificate issuance must remain based on authoritative training completion.
+Certificate issuance must be based on authoritative training completion.
 
 Certificate issuance must remain idempotent.
 
@@ -327,6 +465,8 @@ Revocation must preserve the certificate record.
 
 Employee access must remain restricted to permitted certificates.
 
+Certificates must continue referencing the version actually earned.
+
 ## Reports and Dashboards
 
 Report filters must never broaden user scope.
@@ -335,70 +475,72 @@ Manager filters must stay inside the manager's authorized employee hierarchy.
 
 Employee users must not gain administrative reporting access.
 
-Derived values such as overdue state or completion percentage must be calculated from trusted backend data.
+Derived values such as overdue state and completion percentage must be calculated from trusted backend data.
 
-## Environment and Secrets
+## Mobile Architecture
 
-Never commit:
+The V1 mobile application is Android-first.
 
-- `.env`
-- database passwords
-- secret keys
-- API keys
-- access tokens
-- private credentials
+Current mobile stack:
 
-Production must fail closed when required security configuration is missing.
+- Flutter
+- Dart
+- Android
+- Riverpod
+- GoRouter
+- Dio
+- secure token storage
+- REST API
 
-Do not change unrelated environment settings while implementing feature work.
+The Flutter application consumes backend-authoritative state.
 
-Do not modify Git configuration unless explicitly requested.
+The mobile application must not duplicate or replace backend:
 
-## Dependencies
+- authorization
+- scoring
+- playback validation
+- completion rules
+- versioning rules
 
-Do not add a new dependency unless:
+Client-side controls improve usability, not security.
 
-- the existing stack cannot reasonably solve the problem
-- the dependency provides clear value
-- the security and maintenance cost is justified
+iOS is deferred until Android V1 is stable and released unless explicitly brought forward.
 
-Prefer:
+## Offline Rules
 
-- Django built-ins
-- Python standard library
-- existing project dependencies
+Offline behavior must not create unauthorized authoritative completion.
 
-before adding packages.
+V1 does not support unrestricted offline course completion.
 
-## Code Readability
+The server remains authoritative for:
 
-Prefer open, readable code over compressed one-liners.
+- completion
+- progress
+- assessment results
+- certificates
+- assignment state
 
-Example:
+Do not introduce local-only completion claims that can later overwrite authoritative server state without an explicit synchronization design.
 
-```python
-actor = forms.ModelChoiceField(
-    queryset=get_user_model().objects.none(),
-    required=False,
-    label="Performed By",
-)
-```
+## UI Direction
 
-Prefer this over dense single-line equivalents.
+The final Garden's Need visual system is intentionally not locked during the current functional milestones.
 
-Use:
+Do not prematurely hard-code a final:
 
-- descriptive names
-- small focused functions
-- clear control flow
-- explicit validation
-- straightforward conditions
+- color palette
+- animation system
+- visual identity
+- typography system
+- interaction language
 
-Do not create abstractions only to reduce line count.
+The mobile application should remain clean, usable, and consistent during M14-M21.
 
-Deep readability refactoring is planned as a dedicated late-stage milestone.
+Major Garden's Need visual polish, animation, and interaction refinement belong to the dedicated M22 readability/refactor/visual-polish milestone.
 
-Until then, make local readability improvements only when they directly support the current task.
+When M22 begins, UI/UX direction should be reviewed deliberately before implementation.
+
+Functionality and correctness take priority over decorative polish during earlier milestones.
 
 ## Testing Rules
 
@@ -407,18 +549,24 @@ For every meaningful change:
 1. reproduce the issue when fixing a bug
 2. write or update a focused test
 3. make the smallest correct fix
-4. run affected app tests
-5. run the full test suite when appropriate
+4. run affected tests
+5. run broader tests when appropriate
+6. run the full relevant suite before milestone completion
 
 Confirmed bugs should receive regression tests whenever practical.
 
-Current baseline:
+Do not switch backend testing to SQLite for convenience.
 
-```text
-189 full tests passing on MySQL
-```
+The primary backend validation database is MySQL.
 
-Do not switch the project test strategy to SQLite for convenience.
+Flutter validation should include:
+
+- `flutter analyze`
+- focused Flutter tests
+- full Flutter tests when appropriate
+- debug APK build for milestone-level Android work
+
+Existing JavaScript playback tests must continue to pass when playback-related backend or frontend behavior changes.
 
 Important verification commands include:
 
@@ -429,6 +577,52 @@ python manage.py makemigrations --check --dry-run
 python -m pip check
 git diff --check
 ```
+
+For mobile work, use the repository's Flutter commands and validate the Android build where appropriate.
+
+## Risk-Based Testing
+
+Testing effort should match the risk of the change.
+
+### Low risk
+
+Examples:
+
+- copy changes
+- isolated UI layout changes
+- documentation changes
+
+Use focused validation.
+
+### Medium risk
+
+Examples:
+
+- API behavior
+- Flutter navigation
+- repository changes
+- assignment or lesson state
+- media integration
+
+Use focused tests plus relevant runtime/build validation.
+
+### High risk
+
+Examples:
+
+- authentication
+- authorization
+- media access
+- playback sessions
+- progress/completion
+- assessments
+- certificates
+- lifecycle/versioning
+- security-sensitive database changes
+
+Use focused tests, broader regression coverage, negative testing, and the relevant full suite.
+
+Do not add large numbers of redundant tests merely to increase test count.
 
 ## Negative Testing
 
@@ -449,6 +643,9 @@ Examples:
 - empty results
 - exact time boundaries
 - exact score boundaries
+- invalid playback sessions
+- invalid media access
+- retired-version restrictions
 
 ## Bug-Fix Workflow
 
@@ -464,84 +661,36 @@ When fixing a defect:
 
 Do not refactor large areas merely because a bug was found nearby.
 
-## Before Editing
+## API Rules
 
-Before making changes:
+The existing M13 API foundation should be reused.
 
-- inspect relevant files
-- inspect nearby tests
-- inspect existing helpers and permission patterns
-- understand current behavior
-- state a brief plan
-- identify expected files to change
+Important existing API areas include:
 
-## After Editing
+```text
+/api/v1/auth/
+/api/v1/dashboard/
+/api/v1/assignments/
+/api/v1/assignments/<id>/lessons/<id>/complete/
+/api/v1/assignments/<id>/lessons/<id>/progress/
+/api/v1/assignments/<id>/lessons/<id>/sessions/
+/api/v1/assignments/<id>/lessons/<id>/sessions/<id>/end/
+/api/v1/assignments/<id>/lessons/<id>/sessions/<id>/media/
+```
 
-Before considering work complete, report:
+Do not create duplicate endpoints when an existing endpoint already provides the required behavior.
 
-- files changed
-- behavior changed
-- tests added or updated
-- focused test results
-- full test results
-- Django check result
-- migration check result
-- dependency check result
-- diff check result
-- assumptions
-- anything not verified
+Extend existing API patterns consistently.
 
-## Git Rules
-
-Do not commit or push automatically unless explicitly instructed.
-
-Before commit:
-
-- working tree should contain only intended changes
-- tests should pass
-- checks should pass
-- no secrets should be present
-- no unrelated files should be modified
-
-Stable work should be committed before starting a risky new milestone.
-
-## Frontend Rules
-
-V1 frontend architecture remains:
-
-- Django templates
-- HTML
-- CSS
-- basic JavaScript
-
-Do not introduce React or another SPA architecture without explicit approval.
-
-The frontend must not duplicate or replace backend authorization logic.
-
-Frontend controls improve usability, not security.
-
-## UI Direction
-
-The intended Garden's Need visual direction is:
-
-- deep forest green
-- ivory / white
-- charcoal
-- restrained brass accents
-
-The visual system should feel professional, premium, calm, and suitable for internal business software.
-
-Functionality comes before visual polish.
-
-Major visual polish is intentionally scheduled near the end of V1 development.
+Keep API authorization and business rules server-side.
 
 ## Browser and E2E Testing
 
-Playwright will be used during frontend and integration milestones.
+Playwright remains part of the browser/integration validation strategy.
 
-Do not treat frontend work as complete based only on template rendering.
+Do not consider browser-facing work complete based only on template rendering.
 
-Important browser flows should eventually cover:
+Important browser flows include:
 
 - login
 - role dashboards
@@ -554,6 +703,79 @@ Important browser flows should eventually cover:
 - reporting
 - unauthorized access
 - direct URL protection
+
+Browser tests should be added or updated when a change materially affects these flows.
+
+## Environment and Secrets
+
+Never commit:
+
+- `.env`
+- database passwords
+- secret keys
+- API keys
+- access tokens
+- private credentials
+
+Production must fail closed when required security configuration is missing.
+
+Do not change unrelated environment settings while implementing feature work.
+
+Do not modify Git configuration unless explicitly requested.
+
+## Dependencies
+
+Do not add a dependency unless:
+
+- the existing stack cannot reasonably solve the problem
+- the dependency provides clear value
+- the security and maintenance cost is justified
+
+Prefer:
+
+- Django built-ins
+- Python standard library
+- existing project dependencies
+- existing Flutter packages
+
+before adding packages.
+
+## Code Readability
+
+Prefer readable code over compressed one-liners.
+
+Use:
+
+- descriptive names
+- small focused functions
+- clear control flow
+- explicit validation
+- straightforward conditions
+
+Do not create abstractions merely to reduce line count.
+
+Deep readability refactoring is intentionally planned for M22.
+
+Until then, make local readability improvements only when they directly support the current task.
+
+## Documentation Rules
+
+`docs/ROADMAP.md` is the canonical roadmap.
+
+Keep related documentation aligned with the canonical roadmap, including:
+
+- `docs/TASKS.md`
+- `CHANGELOG.md`
+- `AGENTS.md`
+- other milestone-specific documentation
+
+Do not invent completed milestones or test counts.
+
+Historical test counts should remain historically accurate.
+
+Current validation counts should be based on actual repository output.
+
+Documentation changes should not silently change implementation behavior.
 
 ## Production Rules
 
@@ -571,7 +793,7 @@ Production requires:
 - secure cookies
 - appropriate HSTS
 - correct static handling
-- correct media protection
+- protected media handling
 - database backups
 - logging
 - rollback planning
@@ -582,17 +804,16 @@ Do not weaken production defaults merely to simplify local development.
 
 Do not implement future features while working on V1 unless explicitly requested.
 
-Future features may include:
+Future scope may include:
 
 - skill matrix
 - practical assessment
 - supervisor verification
 - machine certification
 - QR verification
-- notifications
 - multilingual support
 - AI-assisted knowledge access
-- native mobile features
+- additional native mobile features
 
 Future scope must remain clearly separated from implemented V1 functionality.
 
@@ -601,24 +822,53 @@ Future scope must remain clearly separated from implemented V1 functionality.
 Current milestone:
 
 ```text
-Milestone 11 - Documentation + Project Structure + CI
+M16 - Learning + Secure Video
 ```
 
 Remaining major milestones:
 
 ```text
-Milestone 12 - Functional Frontend
-Milestone 13 - UX + Responsive + Accessibility
-Milestone 14 - Full E2E + Integration Testing
-Milestone 15 - Production + Deployment Hardening
-Milestone 16 - Final Bug Hunt + Security + Repository Review
-Milestone 17 - Final Readability + Refactor Pass
-Milestone 18 - Premium Visual Polish
-Milestone 19 - Final Acceptance + V1 Release
+M17 - Assessment + Certificates
+M18 - Notifications + Resilience
+M19 - Android Release Candidate
+M20 - Production + Deployment Hardening
+M21 - Final Bug Hunt + Security + Repository Review
+M22 - Readability + Refactor + Garden's Need Visual Polish
+M23 - Final Acceptance + Android V1 Release
 ```
+
+Do not skip milestone scope without an explicit decision.
+
+## M16 Rules
+
+M16 should build on the existing M13-M15 foundation.
+
+M16 must:
+
+- integrate secure video playback into the existing learning flow
+- reuse the existing session-based protected media endpoint
+- preserve server-authoritative progress
+- preserve anti-skip behavior
+- preserve session validation
+- handle playback errors safely
+- support resume behavior
+- apply appropriate Android screen-capture protection
+- avoid unrestricted downloads
+- avoid duplicating backend playback rules
+
+M16 must not silently redesign:
+
+- training version lifecycle
+- assignment version pinning
+- assessment architecture
+- certificate architecture
+- media authorization
+- backend business rules
+
+If an existing lifecycle or business rule is ambiguous, stop and resolve the ambiguity before implementing a conflicting rule.
 
 ## Final Rule
 
-If a requested change conflicts with the existing security model, data integrity model, or documented architecture, do not silently work around the conflict.
+If a requested change conflicts with the existing security model, data integrity model, versioning model, media architecture, or documented roadmap, do not silently work around the conflict.
 
 Identify the conflict and choose the safest narrow implementation that preserves the established system unless explicit approval is given to change the architecture.
