@@ -8,3 +8,4 @@ db.sqlite3
 media/
 staticfiles/
 /training/videos
+/mobile/devtools_options.yaml
