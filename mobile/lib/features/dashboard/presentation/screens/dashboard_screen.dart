@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
@@ -18,10 +20,8 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authControllerProvider);
 
-    String employeeName = 'Employee';
-    if (authState is AuthAuthenticated) {
-      employeeName = authState.employee.displayName;
-    }
+    if (authState is! AuthAuthenticated) return const SizedBox.shrink();
+    final employeeName = authState.employee.displayName;
 
     final dashboardAsync = ref.watch(dashboardDataProvider);
 
@@ -35,13 +35,14 @@ class DashboardScreen extends ConsumerWidget {
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             dashboardAsync.when(
+              skipLoadingOnReload: false,
               data: (data) => _buildDashboardContent(context, employeeName, data),
               loading: () => const SliverFillRemaining(
                 child: LoadingView(message: 'Loading dashboard...'),
               ),
               error: (error, stack) => SliverFillRemaining(
                 child: ErrorView(
-                  message: error.toString(),
+                  message: error is ApiError ? error.message : error.toString(),
                   onRetry: () => ref.refresh(dashboardDataProvider),
                 ),
               ),
@@ -109,7 +110,10 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildActionRequired(BuildContext context, List<DashboardAssignment> assignments) {
+  Widget _buildActionRequired(
+    BuildContext context,
+    List<DashboardAssignment> assignments,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -121,9 +125,13 @@ class DashboardScreen extends ConsumerWidget {
             icon: Icons.assignment_turned_in,
           )
         else
-          ...assignments.map((assignment) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                child: CustomCard(
+          ...assignments.map(
+            (assignment) => Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: CustomCard(
+                child: InkWell(
+                  onTap: () =>
+                      context.push('/learning/assignments/${assignment.id}'),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -133,7 +141,9 @@ class DashboardScreen extends ConsumerWidget {
                           children: [
                             Text(
                               assignment.trainingTitle,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             Text('Version ${assignment.versionNumber}'),
@@ -141,8 +151,12 @@ class DashboardScreen extends ConsumerWidget {
                               Text(
                                 'Due: ${_formatDate(assignment.dueAt)}',
                                 style: TextStyle(
-                                  color: assignment.isOverdue ? Theme.of(context).colorScheme.error : null,
-                                  fontWeight: assignment.isOverdue ? FontWeight.bold : FontWeight.normal,
+                                  color: assignment.isOverdue
+                                      ? Theme.of(context).colorScheme.error
+                                      : null,
+                                  fontWeight: assignment.isOverdue
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
                                 ),
                               ),
                           ],
@@ -151,12 +165,17 @@ class DashboardScreen extends ConsumerWidget {
                       const SizedBox(width: AppSpacing.md),
                       StatusBadge(
                         text: assignment.status,
-                        status: _getBadgeStatus(assignment.status, assignment.isOverdue),
+                        status: _getBadgeStatus(
+                          assignment.status,
+                          assignment.isOverdue,
+                        ),
                       ),
                     ],
                   ),
                 ),
-              )),
+              ),
+            ),
+          ),
       ],
     );
   }

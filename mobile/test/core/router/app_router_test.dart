@@ -30,6 +30,8 @@ class MockAuthController extends Notifier<AuthState> implements AuthController {
   @override
   AuthState build() => initialState;
 
+  void setAuthState(AuthState value) => state = value;
+
   @override
   Future<void> login(String employeeCode, String password) async {}
 
@@ -38,6 +40,9 @@ class MockAuthController extends Notifier<AuthState> implements AuthController {
 
   @override
   Future<void> retryAuthentication() async {}
+
+  @override
+  Future<void> refreshProfile() async {}
 }
 
 void main() {
@@ -56,10 +61,10 @@ void main() {
     recentCertificates: [],
   );
 
-  Widget createTestApp(AuthState authState) {
+  Widget createTestApp(AuthState authState, {MockAuthController? controller}) {
     return ProviderScope(
       overrides: [
-        authControllerProvider.overrideWith(() => MockAuthController(authState)),
+        authControllerProvider.overrideWith(() => controller ?? MockAuthController(authState)),
         dashboardDataProvider.overrideWith((ref) => Future.value(mockDashboardData)),
         assignmentListProvider.overrideWith((ref) => Future.value([])),
       ],
@@ -98,16 +103,31 @@ void main() {
     await tester.tap(find.text('Learning'));
     await tester.pumpAndSettle();
     expect(find.byType(LearningScreen), findsOneWidget);
+    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, 1);
 
     // Tap Profile tab
     await tester.tap(find.text('Profile'));
     await tester.pumpAndSettle();
     expect(find.byType(ProfileScreen), findsOneWidget);
+    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, 2);
 
     // Tap Dashboard tab
     await tester.tap(find.text('Dashboard'));
     await tester.pumpAndSettle();
     expect(find.byType(DashboardScreen), findsOneWidget);
+    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, 0);
+  });
+
+  testWidgets('restored authentication transitions from root shell to dashboard', (tester) async {
+    final auth = MockAuthController(AuthLoading());
+    await tester.pumpWidget(createTestApp(AuthLoading(), controller: auth));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    auth.setAuthState(AuthAuthenticated(tEmployee));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(DashboardScreen), findsOneWidget);
+    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, 0);
   });
 
   testWidgets('Preserves root route during AuthLoading', (tester) async {
@@ -115,7 +135,7 @@ void main() {
     await tester.pump(); // don't settle on loading indicator
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    
+
     // Using a builder inside to check current GoRouter location
     final BuildContext context = tester.element(find.byType(CircularProgressIndicator));
     final router = GoRouter.of(context);
@@ -137,63 +157,75 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
   });
 
-  testWidgets('Navigates to detail screen from learning screen', (tester) async {
-    final mockAssignments = [
-      Assignment(
+  for (final fromDashboard in [false, true]) {
+    testWidgets('Navigates to detail screen from ${fromDashboard ? 'dashboard' : 'learning'}', (tester) async {
+      final mockAssignments = [
+        Assignment(
+          id: 42,
+          trainingId: 101,
+          trainingTitle: 'Test Assignment',
+          versionNumber: 1,
+          status: 'ASSIGNED',
+          isOverdue: false,
+          progressSummary: ProgressSummary(requiredLessonsCompleted: 0, requiredLessonsTotal: 1),
+        )
+      ];
+
+      final mockDetail = AssignmentDetail(
         id: 42,
         trainingId: 101,
-        trainingTitle: 'Test Assignment',
+        trainingTitle: 'Test Assignment Detail',
         versionNumber: 1,
         status: 'ASSIGNED',
         isOverdue: false,
-        progressSummary: ProgressSummary(requiredLessonsCompleted: 0, requiredLessonsTotal: 1),
-      )
-    ];
+        modules: [],
+      );
 
-    final mockDetail = AssignmentDetail(
-      id: 42,
-      trainingId: 101,
-      trainingTitle: 'Test Assignment Detail',
-      versionNumber: 1,
-      status: 'ASSIGNED',
-      isOverdue: false,
-      modules: [],
-    );
+      final app = ProviderScope(
+        overrides: [
+          authControllerProvider.overrideWith(() => MockAuthController(AuthAuthenticated(tEmployee))),
+          dashboardDataProvider.overrideWith((ref) => DashboardData(
+            metrics: mockDashboardData.metrics,
+            actionRequired: [
+              DashboardAssignment(
+                id: 42, trainingId: 101, trainingTitle: 'Test Assignment',
+                versionNumber: 1, status: 'ASSIGNED', isOverdue: false,
+              ),
+            ],
+            recentCertificates: [],
+          )),
+          assignmentListProvider.overrideWith((ref) => Future.value(mockAssignments)),
+          assignmentDetailProvider(42).overrideWith((ref) => Future.value(mockDetail)),
+        ],
+        child: Consumer(
+          builder: (context, ref, child) {
+            final router = ref.watch(appRouterProvider);
+            return MaterialApp.router(
+              routerConfig: router,
+            );
+          },
+        ),
+      );
 
-    final app = ProviderScope(
-      overrides: [
-        authControllerProvider.overrideWith(() => MockAuthController(AuthAuthenticated(tEmployee))),
-        dashboardDataProvider.overrideWith((ref) => Future.value(mockDashboardData)),
-        assignmentListProvider.overrideWith((ref) => Future.value(mockAssignments)),
-        assignmentDetailProvider(42).overrideWith((ref) => Future.value(mockDetail)),
-      ],
-      child: Consumer(
-        builder: (context, ref, child) {
-          final router = ref.watch(appRouterProvider);
-          return MaterialApp.router(
-            routerConfig: router,
-          );
-        },
-      ),
-    );
+      await tester.pumpWidget(app);
+      await tester.pumpAndSettle();
 
-    await tester.pumpWidget(app);
-    await tester.pumpAndSettle();
+      if (!fromDashboard) {
+        await tester.tap(find.text('Learning'));
+        await tester.pumpAndSettle();
+        expect(find.byType(LearningScreen), findsOneWidget);
+      }
 
-    // Navigate to learning tab
-    await tester.tap(find.text('Learning'));
-    await tester.pumpAndSettle();
-    expect(find.byType(LearningScreen), findsOneWidget);
-    
-    // Tap the assignment card
-    expect(find.text('Test Assignment'), findsOneWidget);
-    await tester.tap(find.text('Test Assignment'));
-    await tester.pumpAndSettle();
+      // Tap the assignment card
+      expect(find.text('Test Assignment'), findsOneWidget);
+      await tester.tap(find.text('Test Assignment'));
+      await tester.pumpAndSettle();
 
-    // Verify detail screen is shown
-    expect(find.byType(AssignmentDetailScreen), findsOneWidget);
-    expect(find.text('Test Assignment Detail'), findsOneWidget);
-  });
+      // Verify detail screen is shown
+      expect(find.byType(AssignmentDetailScreen), findsOneWidget);
+      expect(find.text('Test Assignment Detail'), findsOneWidget);
+    });
+  }
 
   testWidgets('Shows ErrorView for non-integer assignment ID', (tester) async {
     final app = ProviderScope(
@@ -291,7 +323,7 @@ void main() {
     // Navigate to learning tab
     await tester.tap(find.text('Learning'));
     await tester.pumpAndSettle();
-    
+
     // Tap assignment
     await tester.tap(find.text('Flow Assignment'));
     await tester.pumpAndSettle();

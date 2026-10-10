@@ -63,10 +63,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/',
-        builder: (context, state) => const AppShell(child: SizedBox.shrink()),
+        builder: (context, state) => AppShell(
+          location: state.uri.path,
+          child: const SizedBox.shrink(),
+        ),
       ),
       ShellRoute(
-        builder: (context, state, child) => AppShell(child: child),
+        builder: (context, state, child) => AppShell(
+          location: state.uri.path,
+          child: child,
+        ),
         routes: [
           GoRoute(
             path: '/dashboard',

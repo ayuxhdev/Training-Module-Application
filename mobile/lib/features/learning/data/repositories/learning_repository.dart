@@ -16,9 +16,22 @@ class LearningRepository {
 
   Future<List<Assignment>> getAssignments() async {
     try {
-      final response = await apiClient.dio.get('/assignments/');
-      final data = response.data as List<dynamic>;
-      return data.map((e) => Assignment.fromJson(e as Map<String, dynamic>)).toList();
+      final assignments = <Assignment>[];
+      var page = 1;
+      while (true) {
+        // Keep every request on the scoped endpoint; never follow arbitrary URLs.
+        final response = page == 1
+            ? await apiClient.dio.get('/assignments/')
+            : await apiClient.dio.get('/assignments/', queryParameters: {'page': page});
+        final data = response.data as Map<String, dynamic>;
+        final results = data['results'] as List<dynamic>;
+        assignments.addAll(results.map((item) => Assignment.fromJson(item as Map<String, dynamic>)));
+        if (data['next'] == null) return assignments;
+        if (results.isEmpty || data['next'] is! String) {
+          throw const FormatException('Invalid assignment pagination.');
+        }
+        page++;
+      }
     } catch (e) {
       throw apiClient.mapExceptionToApiError(e);
     }

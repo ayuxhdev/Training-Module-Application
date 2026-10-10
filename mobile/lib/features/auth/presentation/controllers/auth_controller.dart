@@ -9,6 +9,20 @@ final authControllerProvider = NotifierProvider<AuthController, AuthState>(() {
 
 class AuthController extends Notifier<AuthState> {
   AuthRepository get _repository => ref.read(authRepositoryProvider);
+  int _sessionRevision = 0;
+  int _profileRevision = 0;
+  Future<void> _sessionWork = Future.value();
+
+  bool _isCurrent(int revision) => ref.mounted && revision == _sessionRevision;
+
+  Future<void> _changeSession(Future<void> Function(int) operation) {
+    final revision = ++_sessionRevision;
+    state = AuthLoading();
+    // Credential writes and cleanup must finish before the next login/logout.
+    final work = _sessionWork.then((_) => operation(revision));
+    _sessionWork = work.catchError((Object _) {});
+    return work;
+  }
 
   @override
   AuthState build() {
@@ -17,26 +31,21 @@ class AuthController extends Notifier<AuthState> {
   }
 
   Future<void> _checkAuthentication() async {
+    final revision = ++_sessionRevision;
     state = AuthLoading();
-    final hasTokens = await _repository.hasStoredCredentials();
-    if (!hasTokens) {
-      state = AuthUnauthenticated();
-      return;
-    }
-
     try {
+      final hasTokens = await _repository.hasStoredCredentials();
+      if (!_isCurrent(revision)) return;
+      if (!hasTokens) {
+        state = AuthUnauthenticated();
+        return;
+      }
       final employee = await _repository.getCurrentEmployee();
-      state = AuthAuthenticated(employee);
+      if (_isCurrent(revision)) state = AuthAuthenticated(employee);
     } catch (e) {
+      if (!_isCurrent(revision)) return;
       if (e is ApiError && e.statusCode == 401) {
-        try {
-          await _repository.logout();
-        } catch (_) {
-          // Ignore API failure during logout; local cleanup must proceed
-        } finally {
-          await _repository.tokenStorage.clearAuthenticationState();
-          state = AuthUnauthenticated();
-        }
+        await logout();
       } else {
         state = AuthError(e is ApiError ? e : ApiError.unexpected());
       }
@@ -48,32 +57,51 @@ class AuthController extends Notifier<AuthState> {
   }
 
   Future<void> login(String employeeCode, String password) async {
-    state = AuthLoading();
-    try {
-      final employee = await _repository.login(employeeCode, password);
-      state = AuthAuthenticated(employee);
-    } on ApiError catch (e) {
-      state = AuthError(e);
-      Future.delayed(const Duration(milliseconds: 100), () {
-        state = AuthUnauthenticated();
-      });
-    } catch (e) {
-      state = AuthError(ApiError.unexpected());
-      Future.delayed(const Duration(milliseconds: 100), () {
-        state = AuthUnauthenticated();
-      });
-    }
+    final repository = _repository;
+    await _changeSession((revision) async {
+      try {
+        final employee = await repository.login(employeeCode, password);
+        if (_isCurrent(revision)) state = AuthAuthenticated(employee);
+      } catch (e) {
+        if (!_isCurrent(revision)) return;
+        state = AuthError(e is ApiError ? e : ApiError.unexpected());
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (_isCurrent(revision)) state = AuthUnauthenticated();
+        });
+      }
+    });
   }
 
   Future<void> logout() async {
-    state = AuthLoading();
+    final repository = _repository;
+    await _changeSession((revision) async {
+      try {
+        await repository.logout();
+      } catch (_) {
+        // Local cleanup must proceed even when remote logout fails.
+      } finally {
+        await repository.tokenStorage.clearAuthenticationState();
+        if (_isCurrent(revision)) state = AuthUnauthenticated();
+      }
+    });
+  }
+
+  Future<void> refreshProfile() async {
+    if (state is! AuthAuthenticated) return;
+    final sessionRevision = _sessionRevision;
+    final profileRevision = ++_profileRevision;
     try {
-      await _repository.logout();
-    } catch (_) {
-      // Ignore API failure during logout; local cleanup must proceed
-    } finally {
-      await _repository.tokenStorage.clearAuthenticationState();
-      state = AuthUnauthenticated();
+      final employee = await _repository.getCurrentEmployee();
+      if (_isCurrent(sessionRevision) && profileRevision == _profileRevision) {
+        state = AuthAuthenticated(employee);
+      }
+    } catch (e) {
+      if (!_isCurrent(sessionRevision) || profileRevision != _profileRevision) {
+        return;
+      }
+      final error = e is ApiError ? e : ApiError.unexpected();
+      if (error.statusCode == 401 || error.statusCode == 403) await logout();
+      throw error;
     }
   }
 }

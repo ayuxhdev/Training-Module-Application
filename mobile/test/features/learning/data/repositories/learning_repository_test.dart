@@ -17,6 +17,7 @@ void main() {
     mockApiClient = MockApiClient();
     mockDio = MockDio();
     when(() => mockApiClient.dio).thenReturn(mockDio);
+    when(() => mockApiClient.mapExceptionToApiError(any())).thenReturn(ApiError.unexpected());
     repository = LearningRepository(apiClient: mockApiClient);
   });
 
@@ -38,7 +39,7 @@ void main() {
       when(() => mockDio.get('/assignments/')).thenAnswer(
         (_) async => Response(
           requestOptions: RequestOptions(path: '/assignments/'),
-          data: mockData,
+          data: {'count': 2, 'next': null, 'previous': null, 'results': mockData},
           statusCode: 200,
         ),
       );
@@ -50,6 +51,46 @@ void main() {
       expect(assignments[0].trainingTitle, 'Test Training 1');
       expect(assignments[1].id, 2);
       expect(assignments[1].trainingTitle, 'Test Training 2');
+    });
+
+    test('getAssignments loads later pages through the same scoped endpoint', () async {
+      const nextUrl = 'https://other.invalid/assignments/?page=2';
+      when(() => mockDio.get('/assignments/')).thenAnswer((_) async => Response(
+        requestOptions: RequestOptions(path: '/assignments/'),
+        data: {'count': 2, 'next': nextUrl, 'previous': null, 'results': [{'id': 1}]},
+        statusCode: 200,
+      ));
+      when(() => mockDio.get('/assignments/', queryParameters: {'page': 2})).thenAnswer((_) async => Response(
+        requestOptions: RequestOptions(path: '/assignments/'),
+        data: {'count': 2, 'next': null, 'previous': nextUrl, 'results': [{'id': 2}]},
+        statusCode: 200,
+      ));
+
+      final assignments = await repository.getAssignments();
+      expect(assignments.map((assignment) => assignment.id), [1, 2]);
+      verify(() => mockDio.get('/assignments/', queryParameters: {'page': 2})).called(1);
+      verifyNever(() => mockDio.get(nextUrl));
+    });
+
+    test('empty paginated assignment response is valid', () async {
+      when(() => mockDio.get('/assignments/')).thenAnswer((_) async => Response(
+        requestOptions: RequestOptions(path: '/assignments/'),
+        data: {'count': 0, 'next': null, 'previous': null, 'results': []},
+        statusCode: 200,
+      ));
+      expect(await repository.getAssignments(), isEmpty);
+    });
+
+    test('invalid pagination fails without looping or returning partial data', () async {
+      for (final results in [{}, []]) {
+        when(() => mockDio.get('/assignments/')).thenAnswer((_) async => Response(
+          requestOptions: RequestOptions(path: '/assignments/'),
+          data: {'count': 1, 'next': '/assignments/?page=2', 'results': results},
+          statusCode: 200,
+        ));
+        await expectLater(repository.getAssignments(), throwsA(isA<ApiError>()));
+      }
+      verifyNever(() => mockDio.get('/assignments/', queryParameters: {'page': 2}));
     });
 
     test('getAssignments throws ApiError on failure', () async {

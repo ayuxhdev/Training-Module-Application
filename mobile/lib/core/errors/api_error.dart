@@ -4,12 +4,7 @@ class ApiError implements Exception {
   final String? code;
   final dynamic details;
 
-  ApiError({
-    required this.message,
-    this.statusCode,
-    this.code,
-    this.details,
-  });
+  ApiError({required this.message, this.statusCode, this.code, this.details});
 
   @override
   String toString() {
@@ -21,7 +16,8 @@ class ApiError implements Exception {
 
   factory ApiError.networkFailure() {
     return ApiError(
-      message: 'Network connection failed. Please check your internet connection.',
+      message:
+          'Network connection failed. Please check your internet connection.',
       code: 'network_failure',
     );
   }
@@ -41,14 +37,18 @@ class ApiError implements Exception {
   }
 
   factory ApiError.fromBackend(int statusCode, Map<String, dynamic> data) {
-    // Attempt to extract structured error details if they exist.
-    // The backend sometimes returns {"error": "..."} or {"detail": "..."}
-    final message = data['error'] ?? data['detail'] ?? 'An API error occurred.';
+    final error = data['error'];
+    final structured = error is Map ? error : null;
+    final message =
+        structured?['message'] ?? (error is String ? error : data['detail']);
+    final code = structured?['code'] ?? data['code'];
     return ApiError(
-      message: message.toString(),
+      message: message is String && message.isNotEmpty
+          ? message
+          : 'An API error occurred.',
       statusCode: statusCode,
-      details: data,
+      code: code is String ? code : null,
+      details: structured?['fields'] ?? data,
     );
   }
 }
-

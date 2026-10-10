@@ -6,8 +6,9 @@ import 'package:training_app/features/auth/presentation/controllers/auth_control
 
 class AppShell extends ConsumerWidget {
   final Widget child;
+  final String location;
 
-  const AppShell({super.key, required this.child});
+  const AppShell({super.key, required this.child, required this.location});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -39,7 +40,6 @@ class AppShell extends ConsumerWidget {
       );
     }
 
-    final location = GoRouterState.of(context).matchedLocation;
     int currentIndex = 0;
     if (location.startsWith('/learning')) {
       currentIndex = 1;
