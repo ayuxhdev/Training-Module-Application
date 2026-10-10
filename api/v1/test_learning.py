@@ -12,7 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from config.model_test_utils import CurriculumTestCase
 from organization.models import Employee
-from training.models import Lesson, LessonProgress, Module, TrainingAssignment, VideoWatchSession
+from training.models import Lesson, LessonProgress, Module, TrainingAssignment, TrainingVersion, VideoWatchSession
 
 
 User = get_user_model()
@@ -114,6 +114,78 @@ class LearningAPITests(CurriculumTestCase):
 		self.assertNotIn("video_file", lessons[1])
 		self.assertNotIn("video_checksum", lessons[1])
 		self.assertNotIn("employee_id", response.data)
+
+	def test_retired_assignment_keeps_its_curriculum_and_progress(self):
+		LessonProgress.objects.create(
+			assignment=self.assignment, lesson=self.text_lesson,
+			started_at=self.now, last_accessed_at=self.now, completed_at=self.now,
+		)
+		self.auth_as()
+		url = reverse("api:v1:assignment-detail", args=[self.assignment.pk])
+		published = self.client.get(url)
+		self.assertEqual(published.status_code, 200)
+		self.version.status = TrainingVersion.Status.RETIRED
+		self.version.save()
+
+		retired = self.client.get(url)
+		self.assertEqual(retired.status_code, 200)
+		self.assertEqual(retired.data, published.data)
+		self.assertTrue(retired.data["modules"][0]["lessons"][0]["progress"]["completed"])
+		self.assignment.refresh_from_db()
+		self.assertEqual(self.assignment.training_version_id, self.version.pk)
+
+	def test_retired_assignment_still_requires_ownership_and_active_employee(self):
+		other_user, _, other = self.other_assignment()
+		self.version.status = TrainingVersion.Status.RETIRED
+		self.version.save()
+		self.auth_as()
+		self.assertEqual(self.client.get(
+			reverse("api:v1:assignment-detail", args=[other.pk]),
+		).status_code, 404)
+		url = reverse("api:v1:assignment-detail", args=[self.assignment.pk])
+		self.auth_as(other_user)
+		self.assertEqual(self.client.get(url).status_code, 404)
+		self.auth_as()
+		self.employee.is_active = False
+		self.employee.deactivation_reason = "Inactive for retired assignment test"
+		self.employee.save()
+		self.assertIn(self.client.get(url).status_code, (401, 403))
+		self.client.credentials()
+		self.assertEqual(self.client.get(url).status_code, 401)
+
+	def test_cancelled_retired_assignment_has_no_curriculum(self):
+		self.version.status = TrainingVersion.Status.RETIRED
+		self.version.save()
+		self.assignment.status = TrainingAssignment.Status.CANCELLED
+		self.assignment.cancelled_at = timezone.now()
+		self.assignment.cancellation_reason = "Cancelled for retired assignment test"
+		self.assignment.save()
+		self.auth_as()
+		response = self.client.get(reverse("api:v1:assignment-detail", args=[self.assignment.pk]))
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["modules"], [])
+
+	def test_assignment_detail_cannot_select_unassigned_draft_curriculum(self):
+		draft = self.new_version()
+		module = Module.objects.create(training_version=draft, title="Draft module", position=1)
+		lesson = Lesson.objects.create(
+			module=module, title="Draft lesson", position=1,
+			content_type=Lesson.ContentType.TEXT, body="Unpublished content",
+		)
+		self.version.status = TrainingVersion.Status.RETIRED
+		self.version.save()
+		self.auth_as()
+		response = self.client.get(
+			reverse("api:v1:assignment-detail", args=[self.assignment.pk]),
+			{"training_version_id": draft.pk, "module_id": module.pk, "lesson_id": lesson.pk},
+		)
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["version_number"], self.version.version_number)
+		self.assertEqual([item["id"] for item in response.data["modules"]], [self.module.pk])
+		self.assertEqual(
+			[item["id"] for item in response.data["modules"][0]["lessons"]],
+			[self.text_lesson.pk, self.video_lesson.pk],
+		)
 
 	def test_assignment_detail_hides_other_employee_and_unavailable_curriculum(self):
 		_, _, other = self.other_assignment()

@@ -88,7 +88,9 @@ class AssignmentDetailView(JWTActiveEmployeeAPIView):
 		)
 		learning_available = (
 			assignment.status != TrainingAssignment.Status.CANCELLED
-			and assignment.training_version.status == TrainingVersion.Status.PUBLISHED
+			and assignment.training_version.status in (
+				TrainingVersion.Status.PUBLISHED, TrainingVersion.Status.RETIRED,
+			)
 		)
 		modules = list(
 			Module.objects.filter(training_version=assignment.training_version).prefetch_related("lessons")
