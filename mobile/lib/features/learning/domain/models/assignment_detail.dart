@@ -4,6 +4,8 @@ class LessonProgress {
   final double progressPercent;
   final bool completed;
   final DateTime? completedAt;
+  final List<List<double>> watchedRanges;
+  final int? sessionId;
 
   LessonProgress({
     required this.resumePosition,
@@ -11,15 +13,47 @@ class LessonProgress {
     required this.progressPercent,
     required this.completed,
     this.completedAt,
-  });
+    List<List<double>> watchedRanges = const [],
+    this.sessionId,
+  }) : watchedRanges = List.unmodifiable(
+         watchedRanges.map((range) => List<double>.unmodifiable(range)),
+       );
 
   factory LessonProgress.fromJson(Map<String, dynamic> json) {
+    double number(dynamic value) {
+      final result = double.tryParse(value?.toString() ?? '0');
+      if (result == null || !result.isFinite || result < 0) {
+        throw const FormatException('Invalid lesson progress number.');
+      }
+      return result;
+    }
+
+    final ranges = <List<double>>[];
+    for (final range in json['watched_ranges'] as List? ?? const []) {
+      if (range is! List || range.length != 2) {
+        throw const FormatException('Invalid watched range.');
+      }
+      final start = number(range[0]);
+      final end = number(range[1]);
+      if (end <= start || (ranges.isNotEmpty && start <= ranges.last[1])) {
+        throw const FormatException('Watched ranges must be ordered and merged.');
+      }
+      ranges.add([start, end]);
+    }
+    final sessionId = json['session_id'];
+    if (sessionId != null && (sessionId is! int || sessionId <= 0)) {
+      throw const FormatException('Invalid playback session ID.');
+    }
+    final percent = number(json['progress_percent']);
+    if (percent > 100) throw const FormatException('Invalid progress percentage.');
     return LessonProgress(
-      resumePosition: double.tryParse(json['resume_position']?.toString() ?? '') ?? 0.0,
-      watchedSeconds: double.tryParse(json['watched_seconds']?.toString() ?? '') ?? 0.0,
-      progressPercent: double.tryParse(json['progress_percent']?.toString() ?? '') ?? 0.0,
+      resumePosition: number(json['resume_position']),
+      watchedSeconds: number(json['watched_seconds']),
+      progressPercent: percent,
       completed: json['completed'] as bool? ?? false,
       completedAt: json['completed_at'] != null ? DateTime.tryParse(json['completed_at']) : null,
+      watchedRanges: ranges,
+      sessionId: sessionId,
     );
   }
 }

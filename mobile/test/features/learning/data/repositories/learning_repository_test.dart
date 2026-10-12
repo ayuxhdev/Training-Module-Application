@@ -3,10 +3,12 @@ import 'package:mocktail/mocktail.dart';
 import 'package:dio/dio.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/network/dio_client.dart';
+import 'package:training_app/core/storage/secure_token_storage.dart';
 import 'package:training_app/features/learning/data/repositories/learning_repository.dart';
 
 class MockApiClient extends Mock implements ApiClient {}
 class MockDio extends Mock implements Dio {}
+class MockTokenStorage extends Mock implements SecureTokenStorage {}
 
 void main() {
   late MockApiClient mockApiClient;
@@ -18,7 +20,7 @@ void main() {
     mockDio = MockDio();
     when(() => mockApiClient.dio).thenReturn(mockDio);
     when(() => mockApiClient.mapExceptionToApiError(any())).thenReturn(ApiError.unexpected());
-    repository = LearningRepository(apiClient: mockApiClient);
+    repository = LearningRepository(apiClient: mockApiClient, tokenStorage: MockTokenStorage());
   });
 
   group('LearningRepository', () {
