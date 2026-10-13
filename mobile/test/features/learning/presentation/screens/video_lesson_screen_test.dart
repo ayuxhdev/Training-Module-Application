@@ -114,6 +114,7 @@ void main() {
             position: 1,
             type: lessonType,
             isRequired: true,
+            minimumWatchPercent: 80,
             body: '',
             progress: progress(),
           ),
@@ -303,8 +304,8 @@ void main() {
           cancelToken: any(named: 'cancelToken'),
         ),
       ).called(1);
-      expect(find.text('Unique video coverage: 0%'), findsOneWidget);
-      expect(find.textContaining('Completed ·'), findsNothing);
+      expect(find.text('Watched coverage: 0%'), findsOneWidget);
+      expect(find.text('Lesson completed'), findsNothing);
       await remove(tester);
     },
   );
@@ -593,7 +594,7 @@ void main() {
           cancelToken: any(named: 'cancelToken'),
         ),
       ).called(1);
-      expect(find.text('Unique video coverage: 0%'), findsOneWidget);
+      expect(find.text('Watched coverage: 0%'), findsOneWidget);
       await remove(tester);
     },
   );
@@ -604,9 +605,13 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetDevicePixelRatio);
       addTearDown(tester.view.resetPhysicalSize);
+      tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await show(tester);
       for (final size in [
+        const Size(320, 568),
         const Size(390, 844),
+        const Size(844, 390),
         const Size(768, 1024),
         const Size(1440, 900),
       ]) {
@@ -618,6 +623,22 @@ void main() {
           Brightness.dark,
         );
         expect(tester.getSize(find.byType(Slider)).width, lessThan(size.width));
+        expect(find.text('Watch 80% to complete this lesson.'), findsOneWidget);
+        final colors = Theme.of(tester.element(find.text('Play'))).colorScheme;
+        double contrast(Color a, Color b) {
+          final light = a.computeLuminance();
+          final dark = b.computeLuminance();
+          return (light + .05) / (dark + .05);
+        }
+
+        expect(
+          contrast(colors.onSurface, colors.surface),
+          greaterThanOrEqualTo(4.5),
+        );
+        expect(
+          contrast(colors.primary, colors.onPrimary),
+          greaterThanOrEqualTo(4.5),
+        );
       }
       await remove(tester);
     },
@@ -690,8 +711,8 @@ void main() {
           cancelToken: any(named: 'cancelToken'),
         ),
       ).called(1);
-      expect(find.text('Unique video coverage: 50%'), findsOneWidget);
-      expect(find.textContaining('Completed ·'), findsNothing);
+      expect(find.text('Watched coverage: 50%'), findsOneWidget);
+      expect(find.text('Lesson completed'), findsNothing);
       await remove(tester);
     },
   );
@@ -717,6 +738,193 @@ void main() {
     await remove(tester);
   });
 
+  testWidgets('preparation and paused status reflect the actual player state', (
+    tester,
+  ) async {
+    initialization = Completer<void>();
+    await show(tester);
+    expect(find.text('Ready to play'), findsOneWidget);
+    await play(tester);
+    expect(find.text('Preparing video'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    initialization!.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Playing'), findsOneWidget);
+    await tester.tap(find.text('Pause'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Playing'), findsNothing);
+    expect(find.text('Paused'), findsOneWidget);
+    expect(find.text('Watched coverage: 0%'), findsOneWidget);
+    await remove(tester);
+  });
+
+  testWidgets(
+    'keyboard focus keeps controls visible and shows a focus outline',
+    (tester) async {
+      final previous = FocusManager.instance.highlightStrategy;
+      FocusManager.instance.highlightStrategy =
+          FocusHighlightStrategy.alwaysTraditional;
+      addTearDown(() => FocusManager.instance.highlightStrategy = previous);
+      await show(tester);
+      await play(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      final button = tester.widget<FilledButton>(find.byType(FilledButton));
+      expect(button.style!.side!.resolve({WidgetState.focused})!.width, 2);
+      await tester.pump(const Duration(seconds: 5));
+      expect(
+        tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity,
+        1,
+      );
+      await remove(tester);
+    },
+  );
+
+  testWidgets('accessibility navigation keeps playback controls visible', (
+    tester,
+  ) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        FakeAccessibilityFeatures(accessibleNavigation: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await show(tester);
+    await play(tester);
+    await tester.pump(const Duration(seconds: 5));
+    expect(
+      tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity,
+      1,
+    );
+    await remove(tester);
+  });
+
+  for (final leaveGroup in [false, true]) {
+    testWidgets(
+      leaveGroup
+          ? 'slider and button traversal retains focus then restores auto-hide outside'
+          : 'focused pause button remains visible beyond the auto-hide timeout',
+      (tester) async {
+        final previous = FocusManager.instance.highlightStrategy;
+        FocusManager.instance.highlightStrategy =
+            FocusHighlightStrategy.alwaysTraditional;
+        addTearDown(() => FocusManager.instance.highlightStrategy = previous);
+        await show(tester);
+        await play(tester);
+        final playerFocus = find
+            .ancestor(
+              of: find.byType(VideoPlayer),
+              matching: find.byType(FocusableActionDetector),
+            )
+            .first;
+        final group = tester
+            .element(playerFocus)
+            .findAncestorWidgetOfExactType<Focus>()!;
+        expect(group.canRequestFocus, isFalse);
+        expect(group.skipTraversal, isTrue);
+        final frame = find
+            .descendant(of: playerFocus, matching: find.byType(Container))
+            .first;
+        Focus.of(tester.element(frame)).requestFocus();
+        await tester.pump();
+
+        bool focusedWithin(Finder control) => find
+            .descendant(
+              of: control,
+              matching: find.byElementPredicate(
+                (element) =>
+                    element == FocusManager.instance.primaryFocus?.context,
+              ),
+              matchRoot: true,
+            )
+            .evaluate()
+            .isNotEmpty;
+
+        Future<void> tab({bool backwards = false}) async {
+          if (backwards) {
+            await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+          }
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          if (backwards) {
+            await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+          }
+          await tester.pump();
+        }
+
+        final slider = find.byType(Slider);
+        final button = find.byType(FilledButton);
+        await tab();
+        expect(focusedWithin(slider), isTrue);
+        await tab();
+        expect(focusedWithin(button), isTrue);
+        await tester.pump(const Duration(seconds: 5));
+        expect(
+          tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity,
+          1,
+        );
+        expect(focusedWithin(button), isTrue);
+
+        if (leaveGroup) {
+          await tab(backwards: true);
+          expect(focusedWithin(slider), isTrue);
+          await tester.pump(const Duration(seconds: 5));
+          expect(
+            tester
+                .widget<AnimatedOpacity>(find.byType(AnimatedOpacity))
+                .opacity,
+            1,
+          );
+          expect(focusedWithin(slider), isTrue);
+          await tab();
+          expect(focusedWithin(button), isTrue);
+          await tab();
+          expect(focusedWithin(find.byTooltip('Back to lessons')), isTrue);
+          await tester.pump(const Duration(seconds: 5));
+          expect(
+            tester
+                .widget<AnimatedOpacity>(find.byType(AnimatedOpacity))
+                .opacity,
+            0,
+          );
+          expect(focusedWithin(find.byTooltip('Back to lessons')), isTrue);
+        }
+        await remove(tester);
+      },
+    );
+  }
+
+  testWidgets(
+    'completed presentation comes only from confirmed server progress',
+    (tester) async {
+      when(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          any(),
+          completedNormally: false,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => progress(watched: 80, completed: true));
+      await show(tester);
+      await play(tester);
+      expect(find.text('Lesson completed'), findsNothing);
+      await tester.tap(find.text('Pause'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Lesson completed'), findsOneWidget);
+      expect(
+        tester
+            .widget<LinearProgressIndicator>(
+              find.byType(LinearProgressIndicator),
+            )
+            .value,
+        .8,
+      );
+      await remove(tester);
+    },
+  );
+
   testWidgets('Android fullscreen and secure lease are restored on exit', (
     tester,
   ) async {
@@ -737,16 +945,16 @@ void main() {
     );
     await show(tester);
     await play(tester);
-    expect(find.text('Unique video coverage: 0%'), findsOneWidget);
+    expect(find.text('Watched coverage: 0%'), findsOneWidget);
     await tester.tap(find.byTooltip('Fullscreen'));
     await tester.pump();
     expect(calls.last.arguments, {'lease': 9, 'enabled': true});
-    expect(find.text('Unique video coverage: 0%'), findsNothing);
+    expect(find.text('Watched coverage: 0%'), findsNothing);
     expect(find.byType(LinearProgressIndicator), findsNothing);
     await tester.binding.handlePopRoute();
     await tester.pump();
     expect(calls.last.arguments, {'lease': 9, 'enabled': false});
-    expect(find.text('Unique video coverage: 0%'), findsOneWidget);
+    expect(find.text('Watched coverage: 0%'), findsOneWidget);
     await tester.tap(find.byTooltip('Back to lessons'));
     await tester.pumpAndSettle();
     expect(calls.where((c) => c.method == 'release').single.arguments, 9);

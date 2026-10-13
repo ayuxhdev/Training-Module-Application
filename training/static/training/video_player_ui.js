@@ -28,6 +28,9 @@
     time.textContent = `${format(video.currentTime)} / ${format(duration)}`;
     play.textContent = video.paused ? "Play" : "Pause";
     play.setAttribute("aria-label", video.paused ? "Play video" : "Pause video");
+    if (start && Number(video.currentTime || 0) > 0) {
+      start.textContent = "Resume video";
+    }
     player.classList.toggle("is-playing", !video.paused);
   }
   function toggle() {

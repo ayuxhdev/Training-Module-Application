@@ -51,6 +51,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   int? _windowLease;
   Future<void>? _windowReady;
   bool _busy = false, _observing = false, _controls = true, _scrubbing = false;
+  bool _controlsFocused = false;
   bool _foreground = true, _fullscreen = false, _leaving = false;
   double _origin = 0;
   bool _accountChanged = false;
@@ -144,13 +145,20 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     _fade?.cancel();
   }
 
+  bool get _holdControls =>
+      _scrubbing ||
+      MediaQuery.accessibleNavigationOf(context) ||
+      (_controlsFocused &&
+          FocusManager.instance.highlightMode ==
+              FocusHighlightMode.traditional);
+
   void _reveal() {
     if (!mounted) return;
     setState(() => _controls = true);
     _fade?.cancel();
-    if (_video?.value.isPlaying == true && !_scrubbing) {
+    if (_video?.value.isPlaying == true && !_holdControls) {
       _fade = Timer(const Duration(seconds: 4), () {
-        if (mounted && !_busy && !_scrubbing) {
+        if (mounted && !_busy && !_holdControls) {
           setState(() => _controls = false);
         }
       });
@@ -451,11 +459,20 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
             : null);
     return Theme(
       data: ThemeData.dark(useMaterial3: true).copyWith(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xff92dac5),
-          brightness: Brightness.dark,
-        ),
-        scaffoldBackgroundColor: const Color(0xff0c121b),
+        colorScheme:
+            ColorScheme.fromSeed(
+              seedColor: const Color(0xff92dac5),
+              brightness: Brightness.dark,
+            ).copyWith(
+              primary: const Color(0xffb2efdb),
+              onPrimary: const Color(0xff092019),
+              surface: const Color(0xff101825),
+              onSurface: const Color(0xfff1f5fa),
+              onSurfaceVariant: const Color(0xffbbc8da),
+              outline: const Color(0xff8191a8),
+              outlineVariant: const Color(0xff223042),
+            ),
+        scaffoldBackgroundColor: const Color(0xff06090f),
       ),
       child: PopScope(
         canPop: false,
@@ -473,45 +490,88 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
                       onPressed: _exit,
                       icon: const Icon(Icons.arrow_back),
                     ),
-                    title: Text(lesson?.title ?? 'Protected video'),
-                    subtitle: const Text(
-                      'Secure streaming · Progress saved by the server',
+                    title: Text(
+                      lesson?.title ?? 'Protected video',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
+                    subtitle: const Text('Video lesson'),
                   ),
                 Expanded(
-                  child: ProtectedVideoSurface(
-                    controller: _video,
-                    busy: _busy || detail.isLoading,
-                    controlsVisible: _controls,
-                    canPlay: lesson != null,
-                    canSeek: session.phase == PlaybackPhase.active,
-                    fullscreen: _fullscreen,
-                    onToggleControls: () {
-                      if (_controls &&
-                          !_scrubbing &&
-                          _video?.value.isPlaying == true) {
-                        setState(() => _controls = false);
-                      } else {
-                        _reveal();
-                      }
-                    },
-                    onTogglePlayback: () => unawaited(
-                      _video?.value.isPlaying == true ? _pause() : _play(),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: _fullscreen ? 0 : 12,
                     ),
-                    onSeek: (position) => unawaited(_seek(position)),
-                    onScrubbingChanged: (scrubbing) {
-                      _scrubbing = scrubbing;
-                      _reveal();
-                    },
-                    onFullscreen: _android ? _toggleFullscreen : null,
+                    child: ProtectedVideoSurface(
+                      controller: _video,
+                      busy: _busy || detail.isLoading,
+                      controlsVisible: _controls,
+                      loadingLabel: detail.isLoading
+                          ? 'Loading lesson'
+                          : session.phase == PlaybackPhase.closing
+                          ? 'Saving progress'
+                          : 'Preparing video',
+                      statusLabel:
+                          session.phase == PlaybackPhase.failed ||
+                              session.phase == PlaybackPhase.unavailable
+                          ? 'Playback unavailable'
+                          : null,
+                      canPlay: lesson != null,
+                      canSeek: session.phase == PlaybackPhase.active,
+                      fullscreen: _fullscreen,
+                      onToggleControls: () {
+                        if (_controls &&
+                            !_holdControls &&
+                            _video?.value.isPlaying == true) {
+                          setState(() => _controls = false);
+                        } else {
+                          _reveal();
+                        }
+                      },
+                      onTogglePlayback: () => unawaited(
+                        _video?.value.isPlaying == true ? _pause() : _play(),
+                      ),
+                      onSeek: (position) => unawaited(_seek(position)),
+                      onScrubbingChanged: (scrubbing) {
+                        _scrubbing = scrubbing;
+                        _reveal();
+                      },
+                      onRevealControls: _reveal,
+                      onControlsFocusChanged: (focused) {
+                        _controlsFocused = focused;
+                        _reveal();
+                      },
+                      onFullscreen: _android ? _toggleFullscreen : null,
+                    ),
                   ),
                 ),
                 if (error != null)
-                  Padding(
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                     padding: const EdgeInsets.all(12),
-                    child: Semantics(
-                      liveRegion: true,
-                      child: Text(error, textAlign: TextAlign.center),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff302026),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xff895460)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.info_outline,
+                          color: Color(0xffffc1cb),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Semantics(
+                            liveRegion: true,
+                            child: Text(
+                              error,
+                              style: const TextStyle(color: Color(0xffffdce1)),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 if (!_fullscreen)
@@ -520,16 +580,44 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          progress?.completed == true
-                              ? 'Completed · Confirmed by the server'
-                              : 'Unique video coverage: ${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
+                        Row(
+                          children: [
+                            Icon(
+                              progress?.completed == true
+                                  ? Icons.check_circle_outline
+                                  : Icons.visibility_outlined,
+                              size: 20,
+                              color: const Color(0xffb2efdb),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                progress?.completed == true
+                                    ? 'Lesson completed'
+                                    : 'Watched coverage: ${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 8),
                         LinearProgressIndicator(
                           value: (progress?.progressPercent ?? 0) / 100,
-                          semanticsLabel: 'Server-confirmed video coverage',
+                          borderRadius: BorderRadius.circular(4),
+                          minHeight: 5,
+                          semanticsLabel: 'Confirmed watched coverage',
+                          semanticsValue:
+                              '${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
                         ),
+                        if (progress?.completed != true &&
+                            lesson?.minimumWatchPercent != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'Watch ${lesson!.minimumWatchPercent!.toStringAsFixed(0)}% to complete this lesson.',
+                          ),
+                        ],
                       ],
                     ),
                   ),

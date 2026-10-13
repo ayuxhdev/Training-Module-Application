@@ -130,3 +130,20 @@ test("buffering/fullscreen states are accessible and exit clears fade timer", as
   elements["start-video"].hidden = true; elements["video-play-pause"].click();
   window.emit("pagehide"); fade(); assert.equal(classes.has("is-controls-visible"), true);
 });
+
+test("tactile midnight player enforces single primary action and hides developer text", () => {
+  const css = fs.readFileSync(path.join(__dirname, "static/training/video_player.css"), "utf8");
+  assert.match(css, /#start-video:not\(\[hidden\]\)\s*~\s*#video-play-pause/);
+  assert.match(css, /\.video-timeline-label\.visually-hidden,\s*\.video-timeline-label\s*\{[^}]*clip:\s*rect\(0,\s*0,\s*0,\s*0\);/);
+  assert.match(css, /\.video-stage\s*\{[^}]*min-height:\s*200px;/);
+  assert.match(css, /\.midnight-player video\s*\{[^}]*object-fit:\s*contain;/);
+  assert.match(css, /#start-video,\s*\.btn-primary-tactile\s*\{/);
+
+  const { elements, video } = ui();
+  const start = elements["start-video"];
+  start.textContent = "Start or resume video";
+  assert.equal(start.textContent, "Start or resume video");
+  video.currentTime = 15;
+  video.emit("timeupdate");
+  assert.equal(start.textContent, "Resume video");
+});
