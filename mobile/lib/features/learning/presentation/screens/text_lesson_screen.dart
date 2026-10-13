@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show ProviderException;
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
@@ -7,7 +8,6 @@ import 'package:training_app/core/presentation/components/primary_button.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/core/errors/api_error.dart';
-import 'package:training_app/features/learning/data/repositories/learning_repository.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 
@@ -48,7 +48,7 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
   }
 
   Future<void> _completeLesson() async {
-    if (_isSubmitting) return;
+    if (_isSubmitting || _isCompletedLocally) return;
 
     _generation++;
     final capturedGeneration = _generation;
@@ -60,27 +60,23 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
     });
 
     try {
-      final repository = ref.read(learningRepositoryProvider);
-      final result = await repository.completeTextLesson(requestedAssignmentId, requestedLessonId);
+      final result = await ref.read(textLessonCompletionProvider((
+        assignmentId: requestedAssignmentId, lessonId: requestedLessonId,
+      )).future);
       
       if (!mounted) return;
 
       final bool isCurrentLesson = widget.assignmentId == requestedAssignmentId && widget.lessonId == requestedLessonId;
       final bool isGenerationMatch = _generation == capturedGeneration;
 
-      if (result.completed) {
-        // Invalidate if it's for a different lesson, or if it's the current lesson and not stale.
-        if (!isCurrentLesson || isGenerationMatch) {
-          ref.invalidate(assignmentDetailProvider(requestedAssignmentId));
-        }
-      }
-
       if (isCurrentLesson && isGenerationMatch) {
         if (result.completed) {
           _isCompletedLocally = true;
         }
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lesson completed successfully')),
+          SnackBar(content: Text(result.completed
+            ? 'Lesson completed successfully'
+            : 'Completion was not confirmed. Please try again.')),
         );
         setState(() {
           _isSubmitting = false;
@@ -98,8 +94,9 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
         });
 
         String errorMessage = 'Unable to complete this lesson. Please try again.';
-        if (e is ApiError) {
-          errorMessage = e.message;
+        final error = e is ProviderException ? e.exception : e;
+        if (error is ApiError) {
+          errorMessage = error.message;
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -121,6 +118,7 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
         title: const Text('Lesson'),
       ),
       body: detailAsync.when(
+        skipLoadingOnRefresh: false,
         data: (detail) {
           final allLessons = <_LessonLocation>[];
           for (final module in detail.modules) {

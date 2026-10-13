@@ -11,6 +11,8 @@ class AuthController extends Notifier<AuthState> {
   AuthRepository get _repository => ref.read(authRepositoryProvider);
   int _sessionRevision = 0;
   int _profileRevision = 0;
+  // Failed credential deletion must not allow retry to restore the old session.
+  bool _requiresLogin = false;
   Future<void> _sessionWork = Future.value();
 
   bool _isCurrent(int revision) => ref.mounted && revision == _sessionRevision;
@@ -34,6 +36,10 @@ class AuthController extends Notifier<AuthState> {
     final revision = ++_sessionRevision;
     state = AuthLoading();
     try {
+      if (_requiresLogin) {
+        state = AuthUnauthenticated();
+        return;
+      }
       final hasTokens = await _repository.hasStoredCredentials();
       if (!_isCurrent(revision)) return;
       if (!hasTokens) {
@@ -61,7 +67,10 @@ class AuthController extends Notifier<AuthState> {
     await _changeSession((revision) async {
       try {
         final employee = await repository.login(employeeCode, password);
-        if (_isCurrent(revision)) state = AuthAuthenticated(employee);
+        if (_isCurrent(revision)) {
+          _requiresLogin = false;
+          state = AuthAuthenticated(employee);
+        }
       } catch (e) {
         if (!_isCurrent(revision)) return;
         state = AuthError(e is ApiError ? e : ApiError.unexpected());
@@ -74,14 +83,27 @@ class AuthController extends Notifier<AuthState> {
 
   Future<void> logout() async {
     final repository = _repository;
+    _requiresLogin = true;
     await _changeSession((revision) async {
       try {
         await repository.logout();
       } catch (_) {
         // Local cleanup must proceed even when remote logout fails.
       } finally {
-        await repository.tokenStorage.clearAuthenticationState();
-        if (_isCurrent(revision)) state = AuthUnauthenticated();
+        try {
+          await repository.tokenStorage.clearAuthenticationState();
+          if (_isCurrent(revision)) state = AuthUnauthenticated();
+        } catch (_) {
+          if (_isCurrent(revision)) {
+            state = AuthError(
+              ApiError(
+                message:
+                    'Unable to clear saved credentials. Sign in again to continue.',
+                code: 'credential_cleanup_failed',
+              ),
+            );
+          }
+        }
       }
     });
   }

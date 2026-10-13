@@ -13,3 +13,23 @@ final assignmentDetailProvider = FutureProvider.autoDispose.family<AssignmentDet
   return repository.getAssignmentDetail(assignmentId);
 });
 
+final textLessonCompletionProvider = FutureProvider.autoDispose.family<
+    LessonProgress, ({int assignmentId, int lessonId})>((ref, lesson) async {
+  // Share pending requests and refresh caches even after the screen is gone.
+  final pending = ref.keepAlive();
+  try {
+    final repository = ref.watch(learningRepositoryProvider);
+    final progress = await repository.completeTextLesson(
+      lesson.assignmentId,
+      lesson.lessonId,
+    );
+    if (ref.mounted && progress.completed) {
+      ref.invalidate(assignmentDetailProvider(lesson.assignmentId));
+      ref.invalidate(assignmentListProvider);
+    }
+    return progress;
+  } finally {
+    pending.close();
+  }
+}, retry: (_, _) => null);
+

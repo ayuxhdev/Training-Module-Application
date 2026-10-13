@@ -485,10 +485,9 @@ void main() {
     expect(find.widgetWithText(PrimaryButton, 'Complete Lesson'), findsOneWidget);
   });
 
-  testWidgets('rejects stale results from earlier visits to the same lesson', (tester) async {
+  testWidgets('shares pending completion across repeated visits to the same lesson', (tester) async {
     final completer1 = Completer<LessonProgress>();
-    final completer2 = Completer<LessonProgress>();
-    final mockRepo = _QueueMockRepo([completer1, completer2]);
+    final mockRepo = _QueueMockRepo([completer1]);
     
     final mockDetail = AssignmentDetail(
       id: 1, trainingId: 101, trainingTitle: 'Safety Basics', versionNumber: 1, status: 'IN_PROGRESS', isOverdue: false,
@@ -539,26 +538,20 @@ void main() {
     );
     await tester.pumpAndSettle();
     
-    // Start 2nd request
+    // Rejoin the pending request rather than submit a duplicate.
     await tester.tap(find.widgetWithText(PrimaryButton, 'Complete Lesson'));
     await tester.pump();
     
-    // Verify 2nd is submitting
+    expect(mockRepo.callCount, 1);
     expect(find.text('Submitting...'), findsOneWidget);
     
     // Resolve 1st request
     completer1.complete(LessonProgress(resumePosition: 0, watchedSeconds: 0, progressPercent: 100, completed: true, completedAt: DateTime.now()));
-    await tester.pump(); // Pump once, not settle, to check if it clears submitting or shows snackbar
-    
-    // 1st request should be rejected as stale. Should STILL be submitting 2nd request.
-    expect(find.text('Submitting...'), findsOneWidget); 
-    expect(find.byType(SnackBar), findsNothing);
-    
-    // Resolve 2nd request
-    completer2.complete(LessonProgress(resumePosition: 0, watchedSeconds: 0, progressPercent: 100, completed: true, completedAt: DateTime.now()));
     await tester.pumpAndSettle();
     
     expect(find.text('COMPLETED'), findsOneWidget);
+    expect(find.widgetWithText(PrimaryButton, 'Complete Lesson'), findsNothing);
+    expect(find.text('Lesson completed successfully'), findsOneWidget);
   });
 
   testWidgets('invalidates assignment provider even when displayed lesson changed', (tester) async {

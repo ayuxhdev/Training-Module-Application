@@ -14,6 +14,7 @@ class MockSecureTokenStorage extends Mock implements SecureTokenStorage {}
 
 void main() {
   late MockAuthRepository mockRepository;
+  late MockSecureTokenStorage storage;
 
   final tEmployee = Employee(
     username: 'EMP001',
@@ -26,7 +27,7 @@ void main() {
 
   setUp(() {
     mockRepository = MockAuthRepository();
-    final storage = MockSecureTokenStorage();
+    storage = MockSecureTokenStorage();
     when(() => mockRepository.tokenStorage).thenReturn(storage);
     when(() => storage.clearAuthenticationState()).thenAnswer((_) async {});
     when(() => mockRepository.logout()).thenAnswer((_) async {});
@@ -265,6 +266,97 @@ void main() {
         );
       },
     );
+  });
+
+  group('Credential cleanup failures', () {
+    Future<ProviderContainer> authenticatedContainer() async {
+      when(() => mockRepository.hasStoredCredentials())
+          .thenAnswer((_) async => true);
+      when(() => mockRepository.getCurrentEmployee())
+          .thenAnswer((_) async => tEmployee);
+      final container = makeContainer();
+      container.read(authControllerProvider);
+      await Future<void>.delayed(Duration.zero);
+      when(() => storage.clearAuthenticationState())
+          .thenThrow(StateError('Storage unavailable'));
+      return container;
+    }
+
+    test('logout leaves loading and retry cannot restore undeleted tokens', () async {
+      final container = await authenticatedContainer();
+      final controller = container.read(authControllerProvider.notifier);
+      await controller.logout();
+      final state = container.read(authControllerProvider) as AuthError;
+      expect(state.error.code, 'credential_cleanup_failed');
+
+      await controller.retryAuthentication();
+      expect(container.read(authControllerProvider), isA<AuthUnauthenticated>());
+      verify(() => mockRepository.hasStoredCredentials()).called(1);
+      verify(() => mockRepository.getCurrentEmployee()).called(1);
+      verify(() => mockRepository.logout()).called(1);
+      verify(() => storage.clearAuthenticationState()).called(1);
+
+      when(() => mockRepository.login('EMP001', 'new-password'))
+          .thenAnswer((_) async => tEmployee);
+      await controller.login('EMP001', 'new-password');
+      expect(container.read(authControllerProvider), isA<AuthAuthenticated>());
+    });
+
+    test('startup 401 with failed cleanup does not loop or restore credentials', () async {
+      when(() => mockRepository.hasStoredCredentials())
+          .thenAnswer((_) async => true);
+      when(() => mockRepository.getCurrentEmployee())
+          .thenThrow(ApiError(message: 'Expired', statusCode: 401));
+      when(() => mockRepository.logout())
+          .thenThrow(StateError('Repository cleanup failed'));
+      when(() => storage.clearAuthenticationState())
+          .thenThrow(StateError('Storage unavailable'));
+      final container = makeContainer();
+      final controller = container.read(authControllerProvider.notifier);
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(authControllerProvider), isA<AuthError>());
+
+      await controller.retryAuthentication();
+      await controller.retryAuthentication();
+      expect(container.read(authControllerProvider), isA<AuthUnauthenticated>());
+      verify(() => mockRepository.logout()).called(1);
+      verify(() => mockRepository.getCurrentEmployee()).called(1);
+      verify(() => storage.clearAuthenticationState()).called(1);
+    });
+
+    test('profile 401 preserves the rejection and surfaces cleanup failure', () async {
+      final container = await authenticatedContainer();
+      final error = ApiError(message: 'Expired', statusCode: 401);
+      when(() => mockRepository.getCurrentEmployee()).thenThrow(error);
+      await expectLater(
+        container.read(authControllerProvider.notifier).refreshProfile(),
+        throwsA(same(error)),
+      );
+      expect(container.read(authControllerProvider), isA<AuthError>());
+      await container.read(authControllerProvider.notifier).retryAuthentication();
+      expect(container.read(authControllerProvider), isA<AuthUnauthenticated>());
+    });
+
+    test('late cleanup failure cannot overwrite a queued fresh login', () async {
+      final container = await authenticatedContainer();
+      final controller = container.read(authControllerProvider.notifier);
+      final cleanup = Completer<void>();
+      final cleanupStarted = Completer<void>();
+      when(() => storage.clearAuthenticationState())
+          .thenAnswer((_) async {
+            cleanupStarted.complete();
+            await cleanup.future;
+            throw StateError('Storage unavailable');
+          });
+      when(() => mockRepository.login('EMP001', 'new-password'))
+          .thenAnswer((_) async => tEmployee);
+      final logout = controller.logout();
+      await cleanupStarted.future;
+      final login = controller.login('EMP001', 'new-password');
+      cleanup.complete();
+      await Future.wait([logout, login]);
+      expect(container.read(authControllerProvider), isA<AuthAuthenticated>());
+    });
   });
 
   group('AuthController login/logout', () {
