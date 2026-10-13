@@ -48,6 +48,11 @@ test("faded controls ignore pointers while visible and keyboard-focused controls
   assert.equal(video.paused, false);
 });
 
+test("reduced-motion styles disable button and controls transitions", () => {
+  const css = fs.readFileSync(path.join(__dirname, "static/training/video_player.css"), "utf8");
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.midnight-player button,\s*\.video-player-controls\s*\{\s*transition:\s*none;/);
+});
+
 test("visual controls cannot start disabled media or manufacture recorded coverage", async () => {
   const { elements, video } = ui();
   const play = elements["video-play-pause"], start = elements["start-video"];

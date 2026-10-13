@@ -12,8 +12,11 @@ from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
+from django.conf import settings
+from django.contrib.staticfiles.storage import staticfiles_storage
+from django.core.management import call_command
 from django.db import IntegrityError, models, transaction
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 
 from audit.models import AuditLog
 from config.model_test_utils import CurriculumTestCase
@@ -972,6 +975,35 @@ class AssignmentViewTests(CurriculumTestCase):
 
 
 class LearnerFrontendTests(CurriculumTestCase):
+    def test_production_player_assets_are_hashed_and_change_with_content(self):
+        storages = {
+            **settings.STORAGES,
+            "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"},
+        }
+        with tempfile.TemporaryDirectory() as static_root, override_settings(
+            DEBUG=False, STATIC_ROOT=static_root, STORAGES=storages,
+        ):
+            call_command("collectstatic", interactive=False, verbosity=0)
+            self.client.force_login(self.employee_user)
+            response = self.client.get(self.page(self.video_lesson))
+            self.assertEqual(response.status_code, 200)
+            for name in ("training/playback.js", "training/video_player_ui.js", "training/video_player.css"):
+                url = staticfiles_storage.url(name)
+                self.assertNotEqual(url, settings.STATIC_URL + name)
+                self.assertContains(response, url)
+                self.assertTrue(staticfiles_storage.exists(staticfiles_storage.stored_name(name)))
+            name = "training/playback.js"
+            previous_url = staticfiles_storage.url(name)
+            # Modify only the isolated collected copy, never application sources.
+            with staticfiles_storage.open(name, "ab") as asset:
+                asset.write(b"\n// Cache invalidation regression fixture\n")
+            paths = {path: (staticfiles_storage, path) for path in staticfiles_storage.hashed_files}
+            for _, _, processed in staticfiles_storage.post_process(paths):
+                if isinstance(processed, Exception):
+                    raise processed
+            self.assertNotEqual(staticfiles_storage.url(name), previous_url)
+            self.assertContains(self.client.get(self.page(self.video_lesson)), staticfiles_storage.url(name))
+
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
@@ -1158,6 +1190,19 @@ class LearnerFrontendTests(CurriculumTestCase):
 
 class ProtectedVideoTests(CurriculumTestCase):
     video_bytes = b"\x00\x00\x00\x18ftyp-video-content"
+
+    def test_existing_retired_assignment_can_start_and_stream_its_pinned_video(self):
+        self.version.status = TrainingVersion.Status.RETIRED
+        self.version.save()
+        session_id = self.start()
+        response = self.client.get(self.media_url(session_id), HTTP_RANGE="bytes=0-3")
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(b"".join(response.streaming_content), self.video_bytes[:4])
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.training_version_id, self.version.pk)
+        self.assertFalse(LessonProgress.objects.filter(
+            assignment=self.assignment, completed_at__isnull=False,
+        ).exists())
 
     @classmethod
     def setUpTestData(cls):

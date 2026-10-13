@@ -288,13 +288,43 @@ The selected implementation must be documented after it is tested.
 
 ## 16. Collectstatic
 
-Where required:
+Production (`DEBUG=False`) uses Django `ManifestStaticFilesStorage`. Development
+(`DEBUG=True`) retains ordinary static URLs and `runserver` serving. Templates
+use `{% static %}`, including all three website player assets; no manual version
+query parameters are needed.
+
+Before activating every production release, run with its production settings:
 
 ```powershell
-python manage.py collectstatic
+python manage.py collectstatic --noinput
 ```
 
-The exact command and destination depend on the final static-file architecture.
+The configured destination is `BASE_DIR / 'staticfiles'` (`STATIC_ROOT`). Collection
+writes content-hashed filenames and `staticfiles.json`. Deploy that manifest with
+the matching application release, and configure the selected static server to
+serve this directory at `/static/`. Django does not serve it in production.
+
+Do not use `--no-post-process`: the manifest is required. Missing manifest entries
+fail rather than silently falling back to stale unversioned URLs. Verify a rendered
+learner page references `playback.<hash>.js`, `video_player_ui.<hash>.js`, and
+`video_player.<hash>.css`, and that those URLs return the collected files.
+
+Long-lived immutable caching is appropriate for hashed assets only. Retain older
+hashed files for the deployment/rollback and open-page retention window; do not
+clear assets still referenced by older pages. Already-open pages must reload to
+receive new code; hashing cannot replace JavaScript already loaded in a tab.
+
+HTML is separate: authenticated learner HTML must not be shared-cacheable or
+given immutable caching. The application has no page-cache middleware. Configure
+the reverse proxy to bypass caching authenticated pages, or require private
+revalidation, and invalidate any old HTML cache when deploying. Do not apply a
+global no-cache policy to hashed static assets. Final proxy/CDN cache behavior
+must be verified in staging.
+
+Run ordinary tests with `DEBUG=True` (as CI does), or collect production assets
+first when deliberately testing production settings. The focused asset regression
+collects into temporary storage with `DEBUG=False` and verifies rendered hashed
+URLs and hash changes after a content change.
 
 Test the process in staging or an equivalent production-like environment first.
 
