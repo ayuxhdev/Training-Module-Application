@@ -77,6 +77,8 @@ class LessonListScreen extends ConsumerWidget {
                   onTap: () {
                     if (lesson.type.toUpperCase() == 'TEXT') {
                       context.go('/learning/assignments/$assignmentId/modules/$moduleId/lessons/${lesson.id}/text');
+                    } else if (lesson.type.toUpperCase() == 'VIDEO') {
+                      context.push('/learning/assignments/$assignmentId/modules/$moduleId/lessons/${lesson.id}/video');
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(

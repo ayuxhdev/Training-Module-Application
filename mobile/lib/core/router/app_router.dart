@@ -11,6 +11,7 @@ import 'package:training_app/features/learning/presentation/screens/assignment_d
 import 'package:training_app/features/learning/presentation/screens/module_list_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/lesson_list_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/text_lesson_screen.dart';
+import 'package:training_app/features/learning/presentation/screens/video_lesson_screen.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 
@@ -57,6 +58,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      // Protected playback sits outside the shell so fullscreen has no tab bar.
+      GoRoute(
+        path: '/learning/assignments/:id/modules/:moduleId/lessons/:lessonId/video',
+        builder: (context, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '');
+          final moduleId = int.tryParse(state.pathParameters['moduleId'] ?? '');
+          final lessonId = int.tryParse(state.pathParameters['lessonId'] ?? '');
+          if (id == null || moduleId == null || lessonId == null ||
+              id <= 0 || moduleId <= 0 || lessonId <= 0) {
+            return const Scaffold(body: ErrorView(message: 'Invalid ID'));
+          }
+          return VideoLessonScreen(assignmentId: id, moduleId: moduleId, lessonId: lessonId);
+        },
+      ),
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),

@@ -6,12 +6,20 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "static/training/playback.js"), "utf8");
 
-function playback(responseFor) {
+function playback(responseFor, custom = false) {
   const calls = [];
   const listeners = new Map();
   const videoListeners = new Map();
+  function emit(name) {
+    for (const entry of [...(videoListeners.get(name) || [])]) {
+      if (entry.once) videoListeners.get(name).delete(entry);
+      entry.listener();
+    }
+  }
   let heartbeat;
   const elements = new Map();
+  const controls = [{ disabled: true }, { disabled: true }];
+  if (custom) elements.set("video-player-controls", { querySelectorAll: () => controls });
   for (const id of ["start-video", "lesson-progress", "lesson-progress-label",
     "lesson-resume", "lesson-completion", "playback-status"]) {
     elements.set(id, { disabled: false, textContent: "", addEventListener(name, listener) {
@@ -30,21 +38,26 @@ function playback(responseFor) {
     seeking: false,
     ended: false,
     controls: false,
-    addEventListener(name, listener) {
-      videoListeners.set(name, listener);
+    addEventListener(name, listener, options = {}) {
+      if (!videoListeners.has(name)) videoListeners.set(name, new Set());
+      videoListeners.get(name).add({ listener, once: options.once });
     },
     removeEventListener(name, listener) {
-      if (videoListeners.get(name) === listener) videoListeners.delete(name);
+      for (const entry of videoListeners.get(name) || []) {
+        if (entry.listener === listener) videoListeners.get(name).delete(entry);
+      }
     },
     load() {
-      videoListeners.get("loadedmetadata")?.();
+      emit("loadedmetadata");
     },
     async play() {
       this.paused = false;
-      videoListeners.get("play")?.();
+      emit("play");
     },
     pause() {
+      const wasPlaying = !this.paused;
       this.paused = true;
+      if (wasPlaying) emit("pause");
     },
   };
   elements.set("lesson-video", video);
@@ -67,6 +80,8 @@ function playback(responseFor) {
     heartbeat: () => heartbeat(),
     pagehide: () => listeners.get("pagehide")(),
     element: (id) => elements.get(id),
+    controls,
+    event: emit,
   };
 }
 
@@ -99,6 +114,79 @@ test("a protected forward observation keeps the session playable", async () => {
   assert.equal(player.video.paused, false);
   assert.equal(player.element("start-video").disabled, true);
   assert.equal(player.element("lesson-progress-label").textContent, "50%");
+});
+
+test("custom controls follow the existing session lifecycle without native controls", async () => {
+  const player = playback(async (url) => ({
+    ok: true,
+    json: async () => url.includes("/start/") ? progress(19) : progress(),
+  }), true);
+  await settle();
+  assert(player.controls.every((control) => control.disabled));
+  player.start();
+  await settle();
+  assert.equal(player.video.controls, false);
+  assert(player.controls.every((control) => !control.disabled));
+  assert.equal(player.element("start-video").hidden, true);
+  player.video.pause();
+  player.event("pause");
+  await settle();
+  assert(player.controls.every((control) => control.disabled));
+  assert.equal(player.element("start-video").hidden, false);
+  assert.equal(player.element("start-video").disabled, false);
+  assert.equal(player.calls.filter((call) => call.url.includes("/end/")).length, 1);
+  assert.match(player.element("playback-status").textContent, /^Paused\./);
+});
+
+test("pause status updates while closing, then resume and ended reflect the session lifecycle", async () => {
+  let finishClose;
+  const player = playback(async (url) => {
+    if (url.includes("/end/")) await new Promise((resolve) => { finishClose = resolve; });
+    return { ok: true, json: async () => url.includes("/start/") ? progress(19) : progress() };
+  });
+  await settle(); await player.start();
+  assert.match(player.element("playback-status").textContent, /^Playing\./);
+  player.video.pause(); await settle();
+  assert.match(player.element("playback-status").textContent, /^Saving playback progress/);
+  finishClose(); await settle();
+  assert.match(player.element("playback-status").textContent, /^Paused\./);
+  await player.start();
+  assert.match(player.element("playback-status").textContent, /^Playing\./);
+  player.video.ended = true; player.video.pause(); player.event("ended"); await settle();
+  assert.doesNotMatch(player.element("playback-status").textContent, /^Playing\./);
+  finishClose(); await settle();
+  assert.match(player.element("playback-status").textContent, /^Video ended\./);
+});
+
+test("play without a session is paused and cannot display Playing", async () => {
+  const player = playback(async () => ({ ok: true, json: async () => progress() }));
+  await settle(); await player.video.play();
+  assert.equal(player.video.paused, true);
+  assert.match(player.element("playback-status").textContent, /not active/);
+});
+
+test("paused seeking and media errors never retain the Playing status", async () => {
+  const player = playback(async (url) => ({
+    ok: true, json: async () => url.includes("/start/") ? progress(19) : progress(),
+  }));
+  await settle(); await player.start();
+  player.event("seeked"); // Finish the backend-selected initial resume seek.
+  player.event("seeking"); player.video.pause();
+  assert.match(player.element("playback-status").textContent, /^Paused\./);
+  assert.equal(player.calls.filter((call) => call.url.includes("/end/")).length, 0);
+  player.event("error");
+  assert.match(player.element("playback-status").textContent, /Video is unavailable/);
+});
+
+test("expired session errors replace Playing and leave playback stopped", async () => {
+  const player = playback(async (url, options) => {
+    if (url.includes("/progress/") && options.method === "POST") return { ok: false, status: 409 };
+    return { ok: true, json: async () => url.includes("/start/") ? progress(19) : progress() };
+  });
+  await settle(); await player.start(); player.heartbeat(); await settle();
+  assert.equal(player.video.paused, true);
+  assert.match(player.element("playback-status").textContent, /Reload the lesson/);
+  assert.equal(player.calls.filter((call) => call.url.includes("/end/")).length, 1);
 });
 
 test("failed heartbeat closes its session using the last approved position", async () => {

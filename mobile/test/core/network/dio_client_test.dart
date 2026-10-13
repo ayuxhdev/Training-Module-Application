@@ -16,6 +16,10 @@ void main() {
       apiClient = ApiClient(tokenStorage: mockTokenStorage);
     });
 
+    test('API requests do not follow redirects to another origin', () {
+      expect(apiClient.dio.options.followRedirects, isFalse);
+    });
+
     test('maps connection timeout to ApiError.timeout', () {
       final exception = DioException(
         requestOptions: RequestOptions(path: ''),

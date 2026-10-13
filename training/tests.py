@@ -1003,6 +1003,15 @@ class LearnerFrontendTests(CurriculumTestCase):
         self.assertNotContains(response, "Add lesson")
         self.assertNotContains(response, 'id="lesson-video"')
 
+    def test_video_player_has_accessible_controls_and_private_session_source(self):
+        self.client.force_login(self.employee_user)
+        response = self.client.get(self.page(self.video_lesson))
+        for marker in ('id="video-player"', 'id="video-play-pause"',
+                       'id="video-timeline"', 'aria-label="Enter fullscreen"',
+                       'training/video_player.css', 'training/video_player_ui.js'):
+            self.assertContains(response, marker)
+        self.assertNotContains(response, self.video_lesson.video_file.url)
+
     def test_video_page_uses_only_assigned_lesson_and_server_progress(self):
         LessonProgress.objects.create(
             assignment=self.assignment, lesson=self.video_lesson, started_at=self.now,
@@ -1093,7 +1102,7 @@ class LearnerFrontendTests(CurriculumTestCase):
                 self.assertNotContains(response, "Safety instructions")
                 self.assertEqual(self.client.get(self.page(self.video_lesson)).status_code, 404)
 
-    def test_inactive_cancelled_and_retired_assignments_cannot_open_lesson(self):
+    def test_inactive_and_cancelled_assignments_cannot_open_lesson(self):
         self.client.force_login(self.employee_user)
         self.employee.is_active = False
         self.employee.deactivation_reason = "Inactive for test"
@@ -1117,7 +1126,23 @@ class LearnerFrontendTests(CurriculumTestCase):
         self.assignment.save()
         self.version.status = TrainingVersion.Status.RETIRED
         self.version.save()
+        response = self.client.get(self.page(self.video_lesson))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="lesson-video"')
+
+    def test_retired_curriculum_is_owner_scoped_and_drafts_remain_unavailable(self):
+        self.version.status = TrainingVersion.Status.RETIRED
+        self.version.save()
+        self.client.force_login(self.manager_user)
         self.assertEqual(self.client.get(self.page(self.video_lesson)).status_code, 404)
+        self.client.force_login(self.employee_user)
+        self.assertContains(self.client.get(self.page(self.video_lesson)), 'id="lesson-video"')
+        draft = self.new_version()
+        module = Module.objects.create(training_version=draft, title="Draft module", position=1)
+        lesson = Lesson.objects.create(module=module, title="Draft lesson", position=1,
+                                       content_type="TEXT", body="Not published")
+        response = self.client.get(f"{self.page(lesson)}&training_version_id={draft.pk}")
+        self.assertEqual(response.status_code, 404)
 
     def test_empty_assignment_list_renders_normally(self):
         other_user = get_user_model().objects.create_user(username="learner-empty")

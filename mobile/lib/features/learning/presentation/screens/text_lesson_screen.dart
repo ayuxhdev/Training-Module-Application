@@ -212,7 +212,8 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
                       Expanded(
                         child: OutlinedButton(
                           onPressed: _isSubmitting ? null : () {
-                            context.pushReplacement('/learning/assignments/${widget.assignmentId}/modules/${prevLocation.moduleId}/lessons/${prevLocation.lesson.id}/text');
+                            final route = prevLocation.lesson.type.toUpperCase() == 'VIDEO' ? 'video' : 'text';
+                            context.pushReplacement('/learning/assignments/${widget.assignmentId}/modules/${prevLocation.moduleId}/lessons/${prevLocation.lesson.id}/$route');
                           },
                           child: const Text('Previous'),
                         ),
@@ -227,7 +228,8 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
                       Expanded(
                         child: OutlinedButton(
                           onPressed: _isSubmitting ? null : () {
-                            context.pushReplacement('/learning/assignments/${widget.assignmentId}/modules/${nextLocation.moduleId}/lessons/${nextLocation.lesson.id}/text');
+                            final route = nextLocation.lesson.type.toUpperCase() == 'VIDEO' ? 'video' : 'text';
+                            context.pushReplacement('/learning/assignments/${widget.assignmentId}/modules/${nextLocation.moduleId}/lessons/${nextLocation.lesson.id}/$route');
                           },
                           child: const Text('Next'),
                         ),

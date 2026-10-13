@@ -95,7 +95,7 @@ class LearningRepository {
     final base = Uri.parse(apiClient.dio.options.baseUrl);
     if (!base.hasAuthority || base.userInfo.isNotEmpty || base.hasQuery ||
         base.hasFragment || !['http', 'https'].contains(base.scheme) ||
-        (kReleaseMode && base.scheme != 'https')) {
+        (!kDebugMode && base.scheme != 'https')) {
       throw StateError('Invalid protected media API origin.');
     }
     final basePath = base.path.replaceFirst(RegExp(r'/+$'), '');

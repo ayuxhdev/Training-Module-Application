@@ -5,6 +5,7 @@
   if (!video) return;
 
   const startButton = document.getElementById("start-video");
+  const customControls = document.getElementById("video-player-controls");
   const progress = document.getElementById("lesson-progress");
   const progressLabel = document.getElementById("lesson-progress-label");
   const resumeLabel = document.getElementById("lesson-resume");
@@ -27,7 +28,16 @@
   let sessionOrigin = 0;
   let lastPlayedPosition = 0;
   let watchedRanges = [];
-  video.controls = false;
+  function setControls(enabled) {
+    video.controls = enabled && !customControls;
+    if (customControls) {
+      for (const control of customControls.querySelectorAll("[data-playback-control]")) {
+        control.disabled = !enabled;
+      }
+      startButton.hidden = enabled;
+    }
+  }
+  setControls(false);
   startButton.disabled = true;
 
   function showStatus(message) {
@@ -114,7 +124,7 @@
       stopTimer();
       await endSession(false, approvedPosition);
       video.pause();
-      video.controls = false;
+      setControls(false);
       startButton.disabled = sessionId !== null;
       showStatus(error.message);
     }
@@ -126,19 +136,23 @@
     stopTimer();
     const id = sessionId;
     sessionId = null;
+    showStatus("Saving playback progress. Please wait.");
+    video.pause();
     try {
       const data = await post(`${endBaseUrl}${id}/end/`, {
         position,
         completed_normally: completedNormally,
       });
       updateProgress(data);
-      if (completedNormally) showStatus("Video ended. Your recorded progress is shown above.");
+      showStatus(completedNormally
+        ? "Video ended. Your recorded progress is shown above."
+        : "Paused. Your progress is saved. Press Start or Resume to continue.");
     } catch (error) {
       sessionId = id; // Keep the ID so pagehide can retry a failed close.
       showStatus(error.message);
     } finally {
       ending = false;
-      video.controls = false;
+      setControls(false);
       startButton.disabled = sessionId !== null;
     }
   }
@@ -181,7 +195,7 @@
       video.load();
       await metadataReady;
       setPosition(approvedPosition);
-      video.controls = true;
+      setControls(true);
       showStatus("Video ready. Press play if playback does not start automatically.");
       try {
         await video.play();
@@ -199,8 +213,9 @@
   });
 
   video.addEventListener("play", () => {
-    if (sessionId === null) {
+    if (sessionId === null || ending) {
       video.pause();
+      if (!ending) showStatus("Playback is not active. Press Start or Resume to continue.");
       return;
     }
     showStatus("Playing. Progress is saved during playback.");
@@ -208,6 +223,9 @@
   });
 
   video.addEventListener("pause", () => {
+    if (sessionId !== null && (starting || seeking) && !video.ended) {
+      showStatus("Paused. Playback will resume when ready.");
+    }
     if (!starting && !seeking && !video.ended) endSession(false);
   });
   video.addEventListener("ended", () => endSession(true));

@@ -611,7 +611,9 @@ class TrainingAssignmentDetailView(AssignmentAccessMixin, DetailView):
 		can_learn = (
 			assignment.employee.user_id == self.request.user.pk
 			and assignment.employee.is_active
-			and assignment.training_version.status == TrainingVersion.Status.PUBLISHED
+			and assignment.training_version.status in (
+				TrainingVersion.Status.PUBLISHED, TrainingVersion.Status.RETIRED,
+			)
 			and assignment.status != TrainingAssignment.Status.CANCELLED
 		)
 		if not can_learn:

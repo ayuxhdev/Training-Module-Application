@@ -1,0 +1,31 @@
+.midnight-player {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  min-width: 0;
+  color: #f1f5fa;
+  background: #080d15;
+  border: 1px solid #364354;
+  border-radius: 18px;
+  box-shadow: 0 12px 28px #0004, inset 0 1px #ffffff12;
+  color-scheme: dark;
+}
+.midnight-player video { display: block; width: 100%; max-width: 100%; max-height: none; margin: 0; aspect-ratio: 16 / 9; object-fit: contain; background: #000; }
+.video-player-controls { padding: 14px; background: linear-gradient(#172332ee, #101925); transition: opacity 180ms ease; pointer-events: auto; }
+.video-timeline-label { display: block; font-size: .8rem; color: #c3d0df; }
+.midnight-player input[type="range"] { width: 100%; max-width: 100%; min-width: 0; padding: 0; accent-color: #94dcc6; cursor: pointer; min-height: 44px; }
+.video-control-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.midnight-player button { min-height: 48px; padding: 10px 16px; border: 1px solid #526377; border-radius: 12px; color: #f1f5fa; background: linear-gradient(#35465a, #1c2b3d); box-shadow: 0 3px 0 #050a11, inset 0 1px #ffffff26; transition: transform 180ms ease, box-shadow 180ms ease; }
+.midnight-player button:hover { background: #394f65; }
+.midnight-player button:active { transform: translateY(2px); box-shadow: 0 1px 0 #050a11; }
+.midnight-player button:disabled { opacity: .5; cursor: default; }
+.midnight-player :focus-visible { outline: 3px solid #94dcc6; outline-offset: 3px; }
+.midnight-player output { flex: 1; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 100px; }
+.midnight-player [hidden] { display: none; }
+.video-buffering { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); padding: 12px 20px; border-radius: 12px; background: #132132e8; border: 1px solid #60758a; }
+.midnight-player.is-playing:not(.is-controls-visible):not(:focus-within) .video-player-controls { opacity: 0; pointer-events: none; }
+.midnight-player:fullscreen { border: 0; border-radius: 0; display: flex; flex-direction: column; justify-content: center; }
+.midnight-player:fullscreen video { min-height: 0; flex: 1; }
+.midnight-player:fullscreen .video-player-controls { flex: none; }
+@media (max-width: 480px) { .video-player-controls { padding: 10px; } .midnight-player button { padding: 10px 12px; } }
+@media (prefers-reduced-motion: reduce) { .midnight-player button, .video-player-controls { transition: none; } }

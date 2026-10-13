@@ -20,6 +20,7 @@ import 'package:training_app/features/learning/presentation/screens/assignment_d
 import 'package:training_app/features/learning/presentation/screens/module_list_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/lesson_list_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/text_lesson_screen.dart';
+import 'package:training_app/features/learning/presentation/screens/video_lesson_screen.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
 
 class MockAuthController extends Notifier<AuthState> implements AuthController {
@@ -85,6 +86,36 @@ void main() {
 
     expect(find.byType(LoginScreen), findsOneWidget);
   });
+
+  testWidgets('VIDEO lesson opens the root player route without the shell tab bar', (tester) async {
+    final detail = AssignmentDetail(id: 42, trainingId: 101, trainingTitle: 'Video QA',
+      versionNumber: 1, status: 'IN_PROGRESS', isOverdue: false, modules: [
+        ModuleLearning(id: 10, title: 'Module', description: '', position: 1, lessons: [
+          LessonLearning(id: 20, title: 'Watch safely', position: 1, type: 'VIDEO',
+            isRequired: true, body: '', progress: LessonProgress(resumePosition: 0,
+              watchedSeconds: 0, progressPercent: 0, completed: false)),
+        ]),
+      ]);
+    await tester.pumpWidget(ProviderScope(overrides: [
+      authControllerProvider.overrideWith(() => MockAuthController(AuthAuthenticated(tEmployee))),
+      dashboardDataProvider.overrideWith((_) => Future.value(mockDashboardData)),
+      assignmentDetailProvider(42).overrideWith((_) async => detail),
+    ], child: Consumer(builder: (_, ref, _) => MaterialApp.router(routerConfig: ref.watch(appRouterProvider)))));
+    await tester.pumpAndSettle();
+    final router = GoRouter.of(tester.element(find.byType(DashboardScreen)));
+    router.go('/learning/assignments/42/modules/10/lessons');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1. Watch safely'));
+    await tester.pumpAndSettle();
+    expect(find.byType(VideoLessonScreen), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+    await tester.tap(find.byTooltip('Back to lessons'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LessonListScreen), findsOneWidget);
+    router.go('/learning/assignments/42/modules/10/lessons/-1/video');
+    await tester.pumpAndSettle();
+    expect(find.text('Invalid ID'), findsOneWidget);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
 
   testWidgets('Redirects to dashboard if authenticated and visits root', (tester) async {
     await tester.pumpWidget(createTestApp(AuthAuthenticated(tEmployee)));
