@@ -82,6 +82,12 @@ void main() {
         )).sessionId,
         3,
       );
+      await repository.startPlaybackSession(
+        1,
+        2,
+        position: 0,
+        cancelToken: cancellation,
+      );
       final heartbeat = await repository.submitPlaybackHeartbeat(
         1,
         2,
@@ -104,6 +110,13 @@ void main() {
         () => dio.post(
           '$basePath/sessions/',
           data: {},
+          cancelToken: cancellation,
+        ),
+      ).called(1);
+      verify(
+        () => dio.post(
+          '$basePath/sessions/',
+          data: {'position': 0.0},
           cancelToken: cancellation,
         ),
       ).called(1);
@@ -136,6 +149,33 @@ void main() {
     expect(() => request.headers.clear(), throwsUnsupportedError);
   });
 
+  test('read-only replay uses authenticated scoped media without a session request', () async {
+    final request = await repository.protectedReplayMediaRequest(1, 2);
+    expect(
+      request.uri.toString(),
+      'https://qa.example/api/v1$basePath/replay/media/',
+    );
+    expect(request.headers, {'Authorization': 'Bearer test-access'});
+    expect(request.uri.hasQuery, isFalse);
+    verifyNever(() => dio.get(any(), cancelToken: any(named: 'cancelToken')));
+    verifyNever(
+      () => dio.post(
+        any(),
+        data: any(named: 'data'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+    when(() => storage.readAccessToken()).thenAnswer((_) async => null);
+    await expectLater(
+      repository.protectedReplayMediaRequest(1, 2),
+      throwsA(isA<ApiError>()),
+    );
+    await expectLater(
+      repository.protectedReplayMediaRequest(-1, 2),
+      throwsArgumentError,
+    );
+  });
+
   test(
     'missing credentials and unsafe origins cannot configure playback',
     () async {
@@ -166,6 +206,10 @@ void main() {
   test('invalid IDs and numeric observations make no API requests', () async {
     expect(() => repository.getLessonProgress(0, 2), throwsArgumentError);
     expect(() => repository.startPlaybackSession(1, -2), throwsArgumentError);
+    expect(
+      () => repository.startPlaybackSession(1, 2, position: double.nan),
+      throwsArgumentError,
+    );
     expect(
       () => repository.submitPlaybackHeartbeat(1, 2, 0, 1),
       throwsArgumentError,

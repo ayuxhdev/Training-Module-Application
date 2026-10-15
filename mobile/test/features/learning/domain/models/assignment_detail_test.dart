@@ -2,6 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
 
 void main() {
+  test('video playback mode comes from the API and unknown modes fail closed', () {
+    for (final mode in ['tracked', 'read_only_replay', 'unavailable', 'unexpected', null]) {
+      final lesson = LessonLearning.fromJson({'type': 'VIDEO', 'playback_mode': mode});
+      expect(lesson.playbackMode, ['tracked', 'read_only_replay'].contains(mode) ? mode : 'unavailable');
+    }
+  });
+
   group('AssignmentDetail Model', () {
     test('fromJson creates a valid AssignmentDetail object from JSON', () {
       final json = {

@@ -214,6 +214,36 @@ void main() {
     },
   );
 
+  test(
+    'explicit replay starts at zero without changing confirmed coverage',
+    () async {
+      when(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          position: 0,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => progress(watched: 80, resume: 0, completed: true),
+      );
+      await controller.start(position: 0);
+      verify(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          position: 0,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      expect(container.read(provider).phase, PlaybackPhase.active);
+      expect(container.read(provider).progress!.resumePosition, 0);
+      expect(container.read(provider).progress!.watchedSeconds, 80);
+      expect(container.read(provider).progress!.completed, isTrue);
+      await controller.close();
+    },
+  );
+
   test('heartbeat failure closes at approved position and cancels queued observations', () async {
     when(
       () => repository.startPlaybackSession(

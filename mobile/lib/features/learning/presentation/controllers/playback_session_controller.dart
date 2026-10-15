@@ -161,7 +161,8 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
     }
   });
 
-  Future<void> start() {
+  Future<void> start({double? position}) {
+    if (position != null) _validatePosition(position);
     if (_starting != null) return _starting!;
     if (_sessionId != null || _closing != null) return Future.value();
     final work = _enqueue((generation, requests) async {
@@ -171,11 +172,18 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
       );
       try {
         final observed = Stopwatch()..start();
-        final progress = await _repository.startPlaybackSession(
-          lesson.assignmentId,
-          lesson.lessonId,
-          cancelToken: requests,
-        );
+        final progress = position == null
+            ? await _repository.startPlaybackSession(
+                lesson.assignmentId,
+                lesson.lessonId,
+                cancelToken: requests,
+              )
+            : await _repository.startPlaybackSession(
+                lesson.assignmentId,
+                lesson.lessonId,
+                position: position,
+                cancelToken: requests,
+              );
         if (!_current(generation)) return;
         final sessionId = progress.sessionId;
         if (sessionId == null) {

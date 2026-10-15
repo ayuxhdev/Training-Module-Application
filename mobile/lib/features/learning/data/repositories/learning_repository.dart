@@ -57,11 +57,17 @@ class LearningRepository {
   );
 
   Future<LessonProgress> startPlaybackSession(
-    int assignmentId, int lessonId, {CancelToken? cancelToken}
-  ) => _playbackRequest(
-    '${_lessonPath(assignmentId, lessonId)}/sessions/',
-    data: const {}, cancelToken: cancelToken,
-  );
+    int assignmentId, int lessonId, {double? position, CancelToken? cancelToken}
+  ) {
+    if (position != null && (!position.isFinite || position < 0)) {
+      throw ArgumentError('Invalid playback position.');
+    }
+    return _playbackRequest(
+      '${_lessonPath(assignmentId, lessonId)}/sessions/',
+      data: position == null ? const {} : {'position': position},
+      cancelToken: cancelToken,
+    );
+  }
 
   Future<LessonProgress> submitPlaybackHeartbeat(
     int assignmentId, int lessonId, int sessionId, double position,
@@ -92,6 +98,14 @@ class LearningRepository {
     int assignmentId, int lessonId, int sessionId,
   ) async {
     final path = '${_sessionPath(assignmentId, lessonId, sessionId)}/media/';
+    return _protectedMediaRequest(path);
+  }
+
+  Future<ProtectedMediaRequest> protectedReplayMediaRequest(
+    int assignmentId, int lessonId,
+  ) async => _protectedMediaRequest('${_lessonPath(assignmentId, lessonId)}/replay/media/');
+
+  Future<ProtectedMediaRequest> _protectedMediaRequest(String path) async {
     final base = Uri.parse(apiClient.dio.options.baseUrl);
     if (!base.hasAuthority || base.userInfo.isNotEmpty || base.hasQuery ||
         base.hasFragment || !['http', 'https'].contains(base.scheme) ||

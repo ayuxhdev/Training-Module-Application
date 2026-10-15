@@ -68,6 +68,7 @@ class LessonLearning {
   final int? videoDurationSeconds;
   final double? minimumWatchPercent;
   final LessonProgress progress;
+  final String playbackMode;
 
   LessonLearning({
     required this.id,
@@ -79,6 +80,7 @@ class LessonLearning {
     this.videoDurationSeconds,
     this.minimumWatchPercent,
     required this.progress,
+    this.playbackMode = 'tracked',
   });
 
   factory LessonLearning.fromJson(Map<String, dynamic> json) {
@@ -92,6 +94,11 @@ class LessonLearning {
       videoDurationSeconds: json['video_duration_seconds'] as int?,
       minimumWatchPercent: json['minimum_watch_percent'] != null ? double.tryParse(json['minimum_watch_percent'].toString()) : null,
       progress: LessonProgress.fromJson(json['progress'] ?? {}),
+      playbackMode: !json.containsKey('playback_mode')
+          ? 'tracked'
+          : ['tracked', 'read_only_replay'].contains(json['playback_mode'])
+          ? json['playback_mode'] as String
+          : 'unavailable',
     );
   }
 }

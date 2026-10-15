@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
+import 'package:training_app/features/learning/data/repositories/learning_repository.dart';
 import 'package:training_app/features/learning/domain/models/protected_media_request.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 import 'package:training_app/features/learning/presentation/controllers/playback_session_controller.dart';
@@ -46,7 +47,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   static const _window = MethodChannel('gardensneed/protected_video');
   VideoPlayerController? _video;
   PlaybackSessionController? _session;
-  Timer? _heartbeat, _fade;
+  Timer? _heartbeat, _fade, _warningExpiry;
   int _generation = 0;
   int? _windowLease;
   Future<void>? _windowReady;
@@ -55,6 +56,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   bool _foreground = true, _fullscreen = false, _leaving = false;
   double _origin = 0;
   bool _accountChanged = false;
+  bool _readOnlyReplay = false;
   String? _message;
 
   PlaybackLesson get _lesson =>
@@ -67,6 +69,23 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   // Match the web client's conservative observation clock, not a credit calculation.
   double get _reported =>
       math.max(0, _position - math.max(0, _position - _origin) * .01);
+
+  bool _nearEnd(double position, double duration) =>
+      position > 0 && duration > 0 && position >= duration - 1;
+
+  LessonLearning? _currentLesson() {
+    final detail = ref.read(assignmentDetailProvider(widget.assignmentId));
+    for (final module in detail.asData?.value.modules ?? <ModuleLearning>[]) {
+      if (module.id != widget.moduleId) continue;
+      for (final lesson in module.lessons) {
+        if (lesson.id == widget.lessonId &&
+            lesson.type.toUpperCase() == 'VIDEO') {
+          return lesson;
+        }
+      }
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -123,7 +142,9 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     _busy = false;
     _controls = true;
     _origin = 0;
+    _readOnlyReplay = false;
     _message = null;
+    _warningExpiry?.cancel();
   }
 
   Future<void> _restoreWindow() async {
@@ -168,6 +189,18 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   void _onVideo() {
     final value = _video?.value;
     if (value == null || !mounted) return;
+    if (_readOnlyReplay) {
+      if (!_foreground && value.isPlaying) unawaited(_pause());
+      if (value.hasError && !_busy) {
+        unawaited(_pause());
+        setState(
+          () => _message = 'Replay is unavailable. Reload the lesson or contact your training coordinator.',
+        );
+      } else if (value.isCompleted && !_busy) {
+        unawaited(_pause(ended: true));
+      }
+      return; // Read-only media never starts a heartbeat or writes watch credit.
+    }
     if (value.isPlaying &&
         (!_foreground ||
             ref.read(playbackSessionProvider(_lesson)).phase !=
@@ -202,7 +235,8 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   }
 
   Future<void> _observe() async {
-    if (_observing ||
+    if (_readOnlyReplay ||
+        _observing ||
         _busy ||
         !_foreground ||
         _video?.value.isPlaying != true ||
@@ -217,10 +251,48 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     }
   }
 
+  Future<VideoPlayerController?> _loadSessionMedia(
+    PlaybackSessionController session,
+    int generation,
+  ) async {
+    final media = await session.mediaRequest();
+    if (!_current(generation) || media == null) return null;
+    final video = await _loadMedia(media, generation);
+    if (video == null ||
+        ref.read(playbackSessionProvider(_lesson)).phase !=
+            PlaybackPhase.active) {
+      await session.close();
+      return null;
+    }
+    return video;
+  }
+
+  Future<VideoPlayerController?> _loadMedia(
+    ProtectedMediaRequest media,
+    int generation,
+  ) async {
+    final previous = _video;
+    _video = null;
+    previous?.removeListener(_onVideo);
+    await previous?.dispose();
+    if (!_current(generation)) return null;
+    final video = ref.read(protectedVideoControllerProvider)(media);
+    _video = video;
+    await video.initialize();
+    if (!_current(generation) || !_foreground) return null;
+    return video;
+  }
+
   Future<void> _play() async {
     if (_busy || !_foreground || _leaving || _accountChanged) return;
     final auth = ref.read(authControllerProvider);
     if (auth is! AuthAuthenticated || !auth.employee.isActive) return;
+    final lesson = _currentLesson();
+    if (lesson == null ||
+        !['tracked', 'read_only_replay'].contains(lesson.playbackMode)) {
+      return;
+    }
+    _readOnlyReplay = lesson.playbackMode == 'read_only_replay';
     setState(() {
       _busy = true;
       _message = null;
@@ -232,43 +304,95 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
       if (_android && _windowLease == null) {
         throw StateError('Protected display unavailable');
       }
+      if (_readOnlyReplay) {
+        // Only an in-memory replay position is retained; saved learning is immutable.
+        final position =
+            _video?.value.isCompleted == true ||
+                _nearEnd(
+                  _position,
+                  (_video?.value.duration.inMilliseconds ?? 0) / 1000,
+                )
+            ? 0.0
+            : _position;
+        final media = await ref
+            .read(learningRepositoryProvider)
+            .protectedReplayMediaRequest(widget.assignmentId, widget.lessonId);
+        if (!_current(generation) || !_foreground) return;
+        final video = await _loadMedia(media, generation);
+        if (video == null) return;
+        await video.seekTo(Duration(milliseconds: (position * 1000).floor()));
+        if (!_current(generation) || !_foreground) return;
+        video.addListener(_onVideo);
+        await video.play();
+        return;
+      }
       // A failed close must be resolved before starting another session.
       await session.close();
       if (!_current(generation) || !_foreground) return;
-      await session.start();
+      final previousProgress =
+          ref.read(playbackSessionProvider(_lesson)).progress ??
+          _currentLesson()?.progress;
+      final knownDuration = _video?.value.isInitialized == true
+          ? _video!.value.duration.inMilliseconds / 1000
+          : (_currentLesson()?.videoDurationSeconds ?? 0).toDouble();
+      final replay =
+          _video?.value.isCompleted == true ||
+          _nearEnd(previousProgress?.resumePosition ?? 0, knownDuration);
+      await session.start(position: replay ? 0 : null);
       if (!_current(generation) || !_foreground) {
         await session.close();
         return;
       }
-      final media = await session.mediaRequest();
-      if (!_current(generation) || media == null) return;
-      final previous = _video;
-      _video = null;
-      previous?.removeListener(_onVideo);
-      await previous?.dispose();
-      if (!_current(generation)) return;
-      final video = ref.read(protectedVideoControllerProvider)(media);
-      _video = video;
-      await video.initialize();
-      if (!_current(generation) ||
-          !_foreground ||
-          ref.read(playbackSessionProvider(_lesson)).phase !=
-              PlaybackPhase.active) {
-        await session.close();
-        return;
-      }
-      _origin = ref
+      var video = await _loadSessionMedia(session, generation);
+      if (video == null) return;
+      var approvedPosition = ref
           .read(playbackSessionProvider(_lesson))
           .progress!
           .resumePosition;
+      // Stored duration is rounded; native metadata can reveal an earlier end.
+      // Close the first session before opening a replay session at zero.
+      if (!replay &&
+          _nearEnd(
+            approvedPosition,
+            video.value.duration.inMilliseconds / 1000,
+          )) {
+        await session.close();
+        if (!_current(generation) || !_foreground) return;
+        if (ref.read(playbackSessionProvider(_lesson)).phase !=
+            PlaybackPhase.ended) {
+          throw StateError('Playback session could not be closed for replay.');
+        }
+        await session.start(position: 0);
+        if (!_current(generation) || !_foreground) {
+          await session.close();
+          return;
+        }
+        video = await _loadSessionMedia(session, generation);
+        if (video == null) return;
+        approvedPosition = ref
+            .read(playbackSessionProvider(_lesson))
+            .progress!
+            .resumePosition;
+      }
+      if (_nearEnd(
+        approvedPosition,
+        video.value.duration.inMilliseconds / 1000,
+      )) {
+        throw StateError('Playback session resumed at the video endpoint.');
+      }
+      _origin = approvedPosition;
       await video.seekTo(Duration(milliseconds: (_origin * 1000).floor()));
       if (!_current(generation) || !_foreground) return;
       video.addListener(_onVideo);
       await video.play();
     } catch (_) {
       if (_current(generation)) {
-        await session.close(); // Close at the last server-approved point on load failure.
-        _message = 'Video is unavailable. Try again or contact your training coordinator.';
+        if (!_readOnlyReplay) {
+          await session.close(); // Close at the last approved point.
+        }
+        _message = _readOnlyReplay
+            ? 'Replay is unavailable. Reload the lesson or contact your training coordinator.'
+            : 'Video is unavailable. Try again or contact your training coordinator.';
       }
     } finally {
       if (_current(generation)) {
@@ -288,26 +412,56 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     _busy = true;
     _video?.removeListener(_onVideo);
     await _video?.pause();
-    await session?.close(
-      position: approvedOnly || _video?.value.isInitialized != true
-          ? null
-          : position,
-      completedNormally: ended,
-    );
+    if (!_readOnlyReplay) {
+      await session?.close(
+        position: approvedOnly || _video?.value.isInitialized != true
+            ? null
+            : position,
+        completedNormally: ended,
+      );
+    }
     if (mounted && generation == _generation) {
       setState(() {
         _busy = false;
         _controls = true;
       });
-      ref.invalidate(assignmentDetailProvider(assignmentId));
+      if (!_readOnlyReplay) {
+        ref.invalidate(assignmentDetailProvider(assignmentId));
+      }
     }
   }
 
   Future<void> _seek(double target) async {
-    if (_busy ||
-        _video == null ||
-        ref.read(playbackSessionProvider(_lesson)).phase !=
-            PlaybackPhase.active) {
+    if (_busy || _video == null) return;
+    if (_readOnlyReplay) {
+      final video = _video!;
+      if (!target.isFinite ||
+          target < 0 ||
+          target > video.value.duration.inMilliseconds / 1000) {
+        return;
+      }
+      final playing = video.value.isPlaying;
+      final generation = _generation;
+      setState(() => _busy = true);
+      try {
+        await video.pause();
+        await video.seekTo(Duration(milliseconds: (target * 1000).floor()));
+        if (_current(generation) && _foreground && playing) await video.play();
+      } catch (_) {
+        if (_current(generation)) {
+          _message = 'Replay is unavailable. Reload the lesson or contact your training coordinator.';
+        }
+      } finally {
+        if (_current(generation)) {
+          setState(() => _busy = false);
+          _onVideo();
+          _reveal();
+        }
+      }
+      return;
+    }
+    if (ref.read(playbackSessionProvider(_lesson)).phase !=
+        PlaybackPhase.active) {
       return;
     }
     final video = _video!;
@@ -337,6 +491,16 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
       _origin = target;
     } else if (state.phase == PlaybackPhase.active) {
       _message = 'Move through unwatched video by playing it.';
+      _warningExpiry?.cancel();
+      late final Timer warningExpiry;
+      warningExpiry = Timer(const Duration(seconds: 5), () {
+        if (mounted &&
+            identical(_warningExpiry, warningExpiry) &&
+            _message == 'Move through unwatched video by playing it.') {
+          setState(() => _message = null);
+        }
+      });
+      _warningExpiry = warningExpiry;
     }
     if (!_current(generation)) return;
     setState(() => _busy = false);
@@ -384,6 +548,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _warningExpiry?.cancel();
     ++_generation;
     _cancelTimers();
     _video?.removeListener(_onVideo);
@@ -435,6 +600,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     });
     final detail = ref.watch(assignmentDetailProvider(widget.assignmentId));
     LessonLearning? lesson;
+    String? moduleTitle;
     if (!_accountChanged &&
         auth is AuthAuthenticated &&
         auth.employee.isActive) {
@@ -444,35 +610,92 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
           if (entry.id == widget.lessonId &&
               entry.type.toUpperCase() == 'VIDEO') {
             lesson = entry;
+            moduleTitle = module.title;
           }
         }
       }
     }
+    final readOnlyReplay = lesson?.playbackMode == 'read_only_replay';
     final progress = _accountChanged
         ? null
+        : readOnlyReplay
+        ? lesson?.progress
         : session.progress ?? lesson?.progress;
     final error =
-        session.error?.message ??
+        (readOnlyReplay ? null : session.error?.message) ??
         _message ??
         (detail.hasError || (detail.hasValue && lesson == null)
             ? 'Lesson is unavailable.'
             : null);
+    final player = ProtectedVideoSurface(
+      controller: _video,
+      busy: _busy || detail.isLoading,
+      controlsVisible: _controls,
+      loadingLabel: detail.isLoading
+          ? 'Loading lesson'
+          : session.phase == PlaybackPhase.closing
+          ? 'Saving progress'
+          : 'Preparing video',
+      statusLabel:
+          !readOnlyReplay &&
+              (session.phase == PlaybackPhase.failed ||
+                  session.phase == PlaybackPhase.unavailable)
+          ? 'Playback unavailable'
+          : null,
+      message: error,
+      title: lesson?.title,
+      coveragePercent: progress?.progressPercent ?? 0,
+      watchedRanges: progress?.watchedRanges ?? const [],
+      completed: progress?.completed ?? false,
+      resumePosition: lesson?.playbackMode == 'read_only_replay'
+          ? 0
+          : progress?.resumePosition ?? 0,
+      videoDurationSeconds: lesson?.videoDurationSeconds,
+      canPlay:
+          lesson != null &&
+          ['tracked', 'read_only_replay'].contains(lesson.playbackMode),
+      canSeek: lesson?.playbackMode == 'read_only_replay'
+          ? _video?.value.isInitialized == true
+          : session.phase == PlaybackPhase.active,
+      fullscreen: _fullscreen,
+      onToggleControls: () {
+        if (_controls && !_holdControls && _video?.value.isPlaying == true) {
+          setState(() => _controls = false);
+        } else {
+          _reveal();
+        }
+      },
+      onTogglePlayback: () =>
+          unawaited(_video?.value.isPlaying == true ? _pause() : _play()),
+      onSeek: (position) => unawaited(_seek(position)),
+      onScrubbingChanged: (scrubbing) {
+        _scrubbing = scrubbing;
+        _reveal();
+      },
+      onRevealControls: _reveal,
+      onControlsFocusChanged: (focused) {
+        _controlsFocused = focused;
+        _reveal();
+      },
+      onFullscreen: _android ? _toggleFullscreen : null,
+      onBack: _exit,
+    );
     return Theme(
       data: ThemeData.dark(useMaterial3: true).copyWith(
         colorScheme:
             ColorScheme.fromSeed(
-              seedColor: const Color(0xff92dac5),
+              seedColor: const Color(0xff10b981),
               brightness: Brightness.dark,
             ).copyWith(
-              primary: const Color(0xffb2efdb),
-              onPrimary: const Color(0xff092019),
-              surface: const Color(0xff101825),
-              onSurface: const Color(0xfff1f5fa),
-              onSurfaceVariant: const Color(0xffbbc8da),
-              outline: const Color(0xff8191a8),
-              outlineVariant: const Color(0xff223042),
+              primary: const Color(0xff2dd4bf),
+              onPrimary: const Color(0xff04070a),
+              surface: const Color(0xff0d1520),
+              onSurface: const Color(0xfff8fafc),
+              onSurfaceVariant: const Color(0xff94a3b8),
+              outline: const Color(0xff64748b),
+              outlineVariant: const Color(0xff24303d),
             ),
-        scaffoldBackgroundColor: const Color(0xff06090f),
+        scaffoldBackgroundColor: const Color(0xff04070a),
       ),
       child: PopScope(
         canPop: false,
@@ -481,147 +704,154 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
         },
         child: Scaffold(
           body: SafeArea(
-            child: Column(
-              children: [
-                if (!_fullscreen)
-                  ListTile(
-                    leading: IconButton(
-                      tooltip: 'Back to lessons',
-                      onPressed: _exit,
-                      icon: const Icon(Icons.arrow_back),
-                    ),
-                    title: Text(
-                      lesson?.title ?? 'Protected video',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    subtitle: const Text('Video lesson'),
-                  ),
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: _fullscreen ? 0 : 12,
-                    ),
-                    child: ProtectedVideoSurface(
-                      controller: _video,
-                      busy: _busy || detail.isLoading,
-                      controlsVisible: _controls,
-                      loadingLabel: detail.isLoading
-                          ? 'Loading lesson'
-                          : session.phase == PlaybackPhase.closing
-                          ? 'Saving progress'
-                          : 'Preparing video',
-                      statusLabel:
-                          session.phase == PlaybackPhase.failed ||
-                              session.phase == PlaybackPhase.unavailable
-                          ? 'Playback unavailable'
-                          : null,
-                      canPlay: lesson != null,
-                      canSeek: session.phase == PlaybackPhase.active,
-                      fullscreen: _fullscreen,
-                      onToggleControls: () {
-                        if (_controls &&
-                            !_holdControls &&
-                            _video?.value.isPlaying == true) {
-                          setState(() => _controls = false);
-                        } else {
-                          _reveal();
-                        }
-                      },
-                      onTogglePlayback: () => unawaited(
-                        _video?.value.isPlaying == true ? _pause() : _play(),
-                      ),
-                      onSeek: (position) => unawaited(_seek(position)),
-                      onScrubbingChanged: (scrubbing) {
-                        _scrubbing = scrubbing;
-                        _reveal();
-                      },
-                      onRevealControls: _reveal,
-                      onControlsFocusChanged: (focused) {
-                        _controlsFocused = focused;
-                        _reveal();
-                      },
-                      onFullscreen: _android ? _toggleFullscreen : null,
-                    ),
-                  ),
-                ),
-                if (error != null)
-                  Container(
-                    margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xff302026),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xff895460)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.info_outline,
-                          color: Color(0xffffc1cb),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final minimumHeight =
+                    260.0 +
+                    math.max(
+                          0,
+                          MediaQuery.textScalerOf(context).scale(12) - 12,
+                        ) *
+                        4;
+                final aspect = _video?.value.isInitialized == true
+                    ? _video!.value.aspectRatio
+                    : 16 / 9;
+                final stageHeight = _fullscreen
+                    ? constraints.maxHeight
+                    : math.max(
+                        minimumHeight,
+                        math.min(
+                          (constraints.maxWidth - 24) / aspect,
+                          math.max(minimumHeight, constraints.maxHeight - 220),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Semantics(
-                            liveRegion: true,
-                            child: Text(
-                              error,
-                              style: const TextStyle(color: Color(0xffffdce1)),
-                            ),
+                      );
+                return SingleChildScrollView(
+                  physics: _fullscreen
+                      ? const NeverScrollableScrollPhysics()
+                      : null,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (!_fullscreen)
+                        ListTile(
+                          leading: IconButton(
+                            tooltip: 'Back to lessons',
+                            onPressed: _exit,
+                            icon: const Icon(Icons.arrow_back),
                           ),
+                          title: const Text(
+                            'Video lesson',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: moduleTitle == null
+                              ? null
+                              : Text(
+                                  moduleTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                         ),
-                      ],
-                    ),
-                  ),
-                if (!_fullscreen)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              progress?.completed == true
-                                  ? Icons.check_circle_outline
-                                  : Icons.visibility_outlined,
-                              size: 20,
-                              color: const Color(0xffb2efdb),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                progress?.completed == true
-                                    ? 'Lesson completed'
-                                    : 'Watched coverage: ${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
+                      SizedBox(
+                        key: const ValueKey('video-stage-layout'),
+                        height: stageHeight,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: _fullscreen ? 0 : 12,
+                          ),
+                          child: player,
+                        ),
+                      ),
+                      if (!_fullscreen)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (lesson?.playbackMode ==
+                                  'read_only_replay') ...[
+                                const Text(
+                                  'Read-only replay. Recorded completion and watched coverage will not change.',
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                              Text(
+                                lesson?.title ?? 'Protected video',
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        LinearProgressIndicator(
-                          value: (progress?.progressPercent ?? 0) / 100,
-                          borderRadius: BorderRadius.circular(4),
-                          minHeight: 5,
-                          semanticsLabel: 'Confirmed watched coverage',
-                          semanticsValue:
-                              '${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
-                        ),
-                        if (progress?.completed != true &&
-                            lesson?.minimumWatchPercent != null) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            'Watch ${lesson!.minimumWatchPercent!.toStringAsFixed(0)}% to complete this lesson.',
+                              if (lesson != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  detail.asData!.value.trainingTitle,
+                                  style: const TextStyle(
+                                    color: Color(0xff94a3b8),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 16),
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xff080d14),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: .08),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Text(
+                                      progress?.completed == true
+                                          ? 'Lesson completed'
+                                          : 'Watched coverage: ${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    LinearProgressIndicator(
+                                      value:
+                                          (progress?.progressPercent ?? 0) /
+                                          100,
+                                      borderRadius: BorderRadius.circular(4),
+                                      minHeight: 5,
+                                      semanticsLabel:
+                                          'Confirmed watched coverage',
+                                      semanticsValue:
+                                          '${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
+                                    ),
+                                    if (progress?.completed != true &&
+                                        lesson?.minimumWatchPercent !=
+                                            null) ...[
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Watch ${lesson!.minimumWatchPercent!.toStringAsFixed(0)}% to complete this lesson.',
+                                      ),
+                                    ],
+                                    if (session.phase == PlaybackPhase.ended &&
+                                        session.error == null) ...[
+                                      const SizedBox(height: 8),
+                                      const Text(
+                                        'Progress saved',
+                                        style: TextStyle(
+                                          color: Color(0xff2dd4bf),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
-              ],
+                );
+              },
             ),
           ),
         ),
