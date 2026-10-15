@@ -48,8 +48,8 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { min-width: 320px; background: var(--color-canvas); }
-body { min-width: 320px; min-height: 100vh; margin: 0; background: var(--color-canvas); }
+html { min-width: 0; background: var(--color-canvas); }
+body { min-width: 0; min-height: 100vh; margin: 0; background: var(--color-canvas); }
 img, video, iframe, canvas, svg { max-width: 100%; }
 a { color: var(--color-brand-primary); text-underline-offset: 0.16em; }
 a:hover { color: var(--color-brand-primary-dark); }

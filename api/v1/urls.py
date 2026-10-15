@@ -11,6 +11,7 @@ from .learning_views import (
 	VideoSessionEndView,
 	VideoSessionMediaView,
 	VideoSessionStartView,
+	VideoReplayMediaView,
 )
 
 app_name = "v1"
@@ -31,6 +32,10 @@ urlpatterns = [
     path(
         "assignments/<int:assignment_id>/lessons/<int:lesson_id>/complete/",
         TextLessonCompletionView.as_view(), name="lesson-complete",
+    ),
+    path(
+        "assignments/<int:assignment_id>/lessons/<int:lesson_id>/replay/media/",
+        VideoReplayMediaView.as_view(), name="video-replay-media",
     ),
     path(
         "assignments/<int:assignment_id>/lessons/<int:lesson_id>/sessions/",

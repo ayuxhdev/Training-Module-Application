@@ -27,6 +27,7 @@ from .views import (
     start_video_session,
     video_progress,
     video_media,
+    video_replay_media,
 )
 
 app_name = "training"
@@ -40,6 +41,7 @@ urlpatterns = [
     path("assignments/requirements/<int:pk>/edit/", RoleTrainingRequirementUpdateView.as_view(), name="role-requirement-update"),
     path("assignments/<int:pk>/", TrainingAssignmentDetailView.as_view(), name="assignment-detail"),
     path("assignments/<int:assignment_pk>/lessons/<int:lesson_pk>/progress/", video_progress, name="video-progress"),
+    path("assignments/<int:assignment_pk>/lessons/<int:lesson_pk>/replay/media/", video_replay_media, name="video-replay-media"),
     path("assignments/<int:assignment_pk>/lessons/<int:lesson_pk>/complete/", complete_text_lesson, name="text-lesson-complete"),
     path("assignments/<int:assignment_pk>/lessons/<int:lesson_pk>/sessions/start/", start_video_session, name="video-session-start"),
     path("assignments/<int:assignment_pk>/lessons/<int:lesson_pk>/sessions/<int:session_pk>/media/", video_media, name="video-media"),

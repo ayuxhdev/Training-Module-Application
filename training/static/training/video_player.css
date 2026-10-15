@@ -1,55 +1,180 @@
-/* Tactile Midnight Protected Video Player */
+/* Vidi-Inspired Cinematic Protected Video Player (Garden's Need) */
+
+:root {
+  --gn-player-emerald: #10b981;
+  --gn-player-emerald-glow: #2dd4bf;
+  --gn-player-obsidian: #04070a;
+  --gn-player-glass-bg: rgba(10, 16, 24, 0.82);
+  --gn-player-glass-border: rgba(255, 255, 255, 0.12);
+  --gn-player-glass-border-bright: rgba(45, 212, 191, 0.45);
+  --gn-player-text-main: #f8fafc;
+  --gn-player-text-muted: #94a3b8;
+}
+
+/* Core Cinematic Video Player Shell with Ambient Emerald Back-Glow */
 .midnight-player {
   position: relative;
   overflow: hidden;
   width: 100%;
   min-width: 0;
-  color: #f1f5fa;
-  background: radial-gradient(circle at 50% 30%, #0d1522 0%, #06090f 100%);
-  border: 1px solid #223042;
+  color: var(--gn-player-text-main);
+  background: var(--gn-player-obsidian);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 48px -8px rgba(0, 0, 0, 0.85),
+              0 0 36px rgba(16, 185, 129, 0.16),
+              inset 0 1px 1px 0 rgba(255, 255, 255, 0.15);
   color-scheme: dark;
   display: flex;
   flex-direction: column;
+  transition: box-shadow 260ms ease, border-color 260ms ease;
+  user-select: none;
 }
 
+.midnight-player:hover,
+.midnight-player.is-playing {
+  box-shadow: 0 24px 60px -8px rgba(0, 0, 0, 0.9),
+              0 0 44px rgba(45, 212, 191, 0.22),
+              inset 0 1px 1px 0 rgba(255, 255, 255, 0.18);
+  border-color: rgba(45, 212, 191, 0.25);
+}
+
+/* Video Stage with Non-Linear Cinematic Gradient Scrims */
 .video-stage {
   position: relative;
   width: 100%;
+  aspect-ratio: var(--video-aspect-ratio, 16 / 9);
+  max-height: min(72vh, 600px);
   display: flex;
   align-items: center;
   justify-content: center;
   background: #000000;
-  min-height: 200px;
+  min-height: var(--video-min-height, 360px);
+  overflow: hidden;
 }
 
+/* Top Subtle Scrim for Metadata Header Legibility */
+.video-stage::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 90px;
+  background: linear-gradient(to bottom, rgba(4, 7, 10, 0.82) 0%, rgba(4, 7, 10, 0.3) 60%, transparent 100%);
+  pointer-events: none;
+  z-index: 10;
+  transition: opacity 220ms ease;
+}
+
+/* Bottom Cinematic Scrim for Floating Control Deck Legibility */
+.video-stage::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 140px;
+  background: linear-gradient(to top, rgba(4, 7, 10, 0.92) 0%, rgba(4, 7, 10, 0.5) 45%, transparent 100%);
+  pointer-events: none;
+  z-index: 10;
+  transition: opacity 220ms ease;
+}
+
+/* Video Canvas: Preserves Natural Aspect Ratios (16:9 Landscape & 9:16 Portrait) Without Distortion */
 .midnight-player video {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   max-width: 100%;
-  height: auto;
-  max-height: min(72vh, 580px);
+  height: 100%;
+  max-height: 100%;
   margin: 0 auto;
   object-fit: contain;
+  object-position: center;
   background: #000000;
 }
 
-/* Glass Tactile Control Bar */
-.video-player-controls {
-  padding: 12px 18px 14px;
-  background: linear-gradient(180deg, rgba(16, 24, 37, 0.92) 0%, rgba(9, 14, 22, 0.98) 100%);
+/* Compact Floating Video & Lesson Top HUD Metadata Bar */
+.video-top-hud {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  right: 16px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.lesson-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(10, 16, 24, 0.75);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  transition: opacity 220ms ease, transform 220ms ease;
+  border: 1px solid var(--gn-player-glass-border);
+  border-radius: 20px;
+  padding: 6px 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   pointer-events: auto;
+}
+
+.lesson-badge-tag {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--gn-player-emerald-glow);
+}
+
+.lesson-badge-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 480px;
+}
+
+/* Floating Control Overlay Wrapper Inside Video Surface */
+.video-player-controls {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none;
+  background: transparent;
+  transition: opacity 220ms ease, transform 220ms ease;
+  z-index: 20;
+}
+
+/* Floating Liquid-Glass Control Capsule Deck */
+.video-controls-deck {
+  margin: 0 16px 16px 16px;
+  padding: 12px 18px 14px;
+  background: var(--gn-player-glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--gn-player-glass-border);
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65),
+              inset 0 1px 1px rgba(255, 255, 255, 0.16);
   display: flex;
   flex-direction: column;
   gap: 10px;
+  pointer-events: auto;
+  transition: transform 180ms ease, border-color 180ms ease;
 }
 
-/* Visually Hidden Timeline Label (Accessible to Screen Readers, Removed from Developer View) */
+/* Visually Hidden Timeline Label (Accessible to Screen Readers) */
 .video-timeline-label.visually-hidden,
 .video-timeline-label {
   position: absolute;
@@ -63,23 +188,65 @@
   border: 0;
 }
 
-/* Sleek Timeline Container & Track */
+/* Dual-Rail Timeline Architecture with Native Seeking */
 .video-timeline-container {
   display: flex;
   align-items: center;
   width: 100%;
+  position: relative;
+  /* Hit area: 28px tall for touch/mouse with zero dead padding */
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
 }
 
+/* Specificity override: Neutralize global input rules from accounts/shell.css
+   (which uses input:not(...) with specificity 0,6,1, applying min-height: 2.75rem,
+   border: 1px solid, padding: 8px 12px, background: #ffffff). */
+#video-player .video-timeline-container input[type="range"]#video-timeline,
+.midnight-player input[type="range"]#video-timeline,
 .midnight-player input[type="range"] {
+  all: unset;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  padding: 0;
-  margin: 0;
-  accent-color: #2dd4bf;
+  box-sizing: border-box;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
-  min-height: 40px;
-  background: transparent;
+
+  /* Hit area: 28px tall interactive range for mouse and touch */
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+
+  /* Slim 4px centered visual track rail via background */
+  background-image: linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.16));
+  background-size: 100% 4px !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  background-color: transparent !important;
+  transition: background-size 140ms ease;
+}
+
+.video-timeline-container:hover input[type="range"] {
+  background-size: 100% 6px !important;
+}
+
+.midnight-player input[type="range"]:focus-visible {
+  outline: 2px solid #2dd4bf;
+  outline-offset: 4px;
 }
 
 .midnight-player input[type="range"]:disabled {
@@ -87,7 +254,67 @@
   cursor: not-allowed;
 }
 
-/* Tactile Control Buttons */
+/* Webkit/Blink Runnable Track — 28px transparent hit area */
+.midnight-player input[type="range"]::-webkit-slider-runnable-track {
+  -webkit-appearance: none;
+  height: 28px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+/* Custom Circular Scrub Thumb — Webkit/Blink */
+.midnight-player input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid var(--gn-player-emerald);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 10px var(--gn-player-emerald-glow);
+  cursor: pointer;
+  /* (28px track - 14px thumb) / 2 = 7px to center vertically */
+  margin-top: 7px;
+  transition: transform 140ms ease;
+}
+
+.video-timeline-container:hover input[type="range"]::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
+
+/* Custom Circular Scrub Thumb — Firefox */
+.midnight-player input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid var(--gn-player-emerald);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 10px var(--gn-player-emerald-glow);
+  cursor: pointer;
+}
+
+/* Firefox Track */
+.midnight-player input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  border: none;
+  cursor: pointer;
+}
+
+.video-timeline-container:hover input[type="range"]::-moz-range-track {
+  height: 6px;
+}
+
+/* Firefox Filled (played) portion */
+.midnight-player input[type="range"]::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+/* Lower Control Elements Row */
 .video-control-row {
   display: flex;
   align-items: center;
@@ -99,7 +326,7 @@
 .video-control-group-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
@@ -110,16 +337,17 @@
   margin-left: auto;
 }
 
+/* Base Tactile Control Buttons */
 .midnight-player button {
-  min-height: 42px;
+  min-height: 40px;
   padding: 8px 16px;
-  border: 1px solid #3b4e64;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
-  color: #f1f5fa;
+  color: var(--gn-player-text-main);
   font-family: inherit;
   font-size: 0.875rem;
   font-weight: 500;
-  background: linear-gradient(180deg, #27364a 0%, #172332 100%);
+  background: rgba(255, 255, 255, 0.08);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   cursor: pointer;
   display: inline-flex;
@@ -130,15 +358,15 @@
 }
 
 .midnight-player button:hover:not(:disabled) {
-  background: linear-gradient(180deg, #32455e 0%, #1e2c3e 100%);
-  border-color: #4a617c;
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .midnight-player button:active:not(:disabled) {
   transform: translateY(1px);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .midnight-player button:disabled {
@@ -148,42 +376,227 @@
   box-shadow: none;
 }
 
-/* Primary Action Button (#start-video) */
+/* Centered Circular Primary Playback Puck (#start-video) — positioned inside .video-stage */
 #start-video,
 .btn-primary-tactile {
-  background: linear-gradient(180deg, #1f6b56 0%, #134e3e 100%);
-  border: 1px solid #2ea884;
-  color: #f4fdfa;
+  all: unset;
+  box-sizing: border-box;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 30;
+  width: 72px;
+  height: 72px;
+  min-height: 72px;
+  max-height: 72px;
+  border-radius: 50%;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 0;
+  line-height: 0;
+  color: transparent;
+  background: rgba(13, 21, 32, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6),
+              0 0 32px rgba(45, 212, 191, 0.35),
+              inset 0 1px 1px rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              box-shadow 180ms ease,
+              background 180ms ease,
+              border-color 180ms ease;
+  pointer-events: auto;
+}
+
+/* Play Icon Inside Centered Puck */
+#start-video::before {
+  content: "";
+  display: block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 13px 0 13px 22px;
+  border-color: transparent transparent transparent #ffffff;
+  margin-left: 5px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  transition: transform 140ms ease;
+}
+
+#start-video:hover:not(:disabled) {
+  transform: translate(-50%, -50%) scale(1.08);
+  background: rgba(19, 30, 44, 0.9);
+  border-color: rgba(45, 212, 191, 0.6);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.7),
+              0 0 44px rgba(45, 212, 191, 0.5),
+              inset 0 1px 1px rgba(255, 255, 255, 0.6);
+}
+
+#start-video:hover:not(:disabled)::before {
+  transform: scale(1.06);
+}
+
+#start-video:active:not(:disabled) {
+  transform: translate(-50%, -50%) scale(0.96);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 24px rgba(45, 212, 191, 0.3);
+}
+
+#start-video:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: translate(-50%, -50%);
+  box-shadow: none;
+}
+
+/* Accessible Floating Pill Label Below the Central Puck */
+.video-start-label {
+  position: absolute;
+  top: calc(50% + 36px + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  line-height: 1.4;
   font-weight: 600;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  font-family: inherit;
+  color: #f1f5fa;
+  background: rgba(13, 21, 32, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 20px;
+  padding: 4px 14px;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
 }
 
-#start-video:hover:not(:disabled),
-.btn-primary-tactile:hover:not(:disabled) {
-  background: linear-gradient(180deg, #27856b 0%, #185f4c 100%);
-  border-color: #38c59b;
-  box-shadow: 0 4px 10px rgba(20, 80, 64, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+/* Single Primary Action: Hide lower play/pause button when the center puck (#start-video) is
+   visible (i.e. before session starts or after session ends).
+   During an active session (#start-video is hidden, .is-session-active), the lower deck
+   play/pause button is ALWAYS visible, whether playback is playing or paused. */
+.midnight-player:not(.is-session-active) #video-play-pause,
+.midnight-player:has(#start-video:not([hidden])) #video-play-pause {
+  display: none !important;
 }
 
-/* Single Primary Action: Hide secondary Play/Pause button while Start/Resume button is visible */
-#start-video:not([hidden]) ~ #video-play-pause,
-#start-video:not([hidden]) + #video-play-pause {
-  display: none;
+/* Sleek Circular Play/Pause Button in Lower Deck (Active During Playback) */
+#video-play-pause {
+  all: unset;
+  box-sizing: border-box;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  border-radius: 50%;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 0;
+  line-height: 0;
+  color: transparent;
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid var(--gn-player-glass-border-bright);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 
-/* Clean Tabular Timestamp */
+#video-play-pause:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.35);
+  border-color: var(--gn-player-emerald-glow);
+  box-shadow: 0 0 24px rgba(45, 212, 191, 0.45);
+  transform: scale(1.06);
+}
+
+/* Lower Deck Play Icon (Paused State) */
+.midnight-player:not(.is-playing) #video-play-pause::before {
+  content: "";
+  display: block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 7px 0 7px 12px;
+  border-color: transparent transparent transparent #2dd4bf;
+  margin-left: 2px;
+}
+
+/* Lower Deck Pause Icon (Playing State) */
+.midnight-player.is-playing #video-play-pause::before {
+  content: "";
+  display: block;
+  width: 10px;
+  height: 13px;
+  border-left: 3px solid #2dd4bf;
+  border-right: 3px solid #2dd4bf;
+}
+
+/* Circular Fullscreen Trigger Puck */
+#video-fullscreen {
+  all: unset;
+  box-sizing: border-box;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  border-radius: 50%;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 0;
+  line-height: 0;
+  color: transparent;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+}
+
+#video-fullscreen:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: scale(1.06);
+}
+
+/* Fullscreen SVG Corners Icon via CSS Mask */
+#video-fullscreen::before {
+  content: "";
+  display: block;
+  width: 16px;
+  height: 16px;
+  background-color: #ffffff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z'/%3E%3C/svg%3E") no-repeat center;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z'/%3E%3C/svg%3E") no-repeat center;
+}
+
+.midnight-player:fullscreen #video-fullscreen::before {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z'/%3E%3C/svg%3E") no-repeat center;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z'/%3E%3C/svg%3E") no-repeat center;
+}
+
+/* High-Legibility Monospace Tabular Timestamps */
 .midnight-player output {
   font-variant-numeric: tabular-nums;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.8125rem;
-  color: #94a3b8;
+  font-weight: 600;
+  color: #f1f5fa;
   white-space: nowrap;
   padding: 0 4px;
+  letter-spacing: -0.01em;
 }
 
-/* Focus Indicator */
-.midnight-player :focus-visible {
-  outline: 3px solid #94dcc6;
+/* Focus Indicator for Keyboard Accessibility */
+#video-player :is(button, input, video):focus-visible {
+  outline: 3px solid #2dd4bf !important;
   outline-offset: 3px;
 }
 
@@ -191,50 +604,66 @@
   display: none !important;
 }
 
-/* Tactile Glass Buffering Spinner */
+/* Holographic Dual-Ring Buffering Spinner */
 .video-buffering {
   position: absolute;
-  top: 40%;
+  top: 48%;
   left: 50%;
   transform: translate(-50%, -50%);
-  padding: 10px 18px;
+  padding: 10px 20px;
   border-radius: 999px;
-  background: rgba(15, 23, 36, 0.9);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(74, 91, 112, 0.6);
+  background: rgba(10, 16, 24, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--gn-player-glass-border-bright);
   color: #f1f5fa;
   font-size: 0.875rem;
-  font-weight: 500;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  font-weight: 600;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 24px rgba(45, 212, 191, 0.3);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   pointer-events: none;
-  z-index: 10;
+  z-index: 25;
 }
 
 .buffering-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgba(148, 220, 198, 0.3);
-  border-top-color: #94dcc6;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(45, 212, 191, 0.25);
+  border-top-color: #2dd4bf;
   border-radius: 50%;
-  animation: midnight-spin 700ms linear infinite;
+  animation: cinematic-spin 700ms linear infinite;
   display: inline-block;
 }
 
-@keyframes midnight-spin {
+@keyframes cinematic-spin {
   to { transform: rotate(360deg); }
 }
 
-/* Autohide when playing and not hovered/focused */
+/* Smooth Autohide During Active Playback While Idle (Never Fades When Focused) */
 .midnight-player.is-playing:not(.is-controls-visible):not(:focus-within) .video-player-controls {
   opacity: 0;
   pointer-events: none;
 }
 
-/* Fullscreen Responsive Presentation */
+.midnight-player.is-playing:not(.is-controls-visible):not(:focus-within) .video-controls-deck,
+.midnight-player.is-playing:not(.is-controls-visible):not(:focus-within) .lesson-badge-pill {
+  pointer-events: none;
+}
+
+.midnight-player.is-playing:not(.is-controls-visible):not(:focus-within) .video-top-hud {
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+}
+
+.midnight-player.is-playing:not(.is-controls-visible):not(:focus-within) .video-stage::before,
+.midnight-player.is-playing:not(.is-controls-visible):not(:focus-within) .video-stage::after {
+  opacity: 0;
+}
+
+/* Fullscreen Immersive Stage Presentation */
 .midnight-player:fullscreen {
   border: 0;
   border-radius: 0;
@@ -249,7 +678,9 @@
 .midnight-player:fullscreen .video-stage {
   flex: 1;
   min-height: 0;
+  max-height: none;
   height: 100%;
+  aspect-ratio: auto;
 }
 
 .midnight-player:fullscreen video {
@@ -261,31 +692,63 @@
   object-fit: contain;
 }
 
-.midnight-player:fullscreen .video-player-controls {
-  flex: none;
-  background: linear-gradient(180deg, rgba(16, 24, 37, 0.88) 0%, rgba(9, 14, 22, 0.98) 100%);
-  padding: 14px 24px 18px;
+.midnight-player:fullscreen .video-controls-deck {
+  margin: 0 32px 28px 32px;
+  padding: 14px 22px;
 }
 
-/* Responsive Narrow Width Adjustments */
+.midnight-player:fullscreen .video-top-hud {
+  top: 24px;
+  left: 32px;
+  right: 32px;
+}
+
+/* Responsive Tablet Adjustments (max-width: 768px) */
+@media (max-width: 768px) {
+  .lesson-badge-title {
+    max-width: 320px;
+  }
+}
+
+/* Responsive Mobile Adjustments (390px Viewport) */
 @media (max-width: 640px) {
-  .video-control-row {
-    flex-direction: row;
-    gap: 8px;
+  .video-top-hud {
+    top: 10px;
+    left: 10px;
+    right: 10px;
   }
-  .video-control-group-right {
-    margin-left: auto;
+  .lesson-badge-pill {
+    padding: 4px 10px;
   }
-}
-
-@media (max-width: 480px) {
-  .video-player-controls {
-    padding: 10px;
-    gap: 8px;
+  .lesson-badge-title {
+    max-width: 180px;
+    font-size: 0.75rem;
   }
-  .midnight-player button {
-    padding: 8px 12px;
-    font-size: 0.8125rem;
+  .video-controls-deck {
+    margin: 0 10px 10px 10px;
+    padding: 8px 12px 10px;
+    border-radius: 12px;
+    gap: 6px;
+  }
+  #start-video,
+  .btn-primary-tactile {
+    width: 56px;
+    height: 56px;
+    min-height: 56px;
+  }
+  #start-video::before {
+    border-width: 10px 0 10px 17px;
+    margin-left: 3px;
+  }
+  .video-start-label {
+    top: calc(50% + 28px + 6px);
+    font-size: 0.6875rem;
+    padding: 3px 10px;
+  }
+  #video-play-pause,
+  #video-fullscreen {
+    width: 38px;
+    height: 38px;
     min-height: 38px;
   }
   .midnight-player output {
@@ -293,24 +756,106 @@
   }
 }
 
-/* Reduced Motion Support */
+/* Keep the centered action clear of the deck in short fullscreen windows. */
+@media (max-height: 420px) {
+  .midnight-player:fullscreen .video-top-hud { display: none; }
+  .midnight-player:fullscreen #start-video { top: var(--video-puck-top, 50%); }
+  .midnight-player:fullscreen .video-start-label {
+    top: calc(var(--video-puck-top, 50%) + var(--video-puck-half, 36px) + var(--video-label-gap, 12px));
+  }
+}
+
+/* Reduced Motion Compliance — disables all non-essential transitions and animations.
+   Preserves: opacity, pointer-events, display, visibility (correct state rendering).
+   Disables: transforms, slide effects, box-shadow transitions, height transitions,
+             spinner animation, thumb scale, and the autohide slide directions. */
 @media (prefers-reduced-motion: reduce) {
+  /* Player shell — suppress box-shadow and border-color transition on hover/play */
+  .midnight-player {
+    transition: none;
+  }
+
+  /* All buttons including the centered puck, play/pause, fullscreen */
   .midnight-player button,
+  #start-video,
+  .btn-primary-tactile {
+    transition: none;
+  }
+
+  /* Hover and active transforms on all player buttons */
+  .midnight-player button:hover:not(:disabled),
+  .midnight-player button:active:not(:disabled),
+  #start-video:hover:not(:disabled),
+  #start-video:active:not(:disabled) {
+    transform: translate(-50%, -50%); /* keep centered; cancel scale */
+  }
+
+  /* Lower deck control buttons */
+  #video-play-pause:hover:not(:disabled),
+  #video-fullscreen:hover:not(:disabled) {
+    transform: none;
+  }
+
+  /* Control overlay wrapper */
   .video-player-controls {
     transition: none;
   }
+
+  /* Autohide slide: fade to invisible without translating */
+  .midnight-player.is-playing:not(.is-controls-visible):not(:focus-within) .video-player-controls {
+    transform: none; /* remove the 8px slide */
+  }
+
+  /* Top HUD autohide slide */
+  .video-top-hud {
+    transition: none;
+  }
+
+  .midnight-player.is-playing:not(.is-controls-visible):not(:focus-within) .video-top-hud {
+    transform: none; /* remove the -8px slide */
+  }
+
+  /* Floating control deck — suppress capsule transition */
+  .video-controls-deck {
+    transition: none;
+  }
+
+  /* Stage scrims */
+  .video-stage::before,
+  .video-stage::after {
+    transition: none;
+  }
+
+  /* Timeline track expansion on hover */
+  .midnight-player input[type="range"]::-webkit-slider-runnable-track,
+  .video-timeline-container:hover input[type="range"]::-webkit-slider-runnable-track {
+    transition: none;
+    height: 28px; /* preserve the hit area and thumb alignment without animation */
+  }
+
+  /* Timeline thumb scale on hover */
+  .midnight-player input[type="range"]::-webkit-slider-thumb {
+    transition: none;
+  }
+
+  .video-timeline-container:hover input[type="range"]::-webkit-slider-thumb {
+    transform: none; /* cancel scale(1.2) */
+  }
+
+  /* Buffering spinner — pause rather than hide to preserve "loading" accessibility cue */
   .buffering-spinner {
     animation: none;
   }
 }
 
-/* Refined Server-Confirmed Coverage Card */
+/* Watched Coverage Card (External Server-Authoritative Progress Indicator) */
 .video-coverage-card {
   margin: 16px 0 20px;
   padding: 14px 18px;
-  background: #111a27;
-  border: 1px solid #223247;
+  background: #090e17;
+  border: 1px solid rgba(45, 212, 191, 0.2);
   border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -328,36 +873,39 @@
   align-items: center;
   gap: 8px;
   font-size: 0.875rem;
-  color: #94a3b8;
+  color: var(--gn-player-text-muted);
 }
 
 .coverage-value {
   font-weight: 700;
   font-size: 1rem;
-  color: #2dd4bf;
+  color: var(--gn-player-emerald-glow);
   font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 .coverage-bar {
   width: 100%;
   height: 8px;
   border-radius: 999px;
-  background: #1e293b;
+  background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
   border: none;
 }
 
 .coverage-bar::-webkit-progress-bar {
-  background: #1e293b;
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 999px;
 }
 
 .coverage-bar::-webkit-progress-value {
-  background: linear-gradient(90deg, #0d9488 0%, #2dd4bf 100%);
+  background: linear-gradient(90deg, #059669 0%, #10b981 70%, #2dd4bf 100%);
   border-radius: 999px;
+  box-shadow: 0 0 10px rgba(45, 212, 191, 0.5);
 }
 
 .coverage-bar::-moz-progress-bar {
-  background: linear-gradient(90deg, #0d9488 0%, #2dd4bf 100%);
+  background: linear-gradient(90deg, #059669 0%, #10b981 70%, #2dd4bf 100%);
   border-radius: 999px;
+  box-shadow: 0 0 10px rgba(45, 212, 191, 0.5);
 }

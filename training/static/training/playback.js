@@ -13,7 +13,7 @@
   const status = document.getElementById("playback-status");
   const progressUrl = video.dataset.progressUrl;
   const startUrl = video.dataset.startUrl;
-  const endBaseUrl = startUrl.replace(/start\/$/, "");
+  const endBaseUrl = startUrl ? startUrl.replace(/start\/$/, "") : "";
   const csrfToken = video.dataset.csrfToken;
   const heartbeatIntervalMs = 10000; // Below the server's 30-second continuity limit.
 
@@ -28,6 +28,13 @@
   let sessionOrigin = 0;
   let lastPlayedPosition = 0;
   let watchedRanges = [];
+  let seekInFlight = false;
+  function feedback() {
+    video.dispatchEvent(new Event("video-seek-feedback"));
+  }
+  function nearEnd(position, duration) {
+    return Number.isFinite(duration) && duration > 0 && position > 0 && position >= duration - 1;
+  }
   function setControls(enabled) {
     video.controls = enabled && !customControls;
     if (customControls) {
@@ -42,6 +49,81 @@
 
   function showStatus(message) {
     status.textContent = message;
+  }
+
+  const replayUrl = video.dataset.replayUrl;
+  if (replayUrl) {
+    // The server authorizes this completed lesson on every media request.
+    // Replay never calls session/progress endpoints or changes recorded credit.
+    let loaded = false;
+    startButton.disabled = false;
+    showStatus("Read-only replay. Your recorded completion and coverage will not change.");
+    startButton.addEventListener("click", async () => {
+      if (starting) return;
+      starting = true;
+      startButton.disabled = true;
+      try {
+        if (!loaded) {
+          const metadataReady = new Promise((resolve, reject) => {
+            function ready() {
+              video.removeEventListener("error", failed);
+              resolve();
+            }
+            function failed() {
+              video.removeEventListener("loadedmetadata", ready);
+              reject(new Error("Replay is unavailable. Reload the lesson or contact your training coordinator."));
+            }
+            video.addEventListener("loadedmetadata", ready, { once: true });
+            video.addEventListener("error", failed, { once: true });
+          });
+          video.src = replayUrl;
+          video.load();
+          await metadataReady;
+          video.currentTime = 0;
+          loaded = true;
+        } else if (video.ended || nearEnd(video.currentTime, video.duration)) {
+          video.currentTime = 0;
+        }
+        setControls(true);
+        await video.play().catch(() => {
+          showStatus("Replay ready. Press Play to continue. Recorded progress will not change.");
+        });
+      } catch (error) {
+        loaded = false;
+        setControls(false);
+        showStatus(error.message);
+      } finally {
+        starting = false;
+        startButton.disabled = false;
+      }
+    });
+    video.addEventListener("play", () => showStatus("Playing read-only replay. Recorded progress will not change."));
+    video.addEventListener("pause", () => {
+      if (!starting && !video.ended) {
+        setControls(false);
+        showStatus("Paused read-only replay. Recorded progress is unchanged.");
+      }
+    });
+    video.addEventListener("ended", () => {
+      setControls(false);
+      showStatus("Replay ended. Your recorded completion and coverage are unchanged.");
+    });
+    video.addEventListener("error", () => {
+      loaded = false;
+      video.pause();
+      setControls(false);
+      showStatus("Replay is unavailable. Reload the lesson or contact your training coordinator.");
+    });
+    video.addEventListener("video-seek-request", (event) => {
+      event.preventDefault();
+      const position = event.detail.position;
+      if (loaded && Number.isFinite(position) && position >= 0 && position <= video.duration) {
+        video.currentTime = position;
+      }
+      feedback();
+    });
+    window.addEventListener("pagehide", () => video.pause());
+    return;
   }
 
   async function request(url, method, payload) {
@@ -157,8 +239,16 @@
     }
   }
 
-  video.addEventListener("loadedmetadata", () => setPosition(approvedPosition));
-  video.addEventListener("error", () => showStatus("Video is unavailable. Please contact your training coordinator."));
+  video.addEventListener("error", async () => {
+    stopTimer();
+    const message = "Video is unavailable. Please contact your training coordinator.";
+    showStatus(message);
+    // Startup's metadata promise owns its failed session cleanup.
+    if (!starting && sessionId !== null) {
+      await endSession(false, approvedPosition);
+      showStatus(message);
+    }
+  });
 
   request(progressUrl, "GET").then((data) => {
     updateProgress(data);
@@ -170,30 +260,48 @@
     starting = true;
     startButton.disabled = true;
     try {
-      // Omitting position makes the backend choose the saved resume point.
-      const data = await post(startUrl, {});
+      // Request replay from the server as well as rewinding the media clock.
+      // Otherwise a later session response/metadata restore reinstates the endpoint.
+      const knownDuration = Number.isFinite(video.duration) && video.duration > 0
+        ? video.duration : Number(video.dataset.durationSeconds);
+      const replay = video.ended || nearEnd(approvedPosition, knownDuration);
+      let data = await post(startUrl, replay ? { position: 0 } : {});
       if (!Number.isInteger(data.session_id) || data.session_id <= 0) {
         throw new Error("Playback response was invalid. Reload the lesson to try again.");
       }
       sessionId = data.session_id;
       updateProgress(data);
-      sessionOrigin = data.resume_position;
-      const mediaUrl = `${endBaseUrl}${sessionId}/media/`;
-      const metadataReady = new Promise((resolve, reject) => {
-        function loaded() {
-          video.removeEventListener("error", failed);
-          resolve();
+      async function loadMedia() {
+        const metadataReady = new Promise((resolve, reject) => {
+          function loaded() {
+            video.removeEventListener("error", failed);
+            resolve();
+          }
+          function failed() {
+            video.removeEventListener("loadedmetadata", loaded);
+            reject(new Error("Video is unavailable."));
+          }
+          video.addEventListener("loadedmetadata", loaded, { once: true });
+          video.addEventListener("error", failed, { once: true });
+        });
+        video.src = `${endBaseUrl}${sessionId}/media/`;
+        video.load();
+        await metadataReady;
+      }
+      await loadMedia();
+      // Actual media duration may differ from rounded stored metadata.
+      if (!replay && nearEnd(approvedPosition, video.duration)) {
+        await endSession(false, approvedPosition);
+        if (sessionId !== null) throw new Error("Playback progress is unavailable. Reload the lesson to try again.");
+        data = await post(startUrl, { position: 0 });
+        if (!Number.isInteger(data.session_id) || data.session_id <= 0) {
+          throw new Error("Playback response was invalid. Reload the lesson to try again.");
         }
-        function failed() {
-          video.removeEventListener("loadedmetadata", loaded);
-          reject(new Error("Video is unavailable."));
-        }
-        video.addEventListener("loadedmetadata", loaded, { once: true });
-        video.addEventListener("error", failed, { once: true });
-      });
-      video.src = mediaUrl;
-      video.load();
-      await metadataReady;
+        sessionId = data.session_id;
+        updateProgress(data);
+        await loadMedia();
+      }
+      sessionOrigin = approvedPosition;
       setPosition(approvedPosition);
       setControls(true);
       showStatus("Video ready. Press play if playback does not start automatically.");
@@ -203,10 +311,10 @@
         // The browser may require a second gesture after loading media.
       }
     } catch (error) {
-      if (sessionId !== null) await endSession(false);
+      if (sessionId !== null) await endSession(false, approvedPosition);
       showStatus(error.message);
       video.pause();
-      startButton.disabled = false;
+      startButton.disabled = sessionId !== null;
     } finally {
       starting = false;
     }
@@ -232,6 +340,56 @@
 
   video.addEventListener("timeupdate", () => {
     if (!video.seeking && !seeking) lastPlayedPosition = video.currentTime;
+  });
+
+  video.addEventListener("video-seek-request", async (event) => {
+    event.preventDefault();
+    const position = event.detail.position;
+    const id = sessionId;
+    if (id === null || starting || ending || seekInFlight || !Number.isFinite(position) ||
+        position < 0 || position > video.duration) {
+      feedback();
+      return;
+    }
+    seekInFlight = true;
+    seeking = true;
+    const wasPlaying = !video.paused;
+    stopTimer();
+    video.pause();
+    try {
+      // Save legitimate playback first. Never assign an unapproved timeline
+      // position to the video, where it can trigger a range fetch/ended event.
+      const data = await post(progressUrl, { session_id: id, position: reportedPosition() });
+      if (sessionId !== id) return;
+      updateProgress(data);
+      const alreadyWatched = watchedRanges.some((range) => position >= range[0] && position <= range[1]);
+      if (position > lastPlayedPosition + 0.05 && !alreadyWatched) {
+        showStatus("Move through unwatched video by playing it. Your playback position has been kept.");
+      } else {
+        const observed = await post(progressUrl, { session_id: id, position });
+        if (sessionId !== id) return;
+        updateProgress(observed);
+        sessionOrigin = approvedPosition;
+        setPosition(approvedPosition);
+      }
+    } catch (error) {
+      if (sessionId === id) {
+        await endSession(false, approvedPosition);
+        showStatus(error.message);
+      }
+    } finally {
+      seeking = false;
+      seekInFlight = false;
+      feedback();
+      if (wasPlaying && sessionId === id) {
+        await video.play().catch(() => {});
+        // Preserve accessible rejection feedback after the play event.
+        if (position > lastPlayedPosition + 0.05 &&
+            !watchedRanges.some((range) => position >= range[0] && position <= range[1])) {
+          showStatus("Move through unwatched video by playing it. Your playback position has been kept.");
+        }
+      }
+    }
   });
 
   video.addEventListener("seeking", () => {

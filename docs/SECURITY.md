@@ -441,6 +441,12 @@ Video bytes are served through the authenticated protected media view rather tha
 
 The existing session-based delivery model requires an authorized open watch session for the relevant assignment and lesson, with recent session activity.
 
+Completed-assignment replay is an approved read-only exception. `GET`/`HEAD /api/v1/assignments/<id>/lessons/<id>/replay/media/` requires JWT authentication and an active Employee; the equivalent web route under `/assignments/` uses Django session authentication. Every media request independently verifies the active account, assignment ownership, COMPLETED assignment, completed VIDEO lesson, and exact pinned PUBLISHED or RETIRED TrainingVersion. Ineligible or unrelated records are not found; authentication and inactive-account failures remain controlled denials. No client-supplied storage path or persistent media grant is accepted.
+
+Replay reuses the authenticated byte-range streamer, including HEAD/range handling, invalid-range rejection and private/no-store media responses. It creates no watch session and changes no progress position, coverage, completion, assessment or certificate record. The tracked progress/session routes retain their existing open-assignment restrictions and anti-skip rules.
+
+Assignment-detail API lessons identify `playback_mode` as `tracked`, `read_only_replay` or `unavailable` for video lessons (null for written lessons). Django and Flutter label read-only replay explicitly and do not send session/progress requests in that mode. Replay begins at zero; any pause/resume position is transient and is not saved as learning progress. Seeking during read-only replay cannot award watch credit.
+
 The endpoint supports byte-range requests required for normal video playback and returns private/no-store responses where configured.
 
 Filesystem paths are not returned to clients.

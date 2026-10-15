@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from training.models import Lesson, Module, TrainingAssignment
-from training.views import _progress_response
+from training.views import _progress_response, can_replay_completed_video
 
 
 class AssignmentListSerializer(serializers.ModelSerializer):
@@ -30,13 +30,25 @@ class LessonLearningSerializer(serializers.ModelSerializer):
 	type = serializers.CharField(source="content_type", read_only=True)
 	progress = serializers.SerializerMethodField()
 	body = serializers.SerializerMethodField()
+	playback_mode = serializers.SerializerMethodField()
 
 	class Meta:
 		model = Lesson
 		fields = (
 			"id", "title", "position", "type", "is_required", "body",
-			"video_duration_seconds", "minimum_watch_percent", "progress",
+			"video_duration_seconds", "minimum_watch_percent", "progress", "playback_mode",
 		)
+
+	def get_playback_mode(self, obj):
+		if obj.content_type != Lesson.ContentType.VIDEO:
+			return None
+		assignment = self.context["assignment"]
+		progress = self.context["progress_by_lesson"].get(obj.pk)
+		if can_replay_completed_video(assignment, obj, progress):
+			return "read_only_replay"
+		if assignment.status in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
+			return "tracked"
+		return "unavailable"
 
 	def get_body(self, obj):
 		return obj.body if obj.content_type == Lesson.ContentType.TEXT else ""
@@ -82,5 +94,5 @@ class AssignmentDetailSerializer(serializers.ModelSerializer):
 		return ModuleLearningSerializer(
 			self.context["modules"],
 			many=True,
-			context={"progress_by_lesson": self.context["progress_by_lesson"]},
+			context={"progress_by_lesson": self.context["progress_by_lesson"], "assignment": obj},
 		).data

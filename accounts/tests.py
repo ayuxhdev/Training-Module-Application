@@ -12,6 +12,7 @@ from django.contrib.messages.storage.fallback import FallbackStorage
 from django.contrib.staticfiles import finders
 from django.core.exceptions import ImproperlyConfigured
 from django.template.loader import render_to_string
+from django.templatetags.static import static
 from django.test import Client, RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -154,7 +155,7 @@ class ApplicationShellTests(TestCase):
 	def test_anonymous_login_uses_shell_without_private_navigation(self):
 		response = Client().get(reverse("accounts:login"))
 		self.assertEqual(response.status_code, 200)
-		self.assertContains(response, 'href="/static/accounts/shell.css"')
+		self.assertContains(response, f'href="{static("accounts/shell.css")}"')
 		self.assertNotContains(response, 'aria-label="Primary navigation"')
 		self.assertNotContains(response, 'action="/accounts/logout/"')
 		self.assertIsNotNone(finders.find("accounts/shell.css"))
@@ -187,7 +188,7 @@ class ApplicationShellTests(TestCase):
 		self.assertContains(response, 'id="sidebar-toggle"')
 		self.assertContains(response, 'aria-controls="app-sidebar"')
 		self.assertContains(response, 'aria-expanded="false"')
-		self.assertContains(response, 'src="/static/accounts/shell.js"')
+		self.assertContains(response, f'src="{static("accounts/shell.js")}"')
 
 	def test_nested_training_page_keeps_training_navigation_active(self):
 		client = Client()

@@ -66,11 +66,15 @@
           </form>
         {% endif %}
       {% elif selected_lesson.content_type == 'VIDEO' %}
-        <p>Watch at least {{ selected_lesson.minimum_watch_percent }}% of this video to complete it. Progress is recorded by the server.</p>
+        {% if can_replay_video %}
+          <p>Read-only replay. Watching again will not change your recorded completion or watched coverage.</p>
+        {% else %}
+          <p>Watch at least {{ selected_lesson.minimum_watch_percent }}% of this video to complete it. Progress is recorded by the server.</p>
+        {% endif %}
         <div class="video-coverage-card">
           <div class="coverage-row">
             <div class="coverage-meta">
-              <label for="lesson-progress">Server-confirmed coverage</label>
+              <label for="lesson-progress">Watched coverage</label>
               <span id="lesson-resume" class="muted">Resume position: {{ selected_progress.last_position_seconds|default:0|floatformat:0 }} seconds</span>
             </div>
             <span id="lesson-progress-label" class="coverage-value">{{ selected_progress.progress_percent|default:0|floatformat:0 }}%</span>
@@ -78,42 +82,56 @@
           <progress id="lesson-progress" class="coverage-bar" max="100" value="{{ selected_progress.progress_percent|default:0 }}">{{ selected_progress.progress_percent|default:0 }}%</progress>
         </div>
         {% if selected_lesson.video_file %}
-          {% if can_record_progress %}
-            <link rel="stylesheet" href="{% static 'training/video_player.css' %}">
+          {% if can_record_progress or can_replay_video %}
+            <link rel="stylesheet" href="{% static 'training/video_player.css' %}?v=m16-cinematic-2" data-asset="training/video_player.css">
             <div class="midnight-player is-controls-visible" id="video-player" role="region" aria-label="Protected video player">
+              <div class="video-top-hud">
+                <div class="lesson-badge-pill">
+                  <span class="lesson-badge-tag">{{ selected_lesson.module.title }} · Lesson {{ selected_lesson.position }}</span>
+                  <span class="lesson-badge-title">{{ selected_lesson.title }}</span>
+                </div>
+              </div>
               <div class="video-stage">
                 <video id="lesson-video" preload="metadata" playsinline tabindex="0"
+                  {% if can_replay_video %}
+                  data-replay-url="{% url 'training:video-replay-media' assignment.pk selected_lesson.pk %}"
+                  {% else %}
                   data-progress-url="{% url 'training:video-progress' assignment.pk selected_lesson.pk %}"
                   data-start-url="{% url 'training:video-session-start' assignment.pk selected_lesson.pk %}"
+                  {% endif %}
+                  data-duration-seconds="{{ selected_lesson.video_duration_seconds }}"
                   data-csrf-token="{{ csrf_token }}"
                   aria-label="{{ selected_lesson.title }} video">
                   Your browser does not support video playback.
                 </video>
+                <button type="button" id="start-video" class="btn-primary-tactile" aria-label="Start video">Start or resume video</button>
+                <span id="video-start-label" class="video-start-label" aria-hidden="true">Start video</span>
                 <div id="video-buffering" class="video-buffering" role="status" hidden>
                   <span class="buffering-spinner" aria-hidden="true"></span>
                   <span>Loading video…</span>
                 </div>
               </div>
               <div id="video-player-controls" class="video-player-controls">
-                <div class="video-timeline-container">
-                  <label class="video-timeline-label visually-hidden" for="video-timeline">Video timeline</label>
-                  <input id="video-timeline" type="range" min="0" max="100" step="0.1" value="0" data-playback-control disabled aria-label="Video timeline">
-                </div>
-                <div class="video-control-row">
-                  <div class="video-control-group-left">
-                    <button type="button" id="start-video" class="btn-primary-tactile">Start or resume video</button>
-                    <button type="button" id="video-play-pause" data-playback-control disabled aria-label="Play video">Play</button>
-                    <output id="video-time" aria-label="Video time">0:00 / 0:00</output>
+                <div class="video-controls-deck">
+                  <div class="video-timeline-container">
+                    <label class="video-timeline-label visually-hidden" for="video-timeline">Video timeline</label>
+                    <input id="video-timeline" type="range" min="0" max="100" step="0.1" value="0" data-playback-control disabled aria-label="Video timeline">
                   </div>
-                  <div class="video-control-group-right">
-                    <button type="button" id="video-fullscreen" aria-label="Enter fullscreen" aria-pressed="false">Fullscreen</button>
+                  <div class="video-control-row">
+                    <div class="video-control-group-left">
+                      <button type="button" id="video-play-pause" data-playback-control disabled aria-label="Play video">Play</button>
+                      <output id="video-time" aria-label="Video time">0:00 / 0:00</output>
+                    </div>
+                    <div class="video-control-group-right">
+                      <button type="button" id="video-fullscreen" aria-label="Enter fullscreen" aria-pressed="false">Fullscreen</button>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
             <p id="playback-status" role="status" aria-live="polite">Ready to play.</p>
-            <script src="{% static 'training/playback.js' %}" defer></script>
-            <script src="{% static 'training/video_player_ui.js' %}" defer></script>
+            <script src="{% static 'training/playback.js' %}?v=m16-completed-replay-1" defer></script>
+            <script src="{% static 'training/video_player_ui.js' %}?v=m16-cinematic-2" data-asset="training/video_player_ui.js" defer></script>
           {% else %}
             <p class="muted">This assignment no longer accepts video progress.</p>
           {% endif %}

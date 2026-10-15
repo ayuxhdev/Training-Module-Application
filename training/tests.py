@@ -987,22 +987,26 @@ class LearnerFrontendTests(CurriculumTestCase):
             self.client.force_login(self.employee_user)
             response = self.client.get(self.page(self.video_lesson))
             self.assertEqual(response.status_code, 200)
-            for name in ("training/playback.js", "training/video_player_ui.js", "training/video_player.css"):
+            for name in ("accounts/shell.css", "training/playback.js", "training/video_player_ui.js", "training/video_player.css"):
                 url = staticfiles_storage.url(name)
                 self.assertNotEqual(url, settings.STATIC_URL + name)
                 self.assertContains(response, url)
                 self.assertTrue(staticfiles_storage.exists(staticfiles_storage.stored_name(name)))
-            name = "training/playback.js"
-            previous_url = staticfiles_storage.url(name)
-            # Modify only the isolated collected copy, never application sources.
-            with staticfiles_storage.open(name, "ab") as asset:
-                asset.write(b"\n// Cache invalidation regression fixture\n")
-            paths = {path: (staticfiles_storage, path) for path in staticfiles_storage.hashed_files}
-            for _, _, processed in staticfiles_storage.post_process(paths):
-                if isinstance(processed, Exception):
-                    raise processed
-            self.assertNotEqual(staticfiles_storage.url(name), previous_url)
-            self.assertContains(self.client.get(self.page(self.video_lesson)), staticfiles_storage.url(name))
+            with staticfiles_storage.open(staticfiles_storage.stored_name("accounts/shell.css")) as asset:
+                shell = asset.read().decode()
+            self.assertIn("html { min-width: 0;", shell)
+            self.assertIn("body { min-width: 0;", shell)
+            for name in ("training/playback.js", "accounts/shell.css"):
+                previous_url = staticfiles_storage.url(name)
+                # Modify only the isolated collected copy, never application sources.
+                with staticfiles_storage.open(name, "ab") as asset:
+                    asset.write(b"\n/* Cache invalidation regression fixture */\n")
+                paths = {path: (staticfiles_storage, path) for path in staticfiles_storage.hashed_files}
+                for _, _, processed in staticfiles_storage.post_process(paths):
+                    if isinstance(processed, Exception):
+                        raise processed
+                self.assertNotEqual(staticfiles_storage.url(name), previous_url)
+                self.assertContains(self.client.get(self.page(self.video_lesson)), staticfiles_storage.url(name))
 
     @classmethod
     def setUpTestData(cls):

@@ -23,6 +23,7 @@ from training.views import (
 	_progress_response,
 	_start_video_session_operation,
 	_video_media_operation,
+	_video_replay_media_operation,
 	_video_progress_operation,
 )
 
@@ -179,6 +180,16 @@ class VideoSessionMediaView(JWTActiveEmployeeAPIView):
 		return _adapt_media_response(
 			_video_media_operation(request, assignment_id, lesson_id, session_id),
 		)
+
+
+class VideoReplayMediaView(JWTActiveEmployeeAPIView):
+	def get(self, request, assignment_id, lesson_id):
+		return _adapt_media_response(
+			_video_replay_media_operation(request, assignment_id, lesson_id),
+		)
+
+	def head(self, request, assignment_id, lesson_id):
+		return self.get(request, assignment_id, lesson_id)
 
 
 class VideoSessionEndView(JWTActiveEmployeeAPIView):

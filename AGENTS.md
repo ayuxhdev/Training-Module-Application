@@ -368,9 +368,13 @@ Replacing published media requires a new training version.
 
 The existing M13 session-based protected media endpoint is the authoritative media access mechanism.
 
+Approved M16 exception: a completed VIDEO lesson in the active learner's own COMPLETED assignment may use the separate authenticated read-only replay route. Published and subsequently retired pinned versions are eligible. Recheck identity, active Employee status, ownership, lesson/version relationship and recorded lesson completion on every GET/HEAD media request. Reuse the protected byte-range streamer; never expose a public storage URL.
+
+Read-only replay must create no VideoWatchSession and must not change LessonProgress, assignment completion, assessment history or certificates. Keep its API/UI mode distinct from tracked learning. Existing progress/session routes must continue rejecting completed assignments.
+
 Do not create a parallel unrestricted media route when the existing session-based architecture can be reused.
 
-Media access must remain authorized against:
+Tracked media access must remain authorized against:
 
 - authenticated user
 - assignment
@@ -676,6 +680,7 @@ Important existing API areas include:
 /api/v1/assignments/<id>/lessons/<id>/sessions/
 /api/v1/assignments/<id>/lessons/<id>/sessions/<id>/end/
 /api/v1/assignments/<id>/lessons/<id>/sessions/<id>/media/
+/api/v1/assignments/<id>/lessons/<id>/replay/media/  # GET/HEAD, completed read-only replay
 ```
 
 Do not create duplicate endpoints when an existing endpoint already provides the required behavior.
@@ -846,7 +851,7 @@ M16 should build on the existing M13-M15 foundation.
 M16 must:
 
 - integrate secure video playback into the existing learning flow
-- reuse the existing session-based protected media endpoint
+- reuse the existing session-based protected media endpoint for tracked learning
 - preserve server-authoritative progress
 - preserve anti-skip behavior
 - preserve session validation

@@ -122,6 +122,48 @@ def _playback_context(request, assignment_pk, lesson_pk):
 	return assignment, lesson, None
 
 
+def can_replay_completed_video(assignment, lesson, progress):
+	"""Presentation capability; media requests independently recheck ownership."""
+	return bool(
+		lesson and progress and progress.completed_at
+		and assignment.status == TrainingAssignment.Status.COMPLETED
+		and assignment.training_version.status in (
+			TrainingVersion.Status.PUBLISHED, TrainingVersion.Status.RETIRED,
+		)
+		and lesson.content_type == Lesson.ContentType.VIDEO and lesson.video_file
+		and lesson.module.training_version_id == assignment.training_version_id
+		and progress.assignment_id == assignment.pk and progress.lesson_id == lesson.pk
+	)
+
+
+@require_http_methods(["GET", "HEAD"])
+@login_required
+def video_replay_media(request, assignment_pk, lesson_pk):
+	return _video_replay_media_operation(request, assignment_pk, lesson_pk)
+
+
+def _video_replay_media_operation(request, assignment_pk, lesson_pk):
+	# A replay is an authorized read, never a progress-tracking session.
+	if not request.user.is_authenticated or not request.user.is_active:
+		raise PermissionDenied
+	assignment = get_object_or_404(
+		TrainingAssignment.objects.select_related("employee", "training_version"),
+		pk=assignment_pk, employee__user=request.user,
+	)
+	if not assignment.employee.is_active:
+		raise PermissionDenied("Inactive employees cannot replay videos.")
+	lesson = get_object_or_404(
+		Lesson.objects.select_related("module"),
+		pk=lesson_pk, module__training_version_id=assignment.training_version_id,
+	)
+	progress = LessonProgress.objects.filter(assignment=assignment, lesson=lesson).first()
+	if not can_replay_completed_video(assignment, lesson, progress):
+		raise Http404
+	response = _stream_lesson_video(request, lesson)
+	response["X-Playback-Mode"] = "read-only-replay"
+	return response
+
+
 @require_http_methods(["GET", "HEAD"])
 @login_required
 def video_media(request, assignment_pk, lesson_pk, session_pk):
@@ -140,6 +182,12 @@ def _video_media_operation(request, assignment_pk, lesson_pk, session_pk):
 		ended_at__isnull=True,
 		updated_at__gte=timezone.now() - timedelta(seconds=float(VIDEO_HEARTBEAT_MAX_GAP)),
 	)
+	return _stream_lesson_video(request, lesson)
+
+
+def _stream_lesson_video(request, lesson):
+	# Call only after the tracked-session or completed-replay authorization check.
+	# The storage key is server-owned; no client path or filename is accepted.
 	if not lesson.video_file:
 		raise Http404
 	try:
@@ -662,6 +710,9 @@ class TrainingAssignmentDetailView(AssignmentAccessMixin, DetailView):
 			"next_lesson": next_lesson,
 			"can_record_progress": assignment.status in (
 				TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS,
+			),
+			"can_replay_video": can_replay_completed_video(
+				assignment, selected_lesson, context.get("selected_progress"),
 			),
 		})
 		return context
