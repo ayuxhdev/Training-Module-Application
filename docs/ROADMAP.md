@@ -2,11 +2,12 @@
 
 ## Current Status
 
-The Garden’s Need Training Module Application has completed **M15: Employee App Core**.
+The Garden’s Need Training Module Application has completed **M16: Learning + Secure Video**.
 
-The current next milestone is:
+The current milestone is:
 
-**M16: Learning + Secure Video**
+**M17: Assessment + Certificates** — APIs, Flutter integration and core Android QA
+complete; final pre-commit checkpoint pending.
 
 The project follows an Android-first development strategy:
 
@@ -24,8 +25,8 @@ iOS is intentionally outside the current Android V1 completion target. It will b
 | M13 | Mobile API Foundation & Versioning | Complete | Versioned API foundation established under `/api/v1/`, including authentication, employee-scoped APIs, assignments, learning progress, playback sessions, protected media delivery, and ownership/authorization enforcement. |
 | M14 | Flutter / Android Foundation | Complete | Flutter Android application foundation completed, including project structure, API/client architecture, secure authentication/session handling, navigation, application shell, reusable UI foundation, dashboard, profile, environment configuration, and Android build integration. |
 | M15 | Employee App Core | Complete | Employee dashboard/profile integration, assignments, assignment detail, curriculum navigation, lesson navigation, text lesson completion, learning progress, previous/next navigation, and end-to-end learning-flow integration completed. |
-| M16 | Learning + Secure Video | Next | Protected video playback, playback sessions, progress synchronization, resume behavior, lifecycle handling, network recovery, anti-seek/anti-skip integration, and Android screen-capture protection where appropriate. |
-| M17 | Assessment + Certificates | Planned | Mobile assessment experience, attempt handling, server-authoritative scoring, results, completion state, and certificate access/display. |
+| M16 | Learning + Secure Video | Complete | Protected tracked playback and completed-assignment read-only replay, server-authoritative progress, lifecycle recovery, protected media and Android screen-capture protection implemented and runtime-verified. |
+| M17 | Assessment + Certificates | In Progress | Assessment/eligibility and certificate list/detail APIs, Flutter data/state/screens, navigation and system Light/Dark themes implemented. Core Android QA passed; revoked-certificate runtime QA blocked by missing fixture. Final pre-commit checkpoint pending. |
 | M18 | Notifications + Resilience | Planned | Notifications, authentication/session resilience, network recovery, lifecycle reliability, operational observability, and production-oriented reliability. |
 | M19 | Android Release Candidate | Planned | Feature freeze and comprehensive security, architecture, data, playback, performance, device, UX, and regression validation, followed by pilot testing and release preparation. |
 | M20 | Production + Deployment Hardening | Planned | Production deployment readiness, infrastructure/configuration hardening, secrets/environment management, backups, monitoring, rollback procedures, release automation, and operational readiness. |
@@ -126,6 +127,41 @@ Authoritative completion remains server-controlled.
 ---
 
 # M17: Assessment + Certificates
+
+## Phase 1: secure mobile assessment API foundation
+
+The assessment API foundation and subsequent certificate/Flutter integration are
+implemented. Final pre-commit review and validation remain the current checkpoint.
+
+Employee-scoped overview, start/resume, attempt detail and submission endpoints reuse
+the authoritative website operations. Passing prevents new attempts for the same
+assessment/assignment through both clients. Deadlines are enforced on submission;
+answer drafts, automatic expiry, abandonment and offline queues are not introduced.
+See `docs/ARCHITECTURE.md`, API Architecture, for the response and error contracts.
+
+## Implemented mobile and certificate integration
+
+- Certificate list/detail APIs are read-only, JWT/active-Employee and ownership-scoped,
+  with pagination, historical snapshots and revoked-state access.
+- Flutter assessment models, repository, Riverpod controllers and screens cover
+  eligibility, start/resume, questions, submission, results, retries and attempt history.
+- Flutter certificate models, repository, controllers and list/detail screens are
+  integrated into Profile, Dashboard and completed-training navigation. Assessment
+  entry points reuse assignment/module routes and the existing three-tab shell.
+- App-level Light/Dark themes follow the system preference without resetting learner
+  state; contrast, large text and reduced-motion behavior have regression coverage.
+- Android core M17 end-to-end flows passed. The revoked-certificate runtime case was
+  blocked because no fixture existed; it is not recorded as a runtime PASS.
+
+Latest known checks were performed at different checkpoints: **436/436 Django/MySQL**
+tests passed during foundation validation; **316/316 Flutter** tests passed after
+theme integration, with a clean analyzer and successful debug APK build. These are
+not claims of a combined rerun or of a committed, merged or released milestone.
+The subsequent ordering-review checkpoint passed **59/59 focused API tests** and
+**438/438 full Django/MySQL tests**, with clean system and migration-drift checks.
+Flutter was not rerun at that checkpoint.
+
+Certificate PDF generation and document downloads remain outside the baseline M17 requirement.
 
 ## Scope
 
@@ -472,23 +508,13 @@ Project-agent instructions, coding-agent workflow, model preferences, tool-speci
 
 # Current Next Step
 
-**M16: Learning + Secure Video**
+**M17: Assessment + Certificates**
 
-Before and during M16 implementation, verify:
-
-- existing M13 playback API contracts
-- protected session-based media access
-- published media immutability
-- training-version pinning
-- playback session lifecycle
-- progress/heartbeat behavior
-- Flutter video architecture
-- Android lifecycle behavior
-- network interruption recovery
-- screen-capture protection requirements
-- risk-based Android playback QA
-
-Do not introduce a parallel media API or duplicate backend playback authority.
+Resolve final review findings and complete the M17 pre-commit checkpoint for the
+implemented assessment/certificate APIs and Flutter experience. Retain the blocked
+revoked-certificate Android case for a suitable isolated QA fixture. Preserve M16
+playback and the authoritative scoring, prerequisites, completion and issuance rules.
+No commit, merge or release is implied by this implementation status.
 
 ---
 

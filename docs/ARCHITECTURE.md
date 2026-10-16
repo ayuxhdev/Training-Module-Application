@@ -278,6 +278,120 @@ The exact endpoint set may expand as later milestones are implemented.
 
 API versioning is currently URL-based rather than header-negotiated.
 
+### M17 Phase 1: learner assessment API
+
+All four endpoints require bearer JWT authentication and an active linked Employee.
+Lookups are restricted to that Employee, including for staff or administrator users.
+They reuse the website's eligibility, start/resume and submission operations in
+`assessments/views.py`; grading is not implemented separately in the API.
+
+| Method | `/api/v1/` path | Response |
+|---|---|---|
+| GET | `assignments/<assignment_id>/assessments/` | `assignment_id`, `training_version_id`, `assessments` |
+| POST | `assignments/<assignment_id>/assessments/<assessment_id>/attempts/` | Attempt detail; 201 for a new attempt, 200 for resume |
+| GET | `assessment-attempts/<attempt_id>/` | Attempt detail or persisted result |
+| POST | `assessment-attempts/<attempt_id>/submit/` | Persisted result; 200 after successful submission, including an expired result |
+
+Each overview entry contains `id`, `kind`, nullable `module_id`, `title`, `sequence`,
+`is_required`, `pass_percentage`, nullable `time_limit_minutes`, `max_attempts`,
+`attempts_used`, `attempts_remaining`, nullable `ongoing_attempt_id`, `passed`,
+`completed`, `can_start`, `can_resume`, nullable `blocking_reason`, and `attempts`.
+Here `completed` means this assessment has been passed, not that the assignment
+is complete. Attempt summaries include ID, number, status, start/deadline/submission
+timestamps, score, maximum points, passing-threshold snapshot and pass state.
+`can_start` describes creation of a new attempt; `can_resume` describes the existing
+one. Clients should display the server's blocking reason rather than recreate rules.
+Overview entries are ordered with module quizzes first, by module position and
+assessment sequence, then the final assessment; primary keys provide a stable tie-breaker.
+
+Attempt detail adds `assignment_id`, `assessment_id`, `training_version_id`,
+`assignment_status`, nullable `certificate_id`, `questions` and `answers` to the
+summary. Scores and thresholds are Decimal strings; timestamps use ISO 8601.
+An ongoing attempt returns ordered questions with `id` (the **AssessmentQuestion**
+ID, not the question-bank ID), `position`, `points`, `prompt`, `type` (`SINGLE_CHOICE`
+or `TRUE_FALSE`), and ordered
+`options` containing only `id`, `text`, `position`. Its `answers` list is empty.
+No correctness flags, explanations or answer-key IDs are returned. Closed attempts
+return an empty `questions` list and recorded answers with `assessment_question_id`,
+`presented_position`, `prompt`, nullable `selected_option_id`/`selected_option_text`,
+`points_possible`, and `points_awarded`. No complete answer key is returned.
+
+Submission accepts this JSON object only:
+
+```json
+{"answers": {"123": 456, "124": null}}
+```
+
+Keys identify the attempt's AssessmentQuestions; values identify options from the
+exact frozen revisions. Missing/null answers score zero. Legacy integer strings
+and empty-string unanswered values remain accepted by the shared answer parser.
+Malformed/duplicate normalized IDs, foreign questions/options, and extra top-level
+fields (including client-supplied score/pass/completion) are rejected. Results are
+always calculated and stored server-side.
+
+Expected errors use the existing `{"error":{"code":"...","message":"...","fields":{}}}` envelope:
+400 for invalid input, 401 for missing/invalid/expired JWT, 403 for an inactive or
+missing Employee, 404 for unavailable/foreign IDs, and 409 for state conflicts such
+as prerequisites, exhausted attempts, restarting a passed assessment, or duplicate
+submission. Method violations return 405 through the same handler. Inactive Users
+are rejected by JWT authentication.
+
+Approved assessment semantics:
+
+- Assessments remain pinned to the assignment's published or retired version.
+- Once passed for an assignment, no new attempt may be started through the API or
+  website. History and persisted results remain readable.
+- Starting again resumes the existing ongoing attempt, including after its stored
+  deadline. GET/resume does not expire it. There is no answer-draft persistence.
+- Submission at the deadline is allowed; submission strictly after it records an
+  EXPIRED, zero-score, non-passing result with unanswered rows. Supplied option IDs
+  must still belong to the frozen questions. There is no automatic expiry worker.
+- Required module lessons (including authoritative VIDEO completion) gate quizzes;
+  required lessons and quizzes gate the final assessment. A passed quiz is recorded
+  as an AssessmentAttempt, not a LessonProgress row.
+- Mutations preserve Employee → TrainingVersion → Assignment → Attempt lock order.
+  Concurrent starts resume one attempt; concurrent submissions grade once and
+  reject the duplicate. Passing invokes existing assignment completion and
+  idempotent certificate issuance in the same transaction.
+- `certificate_id` references an already-issued certificate; GET never issues one.
+  Phase 1 initially covered assessment endpoints; subsequent M17 certificate APIs
+  and Flutter integration are implemented below. Autosave, offline queues,
+  abandonment and new expiry mechanisms are not implemented.
+
+### M17 certificate APIs and Flutter integration
+
+`GET /api/v1/certificates/` and `GET /api/v1/certificates/<certificate_id>/`
+require JWT authentication, an active linked Employee and ownership through the
+certificate's assignment. The list is paginated, ordered newest-first with a primary-key
+tie-breaker. Detail returns historical employee/training/version snapshots, issue
+date and revocation state. Revoked certificates remain readable by their owner.
+These read-only endpoints do not issue/revoke certificates or expose document downloads.
+
+Flutter assessment models, repository and Riverpod controllers consume the overview,
+start/resume, attempt-detail and submission contracts. Implemented screens cover
+eligibility/blocking reasons, question selection/navigation, submission confirmation,
+server-confirmed results, retry eligibility and history. Deadline displays do not
+determine expiry or grades. Uncertain submissions are reconciled through a read,
+not an automatic resubmission; unsubmitted selections are not represented as saved drafts.
+Account/generation guards prevent stale responses from showing another learner's state.
+
+Flutter certificate models, repository, controllers and list/detail screens consume
+the paginated API and display authoritative historical data, including revoked states.
+Profile, Dashboard and completed-training certificate links, and assignment/module
+assessment entry points, reuse the existing router and Dashboard/Learning/Profile tabs.
+`MyApp` supplies both themes with `ThemeMode.system`; shared typography/layout is
+preserved, and theme changes retain selected answers and certificate state.
+
+Separate validation checkpoints: foundation validation passed **436/436 Django/MySQL**
+tests; after theme integration, **316/316 Flutter** tests passed, the analyzer was clean
+and a debug APK built successfully. Android core M17 end-to-end flows passed;
+revoked-certificate runtime QA was blocked by a missing fixture, not passed.
+Automated revoked-state tests exist. These records do not imply a combined rerun,
+commit, merge or release.
+The subsequent ordering-review run passed **59/59 focused assessment/certificate API
+tests** and **438/438 full Django/MySQL tests**, plus system and migration-drift checks.
+Flutter was not rerun for that backend/documentation change.
+
 ---
 
 ## 8. Authentication Architecture
@@ -1395,7 +1509,9 @@ Historical information may remain where useful, but it must be clearly historica
 
 ## 50. Current Architectural Status
 
-The current architecture is stable enough to proceed into M16.
+M16 secure cross-platform playback is complete. M17 assessment/eligibility and
+certificate list/detail APIs, Flutter data/state/screens, navigation and system
+Light/Dark integration are implemented using the existing authoritative backend.
 
 The major foundations are in place:
 
@@ -1411,7 +1527,9 @@ The major foundations are in place:
 - audit architecture
 - CI validation across backend, Flutter, and playback JavaScript
 
-The next architectural focus is secure video learning in M16.
+The current focus is final M17 review/validation before the Git checkpoint, preserving
+the completed playback architecture. Core Android flows passed; the revoked-certificate
+runtime case remains blocked pending a suitable fixture. M17 is not yet committed or released.
 
 The project should continue to favor incremental development over architectural replacement.
 

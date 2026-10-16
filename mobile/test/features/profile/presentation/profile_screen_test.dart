@@ -108,7 +108,7 @@ void main() {
   testWidgets('logout hides employee information immediately', (tester) async {
     final auth = AuthControllerMock();
     await pumpProfile(tester, auth);
-    await tester.ensureVisible(find.text('Logout'));
+    await tester.scrollUntilVisible(find.text('Logout'), 150);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Logout'));
     await tester.pump();
@@ -139,6 +139,9 @@ void main() {
     expect(find.text('jdoe'), findsOneWidget);
     expect(find.text('ACTIVE'), findsOneWidget);
     expect(find.byType(CustomCard), findsOneWidget);
+    expect(find.text('My Certificates'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Logout'), 150);
+    await tester.pumpAndSettle();
     expect(find.byType(SecondaryButton), findsOneWidget);
   });
 }

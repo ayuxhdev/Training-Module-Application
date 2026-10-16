@@ -26,16 +26,17 @@ class StatusBadge extends StatelessWidget {
     }
   }
 
-  Color _getTextColor() {
+  Color _getTextColor(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
     switch (status) {
       case BadgeStatus.success:
-        return Colors.green.shade800;
+        return isDark ? Colors.green.shade200 : Colors.green.shade800;
       case BadgeStatus.warning:
-        return Colors.orange.shade900;
+        return isDark ? Colors.orange.shade200 : Colors.deepOrange.shade900;
       case BadgeStatus.info:
-        return Colors.blue.shade800;
+        return isDark ? Colors.blue.shade200 : Colors.blue.shade800;
       case BadgeStatus.error:
-        return Colors.red.shade800;
+        return isDark ? Colors.red.shade200 : Colors.red.shade800;
     }
   }
 
@@ -50,7 +51,7 @@ class StatusBadge extends StatelessWidget {
       child: Text(
         text.toUpperCase(),
         style: TextStyle(
-          color: _getTextColor(),
+          color: _getTextColor(Theme.of(context).brightness),
           fontSize: 12,
           fontWeight: FontWeight.bold,
         ),

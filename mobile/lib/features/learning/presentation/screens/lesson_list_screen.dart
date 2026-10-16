@@ -30,15 +30,27 @@ class LessonListScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Lessons'),
+        actions: [
+          IconButton(
+            tooltip: 'Module assessments',
+            icon: const Icon(Icons.quiz_outlined),
+            onPressed: () => context.push(
+              '/learning/assignments/$assignmentId/assessments?module=$moduleId',
+            ),
+          ),
+        ],
       ),
       body: detailAsync.when(
         data: (detail) {
-          final moduleIndex = detail.modules.indexWhere((m) => m.id == moduleId);
-          
+          final moduleIndex = detail.modules.indexWhere(
+            (m) => m.id == moduleId,
+          );
+
           if (moduleIndex == -1) {
             return ErrorView(
               message: 'Module not found',
-              onRetry: () => ref.refresh(assignmentDetailProvider(assignmentId).future),
+              onRetry: () =>
+                  ref.refresh(assignmentDetailProvider(assignmentId).future),
             );
           }
 
@@ -47,7 +59,8 @@ class LessonListScreen extends ConsumerWidget {
 
           if (lessons.isEmpty) {
             return RefreshIndicator(
-              onRefresh: () async => ref.refresh(assignmentDetailProvider(assignmentId).future),
+              onRefresh: () async =>
+                  ref.refresh(assignmentDetailProvider(assignmentId).future),
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
@@ -63,7 +76,8 @@ class LessonListScreen extends ConsumerWidget {
           }
 
           return RefreshIndicator(
-            onRefresh: () async => ref.refresh(assignmentDetailProvider(assignmentId).future),
+            onRefresh: () async =>
+                ref.refresh(assignmentDetailProvider(assignmentId).future),
             child: ListView.separated(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: AppSpacing.pagePadding,
@@ -76,13 +90,19 @@ class LessonListScreen extends ConsumerWidget {
                 return GestureDetector(
                   onTap: () {
                     if (lesson.type.toUpperCase() == 'TEXT') {
-                      context.go('/learning/assignments/$assignmentId/modules/$moduleId/lessons/${lesson.id}/text');
+                      context.go(
+                        '/learning/assignments/$assignmentId/modules/$moduleId/lessons/${lesson.id}/text',
+                      );
                     } else if (lesson.type.toUpperCase() == 'VIDEO') {
-                      context.push('/learning/assignments/$assignmentId/modules/$moduleId/lessons/${lesson.id}/video');
+                      context.push(
+                        '/learning/assignments/$assignmentId/modules/$moduleId/lessons/${lesson.id}/video',
+                      );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('${lesson.type} lessons are not supported yet.'),
+                          content: Text(
+                            '${lesson.type} lessons are not supported yet.',
+                          ),
                         ),
                       );
                     }
@@ -97,9 +117,8 @@ class LessonListScreen extends ConsumerWidget {
                             Expanded(
                               child: Text(
                                 '${lesson.position}. ${lesson.title}',
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.bold),
                               ),
                             ),
                             AppSpacing.gapSm,
@@ -117,7 +136,10 @@ class LessonListScreen extends ConsumerWidget {
                                   ? Icons.play_circle_outline
                                   : Icons.article_outlined,
                               size: 16,
-                              color: Theme.of(context).textTheme.bodySmall?.color,
+                              color: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.color,
                             ),
                             const SizedBox(width: 4),
                             Text(
@@ -128,11 +150,14 @@ class LessonListScreen extends ConsumerWidget {
                               const SizedBox(width: 8),
                               Text(
                                 '• REQUIRED',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).colorScheme.error,
-                                ),
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .error,
+                                    ),
                               ),
-                            ]
+                            ],
                           ],
                         ),
                       ],
@@ -146,7 +171,8 @@ class LessonListScreen extends ConsumerWidget {
         loading: () => const LoadingView(),
         error: (error, stackTrace) => ErrorView(
           message: error.toString(),
-          onRetry: () => ref.refresh(assignmentDetailProvider(assignmentId).future),
+          onRetry: () =>
+              ref.refresh(assignmentDetailProvider(assignmentId).future),
         ),
       ),
     );

@@ -26,9 +26,7 @@ class DashboardScreen extends ConsumerWidget {
     final dashboardAsync = ref.watch(dashboardDataProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dashboard'),
-      ),
+      appBar: AppBar(title: const Text('Dashboard')),
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(dashboardDataProvider.future),
         child: CustomScrollView(
@@ -36,7 +34,8 @@ class DashboardScreen extends ConsumerWidget {
           slivers: [
             dashboardAsync.when(
               skipLoadingOnReload: false,
-              data: (data) => _buildDashboardContent(context, employeeName, data),
+              data: (data) =>
+                  _buildDashboardContent(context, employeeName, data),
               loading: () => const SliverFillRemaining(
                 child: LoadingView(message: 'Loading dashboard...'),
               ),
@@ -53,7 +52,11 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildDashboardContent(BuildContext context, String employeeName, DashboardData data) {
+  Widget _buildDashboardContent(
+    BuildContext context,
+    String employeeName,
+    DashboardData data,
+  ) {
     return SliverPadding(
       padding: const EdgeInsets.all(AppSpacing.md),
       sliver: SliverList(
@@ -85,9 +88,21 @@ class DashboardScreen extends ConsumerWidget {
             spacing: AppSpacing.md,
             runSpacing: AppSpacing.md,
             children: [
-              _buildMetricItem(context, 'Assigned', metrics.assigned.toString()),
-              _buildMetricItem(context, 'In Progress', metrics.inProgress.toString()),
-              _buildMetricItem(context, 'Completed', metrics.completed.toString()),
+              _buildMetricItem(
+                context,
+                'Assigned',
+                metrics.assigned.toString(),
+              ),
+              _buildMetricItem(
+                context,
+                'In Progress',
+                metrics.inProgress.toString(),
+              ),
+              _buildMetricItem(
+                context,
+                'Completed',
+                metrics.completed.toString(),
+              ),
             ],
           ),
         ],
@@ -180,11 +195,17 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildRecentCertificates(BuildContext context, List<DashboardCertificate> certificates) {
+  Widget _buildRecentCertificates(
+    BuildContext context,
+    List<DashboardCertificate> certificates,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Recent Certificates', style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          'Recent Certificates',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: AppSpacing.md),
         if (certificates.isEmpty)
           const EmptyView(
@@ -192,12 +213,20 @@ class DashboardScreen extends ConsumerWidget {
             icon: Icons.workspace_premium,
           )
         else
-          ...certificates.map((cert) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+          ...certificates.map(
+            (cert) => Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => context.push('/profile/certificates/${cert.id}'),
                 child: CustomCard(
                   child: Row(
                     children: [
-                      Icon(Icons.workspace_premium, color: Theme.of(context).colorScheme.secondary, size: 32),
+                      Icon(
+                        Icons.workspace_premium,
+                        color: Theme.of(context).colorScheme.secondary,
+                        size: 32,
+                      ),
                       const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Column(
@@ -205,7 +234,9 @@ class DashboardScreen extends ConsumerWidget {
                           children: [
                             Text(
                               cert.trainingTitle,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             Text('Cert #: ${cert.certificateNumber}'),
@@ -217,7 +248,9 @@ class DashboardScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
-              )),
+              ),
+            ),
+          ),
       ],
     );
   }

@@ -33,9 +33,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
     final detailAsync = ref.watch(assignmentDetailProvider(assignmentId));
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Assignment Detail'),
-      ),
+      appBar: AppBar(title: const Text('Assignment Detail')),
       body: detailAsync.when(
         data: (detail) {
           final dueDate = detail.dueAt;
@@ -61,7 +59,8 @@ class AssignmentDetailScreen extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Expanded(
                                     child: Text(
@@ -89,9 +88,7 @@ class AssignmentDetailScreen extends ConsumerWidget {
                               AppSpacing.gapSm,
                               Text(
                                 'Due: $formattedDate',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
+                                style: Theme.of(context).textTheme.bodyMedium
                                     ?.copyWith(
                                       color: detail.isOverdue
                                           ? Theme.of(context).colorScheme.error
@@ -110,13 +107,29 @@ class AssignmentDetailScreen extends ConsumerWidget {
                               PrimaryButton(
                                 text: 'Start Training',
                                 onPressed: () {
-                                  context.go('/learning/assignments/$assignmentId/modules');
+                                  context.go(
+                                    '/learning/assignments/$assignmentId/modules',
+                                  );
                                 },
                               ),
                             ],
                           ),
                         ),
-                        // Future modules list can go here
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          onPressed: () => context.push(
+                            '/learning/assignments/$assignmentId/assessments',
+                          ),
+                          icon: const Icon(Icons.quiz_outlined),
+                          label: const Text('Assessments and attempts'),
+                        ),
+                        if (detail.status.toUpperCase() == 'COMPLETED')
+                          OutlinedButton.icon(
+                            onPressed: () =>
+                                context.push('/profile/certificates'),
+                            icon: const Icon(Icons.workspace_premium_outlined),
+                            label: const Text('My Certificates'),
+                          ),
                       ],
                     ),
                   ),
@@ -128,7 +141,8 @@ class AssignmentDetailScreen extends ConsumerWidget {
         loading: () => const LoadingView(),
         error: (error, stackTrace) => ErrorView(
           message: error.toString(),
-          onRetry: () => ref.refresh(assignmentDetailProvider(assignmentId).future),
+          onRetry: () =>
+              ref.refresh(assignmentDetailProvider(assignmentId).future),
         ),
       ),
     );

@@ -14,6 +14,10 @@ import 'package:training_app/features/learning/presentation/screens/text_lesson_
 import 'package:training_app/features/learning/presentation/screens/video_lesson_screen.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
+import 'package:training_app/features/assessments/presentation/screens/assessment_overview_screen.dart';
+import 'package:training_app/features/assessments/presentation/screens/assessment_attempt_screen.dart';
+import 'package:training_app/features/certificates/presentation/screens/certificate_list_screen.dart';
+import 'package:training_app/features/certificates/presentation/screens/certificate_detail_screen.dart';
 
 // Create a Listenable to trigger router redirects on auth state changes
 class RouterNotifier extends ChangeNotifier {
@@ -50,7 +54,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         return null;
       }
-      
+
       if (authState is AuthError) {
         return null; // Do not force logout redirect on transient errors
       }
@@ -65,33 +69,61 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final id = int.tryParse(state.pathParameters['id'] ?? '');
           final moduleId = int.tryParse(state.pathParameters['moduleId'] ?? '');
           final lessonId = int.tryParse(state.pathParameters['lessonId'] ?? '');
-          if (id == null || moduleId == null || lessonId == null ||
-              id <= 0 || moduleId <= 0 || lessonId <= 0) {
+          if (id == null ||
+              moduleId == null ||
+              lessonId == null ||
+              id <= 0 ||
+              moduleId <= 0 ||
+              lessonId <= 0) {
             return const Scaffold(body: ErrorView(message: 'Invalid ID'));
           }
-          return VideoLessonScreen(assignmentId: id, moduleId: moduleId, lessonId: lessonId);
+          return VideoLessonScreen(
+            assignmentId: id,
+            moduleId: moduleId,
+            lessonId: lessonId,
+          );
         },
       ),
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
         path: '/',
-        builder: (context, state) => AppShell(
-          location: state.uri.path,
-          child: const SizedBox.shrink(),
-        ),
+        builder: (context, state) =>
+            AppShell(location: state.uri.path, child: const SizedBox.shrink()),
       ),
       ShellRoute(
-        builder: (context, state, child) => AppShell(
-          location: state.uri.path,
-          child: child,
-        ),
+        builder: (context, state, child) =>
+            AppShell(location: state.uri.path, child: child),
         routes: [
           GoRoute(
             path: '/dashboard',
             builder: (context, state) => const DashboardScreen(),
+          ),
+          GoRoute(
+            path: '/learning/assignments/:id/assessments',
+            builder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              final module = state.uri.queryParameters['module'];
+              final moduleId = module == null ? null : int.tryParse(module);
+              if (id == null ||
+                  id <= 0 ||
+                  (module != null && (moduleId == null || moduleId <= 0))) {
+                return const Scaffold(body: ErrorView(message: 'Invalid ID'));
+              }
+              return AssessmentOverviewScreen(
+                assignmentId: id,
+                moduleId: moduleId,
+              );
+            },
+            routes: [
+              GoRoute(
+                path: ':assessmentId/attempt',
+                builder: _assessmentAttempt,
+              ),
+              GoRoute(
+                path: ':assessmentId/attempts/:attemptId',
+                builder: _assessmentAttempt,
+              ),
+            ],
           ),
           GoRoute(
             path: '/learning',
@@ -127,7 +159,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                         path: ':moduleId/lessons',
                         builder: (context, state) {
                           final idString = state.pathParameters['id'];
-                          final moduleIdString = state.pathParameters['moduleId'];
+                          final moduleIdString =
+                              state.pathParameters['moduleId'];
                           final id = int.tryParse(idString ?? '');
                           final moduleId = int.tryParse(moduleIdString ?? '');
                           if (id == null || moduleId == null) {
@@ -135,22 +168,31 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                               body: ErrorView(message: 'Invalid ID'),
                             );
                           }
-                          return LessonListScreen(assignmentId: id, moduleId: moduleId);
+                          return LessonListScreen(
+                            assignmentId: id,
+                            moduleId: moduleId,
+                          );
                         },
                         routes: [
                           GoRoute(
                             path: ':lessonId/text',
                             builder: (context, state) {
                               final idString = state.pathParameters['id'];
-                              final lessonIdString = state.pathParameters['lessonId'];
+                              final lessonIdString =
+                                  state.pathParameters['lessonId'];
                               final id = int.tryParse(idString ?? '');
-                              final lessonId = int.tryParse(lessonIdString ?? '');
+                              final lessonId = int.tryParse(
+                                lessonIdString ?? '',
+                              );
                               if (id == null || lessonId == null) {
                                 return const Scaffold(
                                   body: ErrorView(message: 'Invalid ID'),
                                 );
                               }
-                              return TextLessonScreen(assignmentId: id, lessonId: lessonId);
+                              return TextLessonScreen(
+                                assignmentId: id,
+                                lessonId: lessonId,
+                              );
                             },
                           ),
                         ],
@@ -164,6 +206,31 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/profile',
             builder: (context, state) => const ProfileScreen(),
+            routes: [
+              GoRoute(
+                path: 'certificates',
+                builder: (context, state) => const CertificateListScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':certificateId',
+                    builder: (context, state) {
+                      final id = int.tryParse(
+                        state.pathParameters['certificateId'] ?? '',
+                      );
+                      if (id == null || id <= 0) {
+                        return const Scaffold(
+                          body: ErrorView(message: 'Invalid ID'),
+                        );
+                      }
+                      return CertificateDetailScreen(
+                        key: ValueKey(id),
+                        certificateId: id,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
@@ -171,3 +238,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
 });
 
+Widget _assessmentAttempt(BuildContext context, GoRouterState state) {
+  final assignmentId = int.tryParse(state.pathParameters['id'] ?? '');
+  final assessmentId = int.tryParse(state.pathParameters['assessmentId'] ?? '');
+  final rawAttempt = state.pathParameters['attemptId'];
+  final attemptId = rawAttempt == null ? null : int.tryParse(rawAttempt);
+  if (assignmentId == null ||
+      assignmentId <= 0 ||
+      assessmentId == null ||
+      assessmentId <= 0 ||
+      (rawAttempt != null && (attemptId == null || attemptId <= 0))) {
+    return const Scaffold(body: ErrorView(message: 'Invalid ID'));
+  }
+  return AssessmentAttemptScreen(
+    key: ValueKey((assignmentId, assessmentId, attemptId)),
+    target: (assignmentId: assignmentId, assessmentId: assessmentId),
+    attemptId: attemptId,
+  );
+}

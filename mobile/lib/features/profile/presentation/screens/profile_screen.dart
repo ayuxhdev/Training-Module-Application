@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/secondary_button.dart';
@@ -87,6 +88,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ),
             const SizedBox(height: AppSpacing.xl),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.workspace_premium_outlined),
+                title: const Text('My Certificates'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/profile/certificates'),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
             SecondaryButton(
               text: 'Logout',
               onPressed: () {

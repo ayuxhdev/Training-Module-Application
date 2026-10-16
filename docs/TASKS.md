@@ -17,7 +17,7 @@ The Excel roadmap may remain the management tracker, but it must not override th
 Current milestone:
 
 ```text
-M16 - Learning + Secure Video
+M17 - Assessment + Certificates (implementation complete; final checkpoint pending)
 ```
 
 Completed milestones:
@@ -26,6 +26,7 @@ Completed milestones:
 M0–M13 - Core Platform + Mobile API Foundation
 M14    - Flutter / Android Foundation
 M15    - Employee App Core
+M16    - Learning + Secure Video
 ```
 
 Current application state:
@@ -35,10 +36,14 @@ Backend/Web platform: Complete
 Mobile API foundation: Complete
 Flutter/Android foundation: Complete
 Employee learning foundation: Complete
-Secure video learning: Next
+Secure video learning and read-only replay: Complete
+Assessment and certificate APIs: Implemented and foundation-verified
+Flutter assessments and certificates: Data/state, screens and navigation implemented
+App-level Light/Dark themes: Implemented; follow system preference
+Android M17 QA: Core flows passed; revoked-certificate case blocked by missing fixture
 ```
 
-Current verified automated baseline:
+Historical M15 automated baseline (retained for reference):
 
 ```text
 Django/MySQL: 348 tests passing
@@ -46,7 +51,7 @@ Flutter: 81 tests passing
 JavaScript playback tests: 3 tests passing
 ```
 
-Additional verified checks include:
+Checks recorded with that historical baseline include:
 
 ```text
 Django check: passing
@@ -69,8 +74,8 @@ M0–M12 - Core Django Training Platform       COMPLETE
 M13    - Mobile API Foundation & Versioning   COMPLETE
 M14    - Flutter / Android Foundation         COMPLETE
 M15    - Employee App Core                    COMPLETE
-M16    - Learning + Secure Video              NEXT
-M17    - Assessment + Certificates             PLANNED
+M16    - Learning + Secure Video              COMPLETE
+M17    - Assessment + Certificates             IN PROGRESS
 M18    - Notifications + Resilience            PLANNED
 M19    - Android Release Candidate             PLANNED
 M20    - Production + Deployment Hardening     PLANNED
@@ -350,7 +355,7 @@ M15 is complete.
 Status:
 
 ```text
-NEXT
+COMPLETE
 ```
 
 Primary goal:
@@ -541,10 +546,57 @@ Risk-based testing should include:
 Status:
 
 ```text
-PLANNED
+IMPLEMENTED — final pre-commit checkpoint pending
 ```
 
-## Tasks
+## Phase 1: secure mobile assessment API foundation
+
+- Reuse shared web/API eligibility, start/resume and atomic submission operations.
+- Add JWT/active-Employee overview, attempt start/resume, detail and submit endpoints.
+- Enforce passed-assessment restart rejection on the website and API.
+- Preserve pinned published/retired versions, prerequisites, frozen questions,
+  deadlines, Decimal scoring, MySQL lock order, completion and certificate issuance.
+- Cover ownership, malformed input, answer-key confidentiality, retries, deadlines,
+  concurrent requests and exactly-once certificate issuance in isolated MySQL tests.
+- Contracts documented in `docs/ARCHITECTURE.md`; backend/API foundation and
+  subsequent Flutter integration are implemented.
+
+Historical Phase 1 verification (MySQL 8.0.46): 25 assessment API tests, 55 assessment/web
+regressions and 31 JWT tests passed (111 focused); 404/404 full Django tests passed.
+Both new MySQL concurrency tests ran. Django check, migration-drift check, dependency
+check and scoped whitespace checks passed. Models and migrations were unchanged.
+
+## Completed M17 integration
+
+- Read-only certificate list/detail APIs use JWT, active-Employee checks and strict
+  ownership scoping; issued/revoked states and historical snapshots are preserved.
+- Flutter assessment models, repository and Riverpod controllers support overview,
+  eligibility, start/resume, answer selection, submission, results, retries and history.
+  Screens handle loading/errors, deadlines, duplicate actions and uncertain-submission
+  reconciliation without client-side grading or persisted answer drafts.
+- Flutter certificate models, repository, controllers and list/detail screens support
+  paginated API results, historical data and revoked-state display.
+- Assignment/module assessment links, Profile certificates, Dashboard certificate
+  links and post-assessment certificate navigation are integrated with existing routes.
+- App-level Light/Dark themes follow the system preference; contrast, large text,
+  reduced motion and retained state across theme changes are tested.
+- Android core M17 end-to-end flows passed. Revoked-certificate runtime testing was
+  blocked because no fixture existed; automated revoked-state coverage is present.
+
+Latest known validation checkpoints were separate runs:
+
+- Combined foundation validation: **436/436 Django/MySQL tests passed**.
+- After app-level theme integration: **316/316 Flutter tests passed**, analyzer clean,
+  and debug APK build successful.
+- Subsequent ordering-review validation: **59/59 focused assessment/certificate API
+  tests** and **438/438 full Django/MySQL tests passed**; system check and migration
+  drift check passed. Flutter was not rerun for this backend/documentation change.
+- These results do not imply a single combined rerun, commit, merge or release.
+
+Answer autosave, automatic expiry workers, abandonment, offline submission queues,
+certificate PDF generation and document downloads remain outside the implemented scope.
+
+## Implemented tasks
 
 - assessment screen
 - question rendering
@@ -1071,26 +1123,19 @@ Do not claim work is complete until its exit criteria have been satisfied.
 The next development milestone is:
 
 ```text
-M16 - Learning + Secure Video
+M17 - Assessment + Certificates
 ```
 
 Immediate priorities:
 
 ```text
-1. Verify existing M13 playback contracts.
-2. Verify protected session-based media access.
-3. Verify training-version and media immutability rules.
-4. Build Flutter VIDEO lesson playback.
-5. Integrate playback sessions.
-6. Integrate progress and heartbeats.
-7. Integrate resume behavior.
-8. Handle network and lifecycle recovery.
-9. Preserve backend anti-seek/anti-skip authority.
-10. Apply appropriate Android screen-capture protection.
-11. Run focused playback QA.
-12. Run full regression.
+1. Review the verified Phase 1 assessment API foundation.
+2. Integrate Flutter assessment overview and start/resume.
+3. Integrate answering, submission, results, retries and history.
+4. Add certificate access/display using existing issuance and ownership rules.
+5. Run focused mobile/security regressions and M17 runtime QA.
 ```
 
-No M17, M18, M19, M20, M21, M22, or M23 implementation should begin merely because those milestones are documented.
+No M18, M19, M20, M21, M22, or M23 implementation should begin merely because those milestones are documented.
 
 The project should progress sequentially through the roadmap, with each milestone passing its exit criteria before the next milestone becomes active.

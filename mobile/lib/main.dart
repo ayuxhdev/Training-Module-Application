@@ -17,6 +17,8 @@ class MyApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'Garden\'s Need Training',
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.system,
       routerConfig: router,
     );
   }

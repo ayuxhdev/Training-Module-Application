@@ -333,18 +333,8 @@ def _attempt_total(assessment):
 	return sum(assessment.questions.values_list("points", flat=True), Decimal("0"))
 
 
-@login_required
-@require_GET
-def assessment_overview(request, assignment_pk, assessment_pk):
-	assignment = get_object_or_404(
-		TrainingAssignment.objects.select_related("training_version__training", "employee"),
-		pk=assignment_pk, employee=_active_employee(request),
-	)
-	assessment = get_object_or_404(
-		Assessment.objects.select_related("module"),
-		pk=assessment_pk, training_version_id=assignment.training_version_id,
-		training_version__status__in=(TrainingVersion.Status.PUBLISHED, TrainingVersion.Status.RETIRED),
-	)
+def _assessment_state(assignment, assessment):
+	"""Shared web/API eligibility; deadlines are finalized only at submission."""
 	attempts = list(AssessmentAttempt.objects.filter(
 		assignment=assignment, assessment=assessment,
 	).order_by("-attempt_number"))
@@ -379,13 +369,29 @@ def assessment_overview(request, assignment_pk, assessment_pk):
 			).values("assessment_id")
 			if required_quizzes.exclude(pk__in=passed_quizzes).exists():
 				reason = "Pass required quizzes before the final assessment."
-	return render(request, "assessments/learner_overview.html", {
+	return {
 		"assignment": assignment, "assessment": assessment, "attempts": attempts,
 		"ongoing": ongoing, "passed": passed, "unavailable_reason": reason,
-		"can_resume": bool(ongoing and assignment.status in (
+		"can_start": reason is None,
+		"can_resume": bool(not passed and ongoing and assignment.status in (
 			TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS,
 		)),
-	})
+	}
+
+
+@login_required
+@require_GET
+def assessment_overview(request, assignment_pk, assessment_pk):
+	assignment = get_object_or_404(
+		TrainingAssignment.objects.select_related("training_version__training", "employee"),
+		pk=assignment_pk, employee=_active_employee(request),
+	)
+	assessment = get_object_or_404(
+		Assessment.objects.select_related("module"),
+		pk=assessment_pk, training_version_id=assignment.training_version_id,
+		training_version__status__in=(TrainingVersion.Status.PUBLISHED, TrainingVersion.Status.RETIRED),
+	)
+	return render(request, "assessments/learner_overview.html", _assessment_state(assignment, assessment))
 
 
 @transaction.atomic
@@ -416,62 +422,63 @@ def _try_complete_assignment(assignment, actor=None):
 		issue_completed_assignment_certificate(assignment.pk, actor=actor)
 
 
+class AssessmentConflict(Exception):
+	"""An authorized operation conflicts with persisted assessment state."""
+
+
+@transaction.atomic
+def _start_attempt_operation(request, assignment_pk, assessment_pk):
+	assignment = _assignment_for_employee(request, assignment_pk)
+	Employee.objects.select_for_update().get(pk=assignment.employee_id)
+	TrainingVersion.objects.select_for_update().get(pk=assignment.training_version_id)
+	assignment = _assignment_for_employee(request, assignment_pk, lock=True)
+	assessment = get_object_or_404(
+		Assessment.objects.select_related("training_version", "module"),
+		pk=assessment_pk,
+		training_version_id=assignment.training_version_id,
+		training_version__status__in=(TrainingVersion.Status.PUBLISHED, TrainingVersion.Status.RETIRED),
+	)
+	state = _assessment_state(assignment, assessment)
+	if state["can_resume"]:
+		return state["ongoing"], False
+	if not state["can_start"]:
+		raise AssessmentConflict(state["unavailable_reason"])
+	started = timezone.now()
+	attempt = AssessmentAttempt.objects.create(
+		assignment=assignment,
+		assessment=assessment,
+		attempt_number=len(state["attempts"]) + 1,
+		started_at=started,
+		deadline_at=started + timedelta(minutes=assessment.time_limit_minutes) if assessment.time_limit_minutes else None,
+		maximum_points=_attempt_total(assessment),
+		pass_percentage_snapshot=assessment.pass_percentage,
+	)
+	record_event(
+		request.user,
+		"assessments.attempt.started",
+		attempt,
+		after={
+			"assignment_id": assignment.pk,
+			"assessment_id": assessment.pk,
+			"attempt_number": attempt.attempt_number,
+			"status": attempt.status,
+		},
+	)
+	if assignment.status == TrainingAssignment.Status.ASSIGNED:
+		assignment.status = TrainingAssignment.Status.IN_PROGRESS
+		assignment.started_at = started
+		assignment.save()
+	return attempt, True
+
+
 @login_required
 def start_attempt(request, assignment_pk, assessment_pk):
 	if request.method != "POST":
 		raise Http404
 	try:
-		with transaction.atomic():
-			assignment = _assignment_for_employee(request, assignment_pk)
-			Employee.objects.select_for_update().get(pk=assignment.employee_id)
-			TrainingVersion.objects.select_for_update().get(pk=assignment.training_version_id)
-			assignment = _assignment_for_employee(request, assignment_pk, lock=True)
-			assessment = get_object_or_404(
-				Assessment.objects.select_related("training_version", "module"),
-				pk=assessment_pk,
-				training_version_id=assignment.training_version_id,
-				training_version__status__in=(TrainingVersion.Status.PUBLISHED, TrainingVersion.Status.RETIRED),
-			)
-			if assessment.kind == Assessment.Kind.QUIZ and not _module_lessons_complete(assignment, assessment.module):
-				return JsonResponse({"error": "Complete the required module lessons before starting this quiz."}, status=409)
-			maximum = _attempt_total(assessment)
-			if maximum <= 0:
-				return JsonResponse({"error": "This assessment has no scorable questions."}, status=409)
-			existing = AssessmentAttempt.objects.filter(
-				assignment=assignment, assessment=assessment, status=AssessmentAttempt.Status.IN_PROGRESS,
-			).first()
-			if existing:
-				return redirect("assessments:attempt-detail", pk=existing.pk)
-			count = AssessmentAttempt.objects.filter(assignment=assignment, assessment=assessment).count()
-			if count >= assessment.max_attempts:
-				return JsonResponse({"error": "The attempt limit has been reached."}, status=409)
-			started = timezone.now()
-			attempt = AssessmentAttempt.objects.create(
-				assignment=assignment,
-				assessment=assessment,
-				attempt_number=count + 1,
-				started_at=started,
-				deadline_at=started + timedelta(minutes=assessment.time_limit_minutes) if assessment.time_limit_minutes else None,
-				maximum_points=maximum,
-				pass_percentage_snapshot=assessment.pass_percentage,
-			)
-			record_event(
-				request.user,
-				"assessments.attempt.started",
-				attempt,
-				after={
-					"assignment_id": assignment.pk,
-					"assessment_id": assessment.pk,
-					"attempt_number": attempt.attempt_number,
-					"status": attempt.status,
-				},
-			)
-			if assignment.status == TrainingAssignment.Status.ASSIGNED:
-				assignment.status = TrainingAssignment.Status.IN_PROGRESS
-				assignment.started_at = started
-				assignment.save()
+		attempt, _ = _start_attempt_operation(request, assignment_pk, assessment_pk)
 		return redirect("assessments:attempt-detail", pk=attempt.pk)
-	except (ValidationError, IntegrityError) as exc:
+	except (AssessmentConflict, ValidationError, IntegrityError) as exc:
 		return JsonResponse({"error": str(exc)}, status=409)
 
 
@@ -519,6 +526,11 @@ def _posted_answers(request):
 				if len(values) != 1:
 					raise ValidationError("Each question may have only one answer.")
 				pairs.append((key[7:], values[0]))
+	return _parse_answer_pairs(pairs)
+
+
+def _parse_answer_pairs(pairs):
+	"""Normalize the established web/API answer IDs without accepting coercible floats/bools."""
 	answers = {}
 	for question_id, option_id in pairs:
 		if isinstance(question_id, bool) or not isinstance(question_id, (str, int)):
@@ -544,83 +556,92 @@ def _posted_answers(request):
 	return answers
 
 
+@transaction.atomic
+def _submit_attempt_operation(request, pk, selected):
+	attempt_ref = get_object_or_404(
+		AssessmentAttempt.objects.select_related("assessment", "assignment__employee"),
+		pk=pk,
+		assignment__employee__user=request.user,
+		assignment__employee__is_active=True,
+	)
+	Employee.objects.select_for_update().get(pk=attempt_ref.assignment.employee_id)
+	TrainingVersion.objects.select_for_update().get(pk=attempt_ref.assignment.training_version_id)
+	assignment = TrainingAssignment.objects.select_for_update().get(pk=attempt_ref.assignment_id)
+	attempt = get_object_or_404(
+		AssessmentAttempt.objects.select_for_update().select_related("assessment", "assignment__employee"),
+		pk=attempt_ref.pk, assignment__employee__user=request.user, assignment__employee__is_active=True,
+	)
+	if attempt.status != AssessmentAttempt.Status.IN_PROGRESS:
+		raise AssessmentConflict("This attempt is already closed.")
+	if assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
+		raise AssessmentConflict("This assignment no longer accepts attempts.")
+	items = list(attempt.assessment.questions.select_related("question_revision"))
+	allowed_ids = {item.pk for item in items}
+	if set(selected) - allowed_ids:
+		raise ValidationError("An answer references a question outside this assessment.")
+	now = timezone.now()
+	expired = bool(attempt.deadline_at and now > attempt.deadline_at)
+	score = Decimal("0")
+	for position, item in enumerate(items, 1):
+		option = None
+		if selected.get(item.pk) is not None:
+			option = QuestionOption.objects.filter(
+				pk=selected[item.pk], question_revision_id=item.question_revision_id,
+			).first()
+			if option is None:
+				raise ValidationError("Selected option does not belong to this question revision.")
+		if expired:
+			option = None
+		correct = bool(option and option.is_correct)
+		awarded = item.points if correct else Decimal("0")
+		score += awarded
+		AttemptAnswer.objects.create(
+			attempt=attempt,
+			assessment_question=item,
+			selected_option=option,
+			presented_position=position,
+			answered_at=now if option else None,
+			points_possible=item.points,
+			points_awarded=awarded,
+			is_correct=correct,
+		)
+	attempt.status = AssessmentAttempt.Status.EXPIRED if expired else AssessmentAttempt.Status.SUBMITTED
+	attempt.submitted_at = now
+	attempt.score_points = score
+	attempt.passed = bool(
+		not expired
+		and score * 100 >= attempt.maximum_points * attempt.pass_percentage_snapshot
+	)
+	attempt.save()
+	record_event(
+		request.user,
+		"assessments.attempt.submitted" if attempt.status == AssessmentAttempt.Status.SUBMITTED else "assessments.attempt.expired",
+		attempt,
+		before={"status": AssessmentAttempt.Status.IN_PROGRESS},
+		after={
+			"assignment_id": assignment.pk,
+			"assessment_id": attempt.assessment_id,
+			"attempt_number": attempt.attempt_number,
+			"status": attempt.status,
+			"score_points": str(attempt.score_points),
+			"maximum_points": str(attempt.maximum_points),
+			"passed": attempt.passed,
+		},
+	)
+	if attempt.passed:
+		_try_complete_assignment(assignment, actor=request.user)
+	return attempt
+
+
 @login_required
 def submit_attempt(request, pk):
 	if request.method != "POST":
 		raise Http404
 	try:
-		selected = _posted_answers(request)
-		with transaction.atomic():
-			attempt_ref = get_object_or_404(
-				AssessmentAttempt.objects.select_related("assessment", "assignment__employee"),
-				pk=pk,
-				assignment__employee__user=request.user,
-				assignment__employee__is_active=True,
-			)
-			Employee.objects.select_for_update().get(pk=attempt_ref.assignment.employee_id)
-			TrainingVersion.objects.select_for_update().get(pk=attempt_ref.assignment.training_version_id)
-			assignment = TrainingAssignment.objects.select_for_update().get(pk=attempt_ref.assignment_id)
-			attempt = AssessmentAttempt.objects.select_for_update().select_related(
-				"assessment", "assignment__employee",
-			).get(pk=attempt_ref.pk)
-			if attempt.status != AssessmentAttempt.Status.IN_PROGRESS:
-				return JsonResponse({"error": "This attempt is already closed."}, status=409)
-			if assignment.status not in (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS):
-				return JsonResponse({"error": "This assignment no longer accepts attempts."}, status=409)
-			items = list(attempt.assessment.questions.select_related("question_revision"))
-			allowed_ids = {item.pk for item in items}
-			if set(selected) - allowed_ids:
-				raise ValidationError("An answer references a question outside this assessment.")
-			now = timezone.now()
-			expired = bool(attempt.deadline_at and now > attempt.deadline_at)
-			score = Decimal("0")
-			for position, item in enumerate(items, 1):
-				option = None
-				if not expired and selected.get(item.pk) is not None:
-					option = QuestionOption.objects.filter(
-						pk=selected[item.pk], question_revision_id=item.question_revision_id,
-					).first()
-					if option is None:
-						raise ValidationError("Selected option does not belong to this question revision.")
-				correct = bool(option and option.is_correct)
-				awarded = item.points if correct else Decimal("0")
-				score += awarded
-				AttemptAnswer.objects.create(
-					attempt=attempt,
-					assessment_question=item,
-					selected_option=option,
-					presented_position=position,
-					answered_at=now if option else None,
-					points_possible=item.points,
-					points_awarded=awarded,
-					is_correct=correct,
-				)
-			attempt.status = AssessmentAttempt.Status.EXPIRED if expired else AssessmentAttempt.Status.SUBMITTED
-			attempt.submitted_at = now
-			attempt.score_points = score
-			attempt.passed = bool(
-				not expired
-				and score * 100 >= attempt.maximum_points * attempt.pass_percentage_snapshot
-			)
-			attempt.save()
-			record_event(
-				request.user,
-				"assessments.attempt.submitted" if attempt.status == AssessmentAttempt.Status.SUBMITTED else "assessments.attempt.expired",
-				attempt,
-				before={"status": AssessmentAttempt.Status.IN_PROGRESS},
-				after={
-					"assignment_id": assignment.pk,
-					"assessment_id": attempt.assessment_id,
-					"attempt_number": attempt.attempt_number,
-					"status": attempt.status,
-					"score_points": str(attempt.score_points),
-					"maximum_points": str(attempt.maximum_points),
-					"passed": attempt.passed,
-				},
-			)
-			if attempt.passed:
-				_try_complete_assignment(assignment, actor=request.user)
+		attempt = _submit_attempt_operation(request, pk, _posted_answers(request))
 		return redirect("assessments:attempt-detail", pk=attempt.pk)
+	except AssessmentConflict as exc:
+		return JsonResponse({"error": str(exc)}, status=409)
 	except (ValidationError, IntegrityError, InvalidOperation, ValueError) as exc:
 		if "text/html" in request.headers.get("Accept", "") and request.content_type != "application/json":
 			attempt = get_object_or_404(

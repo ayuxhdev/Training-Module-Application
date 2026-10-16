@@ -621,6 +621,15 @@ class AssessmentEndpointTests(CurriculumTestCase):
         self.assertNotContains(client.get(overview), "Start another attempt")
         self.assertEqual(self.start().status_code, 409)
 
+    def test_passed_quiz_cannot_be_restarted_through_direct_post(self):
+        self.complete_lessons()
+        attempt = self.finish_attempt(self.quiz)
+        response = self.start()
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("already passed", response.json()["error"])
+        self.assertEqual(self.assignment.attempts.count(), 1)
+        self.assertContains(self.client_for(self.employee_user).get(f"/attempts/{attempt.pk}/"), "Passed")
+
     def test_invalid_html_submission_shows_error_and_preserves_answer(self):
         self.complete_lessons()
         self.start()
