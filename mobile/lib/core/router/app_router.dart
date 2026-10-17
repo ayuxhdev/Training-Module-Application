@@ -18,6 +18,7 @@ import 'package:training_app/features/assessments/presentation/screens/assessmen
 import 'package:training_app/features/assessments/presentation/screens/assessment_attempt_screen.dart';
 import 'package:training_app/features/certificates/presentation/screens/certificate_list_screen.dart';
 import 'package:training_app/features/certificates/presentation/screens/certificate_detail_screen.dart';
+import 'package:training_app/features/notifications/presentation/screens/notification_center_screen.dart';
 
 // Create a Listenable to trigger router redirects on auth state changes
 class RouterNotifier extends ChangeNotifier {
@@ -97,6 +98,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/dashboard',
             builder: (context, state) => const DashboardScreen(),
+          ),
+          GoRoute(
+            path: '/notifications',
+            builder: (context, state) => const NotificationCenterScreen(),
           ),
           GoRoute(
             path: '/learning/assignments/:id/assessments',

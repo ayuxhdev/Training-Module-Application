@@ -22,6 +22,9 @@ import 'package:training_app/features/learning/presentation/screens/lesson_list_
 import 'package:training_app/features/learning/presentation/screens/text_lesson_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/video_lesson_screen.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
+import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
+
+import '../../features/notifications/notification_fixtures.dart';
 
 class MockAuthController extends Notifier<AuthState> implements AuthController {
   final AuthState initialState;
@@ -65,6 +68,7 @@ void main() {
   Widget createTestApp(AuthState authState, {MockAuthController? controller}) {
     return ProviderScope(
       overrides: [
+        notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
         authControllerProvider.overrideWith(() => controller ?? MockAuthController(authState)),
         dashboardDataProvider.overrideWith((ref) => Future.value(mockDashboardData)),
         assignmentListProvider.overrideWith((ref) => Future.value([])),
@@ -97,6 +101,7 @@ void main() {
         ]),
       ]);
     await tester.pumpWidget(ProviderScope(overrides: [
+      notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
       authControllerProvider.overrideWith(() => MockAuthController(AuthAuthenticated(tEmployee))),
       dashboardDataProvider.overrideWith((_) => Future.value(mockDashboardData)),
       assignmentDetailProvider(42).overrideWith((_) async => detail),
@@ -214,6 +219,7 @@ void main() {
 
       final app = ProviderScope(
         overrides: [
+          notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
           authControllerProvider.overrideWith(() => MockAuthController(AuthAuthenticated(tEmployee))),
           dashboardDataProvider.overrideWith((ref) => DashboardData(
             metrics: mockDashboardData.metrics,
@@ -261,6 +267,7 @@ void main() {
   testWidgets('Shows ErrorView for non-integer assignment ID', (tester) async {
     final app = ProviderScope(
       overrides: [
+        notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
         authControllerProvider.overrideWith(() => MockAuthController(AuthAuthenticated(tEmployee))),
         dashboardDataProvider.overrideWith((ref) => Future.value(mockDashboardData)),
         assignmentListProvider.overrideWith((ref) => Future.value([])),
@@ -333,6 +340,7 @@ void main() {
 
     final app = ProviderScope(
       overrides: [
+        notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
         authControllerProvider.overrideWith(() => MockAuthController(AuthAuthenticated(tEmployee))),
         dashboardDataProvider.overrideWith((ref) => Future.value(mockDashboardData)),
         assignmentListProvider.overrideWith((ref) => Future.value(mockAssignments)),

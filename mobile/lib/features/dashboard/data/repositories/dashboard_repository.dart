@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import 'package:training_app/core/network/dio_client.dart';
 import 'package:training_app/core/providers/core_providers.dart';
 import 'package:training_app/features/dashboard/domain/models/dashboard_data.dart';
@@ -13,13 +14,18 @@ class DashboardRepository {
 
   DashboardRepository({required this.apiClient});
 
-  Future<DashboardData> getDashboardData() async {
+  Future<DashboardData> getDashboardData({CancelToken? cancelToken}) async {
     try {
-      final response = await apiClient.dio.get('/dashboard/');
+      final response = await apiClient.dio.get(
+        '/dashboard/',
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) {
+        throw error;
+      }
       return DashboardData.fromJson(response.data as Map<String, dynamic>);
     } catch (e) {
       throw apiClient.mapExceptionToApiError(e);
     }
   }
 }
-

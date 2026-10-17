@@ -28,8 +28,10 @@ import 'package:training_app/features/dashboard/domain/models/dashboard_data.dar
 import 'package:training_app/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
+import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
 
 import '../../assessment_fixtures.dart';
+import '../../../notifications/notification_fixtures.dart';
 
 class _Assessments extends Mock implements AssessmentRepository {}
 
@@ -143,6 +145,7 @@ void main() {
     addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
     container = ProviderContainer(
       overrides: [
+        notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
         authControllerProvider.overrideWith(() => auth),
         assessmentRepositoryProvider.overrideWithValue(assessments),
         certificateRepositoryProvider.overrideWithValue(certificates),

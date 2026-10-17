@@ -9,6 +9,9 @@ import 'package:training_app/features/auth/presentation/controllers/auth_control
 import 'package:training_app/features/dashboard/domain/models/dashboard_data.dart';
 import 'package:training_app/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
+
+import '../../notifications/notification_fixtures.dart';
 
 void main() {
   testWidgets('DashboardScreen shows loading initially', (tester) async {
@@ -17,6 +20,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
           authControllerProvider.overrideWith(() => AuthControllerMock()),
           dashboardDataProvider.overrideWith((ref) => completer.future),
         ],
@@ -58,6 +62,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
           authControllerProvider.overrideWith(() => AuthControllerMock()),
           dashboardDataProvider.overrideWith((ref) => mockData),
         ],

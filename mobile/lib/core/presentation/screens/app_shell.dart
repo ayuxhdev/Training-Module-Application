@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:training_app/core/presentation/components/error_view.dart';
 
 class AppShell extends ConsumerWidget {
   final Widget child;
@@ -22,20 +23,11 @@ class AppShell extends ConsumerWidget {
 
     if (authState is AuthError) {
       return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(authState.error.message),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  ref.read(authControllerProvider.notifier).retryAuthentication();
-                },
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
+        body: ErrorView(
+          title: 'Authentication unavailable',
+          message: authState.error.message,
+          onRetry: () =>
+              ref.read(authControllerProvider.notifier).retryAuthentication(),
         ),
       );
     }

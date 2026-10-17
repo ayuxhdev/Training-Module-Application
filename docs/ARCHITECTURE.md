@@ -1125,6 +1125,125 @@ Typical statuses include:
 
 Unexpected server failures remain server errors and must not be disguised as successful responses.
 
+### M18 first batch: learner read recovery
+
+Assignment list/detail and Dashboard read providers depend on the active authenticated
+employee identity. Dio cancellation tokens are cancelled on provider disposal/rebuild;
+assignment pagination checks cancellation before continuing and never follows an
+external `next` URL. Obsolete responses do not become current learner data; consumers
+hide prior content during reload/recovery.
+
+Assignment reads disable Riverpod's implicit retry, matching the existing Dashboard
+policy. Explicit retries invalidate the read provider. Pull-refresh failures remain
+visible provider errors without a second unhandled future. No generic Dio retry,
+automatic JWT refresh or POST replay is added. M16 playback and M17 assessment
+reconciliation retain their unchanged mutation lifecycles.
+
+Learner entry screens use `ApiErrorView`: network/timeout messages offer explicit
+retry, 401/403 offer explicit existing logout/sign-in recovery, and permanent read
+failures offer no retry loop. Unexpected local exceptions show a generic message.
+The shared error panel has live-region semantics and a scrollable large-text/narrow
+landscape layout using the existing Light/Dark themes.
+
+Batch 1 added no notification channel, credential, offline queue or client-authoritative
+completion. The existing authenticated status endpoint is a connectivity check, not a
+full readiness service. Notification persistence/APIs were added in the batches below.
+
+### M18 in-app notifications (Batches 2A-2D)
+
+`notifications.Notification` stores the Employee owner, assignment, event type,
+server-derived text, timestamps and a deterministic unique key. ASSIGNED/COMPLETED
+events share the assignment/completion transaction; rollback removes the event.
+Batch 2D implements APPROACHING/OVERDUE generation through the same validated event
+insertion path, without changing assignment/completion event behavior.
+
+JWT-only APIs require `IsAuthenticated` and `IsActiveEmployee`:
+
+- `GET /api/v1/notifications/`: owned list, newest `created_at` then PK descending;
+  standard page-number pagination (20 default, 100 maximum).
+- `GET /api/v1/notifications/unread-count/`: `{"unread_count": n}`, without writes.
+- `POST /api/v1/notifications/<id>/read/`: returns the read-only notification fields;
+  foreign/missing IDs return 404. Fields are id, type, title, message, assignment_id,
+  created_at, is_read and read_at. Owner/internal deduplication fields are not exposed.
+- `POST /api/v1/notifications/read-all/`: `{"updated_count": n}`, current owner only.
+
+Read POSTs accept an empty payload only. A conditional owner/unread-filtered SQL
+update changes only `read_at`/`updated_at`, preserving the first timestamp under
+concurrent/repeated requests. The timestamp is clamped to creation time if the clock
+moves backwards. Generic validated-queryset updates remain prohibited; immutable
+event content and database checks remain in place. These read actions add no parent locks.
+
+Batch 2C subsequently added the Flutter Notification Center and Dashboard bell.
+The notification migration has been applied to authorized local development;
+automated backend validation still uses only the isolated MySQL test database.
+
+#### Deadline reminder command (Batch 2D)
+
+Run once with an explicitly selected rollout timestamp:
+
+```text
+python manage.py generate_training_notifications --activation-cutoff <FIXED_ACTIVATION_ISO8601>
+```
+
+The cutoff must be a timezone-aware ISO-8601 timestamp no later than server time.
+There is deliberately no implicit cutoff or automatic activation write. M20 must
+record it once as `NOTIFICATIONS_ACTIVATED_AT` in persistent deployment configuration
+and explicitly pass it as `--activation-cutoff` on every
+hourly invocation, and retain it across restarts/redeployments. Do not compute a
+fresh cutoff per run. Deadlines strictly before the cutoff are never backfilled;
+deadlines at/after activation remain eligible on subsequent runs.
+
+Candidates require an active Employee, an ASSIGNED/IN_PROGRESS assignment, a
+deadline, and its pinned PUBLISHED/RETIRED version. APPROACHING is `now < due_at <=
+now + 24 hours`; OVERDUE reuses `reports.queries.overdue_condition` (`due_at < now`).
+At exact equality no event is due until time advances. The service locks Employee,
+TrainingVersion, then Assignment and rechecks current deadline/state/activity under
+one per-assignment transaction before generating an event. Concurrent completion,
+cancellation, rescheduling and deactivation therefore cannot bypass the recheck.
+
+Database-unique assignment/type/canonical-UTC-deadline keys deduplicate repeated or
+concurrent runs. A changed deadline creates a distinct context; historical event
+text and ownership remain immutable. The shared insertion path handles only the
+expected uniqueness race and propagates unrelated validation/database errors.
+Rollback removes an uncommitted reminder. Transactions are per assignment: an error
+may leave earlier committed reminders intact; rerunning safely deduplicates them.
+No assignment, lesson progress, attempt,
+certificate or version is saved by the command. Messages contain only server-derived
+training title/version/deadline, never answers, scores, tokens or media links.
+
+No scheduler, retention cleanup, historical backfill or push/email/SMS integration
+is installed. Hourly scheduling and production activation are M20 dependencies.
+M18 implementation is complete and uncommitted; final acceptance/review is pending.
+
+#### M18 acceptance evidence and operational boundary
+
+The Flutter Notification Center and Dashboard bell are complete. Core populated
+Android QA verified all four types, read/count synchronization, first-read timestamp
+preservation, owned-assignment navigation, offline Retry and account switching.
+System Light/Dark contrast and singular/plural count copy are fixed; app-theme tests
+cover counts 0, 1 and 2, semantics and contrast. Latest separate checkpoints are
+**494/494 Django/MySQL** (Batch 2D) and **392/392 Flutter**, clean analyzer and successful
+debug APK (count-copy fix). These are historical run results, not simultaneous or
+documentation-task reruns.
+
+All five disposable notifications were removed; QA Assignment **95** remains
+cancelled with explicit retention authorization. Existing completion/progress,
+assessment and certificate history was preserved. The 2026-10-17 focused lifecycle
+pass verified background/resume, explicit offline recovery, post-resume logout/account
+switching, existing expired-session recovery and both system themes. A still-pending
+request at backgrounding and exact expiry occurring in the background were not
+established; no forced token/clock change or new fixture was used. `docs/TASKS.md`
+records the exact runtime outcomes and specialized live-QA limitations. Direct
+authenticated pagination/IDOR/repeated-mutation checks, inaccessible-assignment
+navigation and full TalkBack remain
+live verification limits, with existing automated coverage where applicable.
+
+Production rollout must persist one operator-selected activation cutoff and pass it
+unchanged to hourly reminder runs. Scheduling, monitoring and deployment health
+checks are M20 work. The existing authenticated status API proves connectivity;
+it does not claim database/storage readiness or production monitoring. No additional
+notification channel, automatic JWT refresh or offline mutation queue is implied.
+
 ---
 
 ## 35. Security Boundary
@@ -1282,9 +1401,9 @@ The testing strategy should favor meaningful coverage over indiscriminate test v
 
 ---
 
-## 41. Current Validation Baseline
+## 41. Historical M15 Validation Baseline
 
-The current project baseline includes:
+The historical M15 snapshot includes:
 
 - Django/MySQL full suite: 348 tests
 - Flutter suite: 81 tests
@@ -1311,19 +1430,19 @@ M0-M12  Core web/backend platform
 M13     Mobile API Foundation & Versioning
 M14     Flutter / Android Foundation
 M15     Employee App Core
+M16     Learning + Secure Video
+M17     Assessment + Certificates (afdadb4; pushed checkpoint)
 ```
 
-Next:
+Active:
 
 ```text
-M16     Learning + Secure Video
+M18     Notifications + Resilience (learner recovery and in-app notifications)
 ```
 
 Planned:
 
 ```text
-M17     Assessment + Certificates
-M18     Notifications + Resilience
 M19     Android Release Candidate
 M20     Production + Deployment Hardening
 M21     Final Bug Hunt + Security + Repository Review
@@ -1527,9 +1646,13 @@ The major foundations are in place:
 - audit architecture
 - CI validation across backend, Flutter, and playback JavaScript
 
-The current focus is final M17 review/validation before the Git checkpoint, preserving
-the completed playback architecture. Core Android flows passed; the revoked-certificate
-runtime case remains blocked pending a suitable fixture. M17 is not yet committed or released.
+M17 is complete at committed/pushed checkpoint `afdadb4`, with green CI confirmed by
+the user. Its previously blocked revoked-certificate runtime fixture remains a recorded
+QA limitation. M18 learner recovery, notification persistence/APIs, Flutter Notification
+Center and deadline generation are implemented. Core populated Android QA passed;
+consolidated review and recorded lifecycle/specialized live-QA limitations are
+the current checkpoint. Production reminder rollout/scheduling and operational
+configuration belong to M20. M18 is uncommitted; no push, CI or release is implied.
 
 The project should continue to favor incremental development over architectural replacement.
 

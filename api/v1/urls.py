@@ -4,6 +4,12 @@ from .views import APINotFoundView, APIStatusView
 from .auth_views import EmployeeLoginView, EmployeeRefreshView, EmployeeLogoutView, EmployeeMeView
 from .dashboard_views import EmployeeDashboardView
 from .certificate_views import CertificateDetailView, CertificateListView
+from .notification_views import (
+    NotificationListView,
+    NotificationReadAllView,
+    NotificationReadView,
+    NotificationUnreadCountView,
+)
 from .assessment_views import (
     AssessmentAttemptDetailView,
     AssessmentListView,
@@ -31,6 +37,10 @@ urlpatterns = [
     path("auth/logout/", EmployeeLogoutView.as_view(), name="auth-logout"),
     path("auth/me/", EmployeeMeView.as_view(), name="auth-me"),
     path("dashboard/", EmployeeDashboardView.as_view(), name="dashboard"),
+    path("notifications/", NotificationListView.as_view(), name="notification-list"),
+    path("notifications/unread-count/", NotificationUnreadCountView.as_view(), name="notification-unread-count"),
+    path("notifications/read-all/", NotificationReadAllView.as_view(), name="notification-read-all"),
+    path("notifications/<int:notification_id>/read/", NotificationReadView.as_view(), name="notification-read"),
     path("certificates/", CertificateListView.as_view(), name="certificate-list"),
     path("certificates/<int:certificate_id>/", CertificateDetailView.as_view(), name="certificate-detail"),
     path("assignments/", AssignmentListView.as_view(), name="assignment-list"),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
-import 'package:training_app/core/presentation/components/error_view.dart';
+import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/core/presentation/components/primary_button.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
@@ -35,6 +35,8 @@ class AssignmentDetailScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Assignment Detail')),
       body: detailAsync.when(
+        skipLoadingOnRefresh: false,
+        skipLoadingOnReload: false,
         data: (detail) {
           final dueDate = detail.dueAt;
           final formattedDate = dueDate != null
@@ -43,7 +45,9 @@ class AssignmentDetailScreen extends ConsumerWidget {
 
           return RefreshIndicator(
             onRefresh: () async {
-              return ref.refresh(assignmentDetailProvider(assignmentId).future);
+              await ref
+                  .refresh(assignmentDetailProvider(assignmentId).future)
+                  .then<void>((_) {}, onError: (Object _, StackTrace _) {});
             },
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -139,10 +143,9 @@ class AssignmentDetailScreen extends ConsumerWidget {
           );
         },
         loading: () => const LoadingView(),
-        error: (error, stackTrace) => ErrorView(
-          message: error.toString(),
-          onRetry: () =>
-              ref.refresh(assignmentDetailProvider(assignmentId).future),
+        error: (error, stackTrace) => ApiErrorView(
+          error: error,
+          onRetry: () => ref.invalidate(assignmentDetailProvider(assignmentId)),
         ),
       ),
     );

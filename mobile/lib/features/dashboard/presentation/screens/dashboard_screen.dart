@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
-import 'package:training_app/core/presentation/components/error_view.dart';
+import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
@@ -12,6 +11,8 @@ import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/dashboard/domain/models/dashboard_data.dart';
 import 'package:training_app/features/dashboard/presentation/controllers/dashboard_controller.dart';
+import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
+import 'package:training_app/features/notifications/presentation/widgets/notification_bell.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -26,13 +27,22 @@ class DashboardScreen extends ConsumerWidget {
     final dashboardAsync = ref.watch(dashboardDataProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard')),
+      appBar: AppBar(
+        title: const Text('Dashboard'),
+        actions: const [NotificationBell()],
+      ),
       body: RefreshIndicator(
-        onRefresh: () => ref.refresh(dashboardDataProvider.future),
+        onRefresh: () {
+          ref.invalidate(notificationUnreadCountProvider);
+          return ref
+              .refresh(dashboardDataProvider.future)
+              .then<void>((_) {}, onError: (Object _, StackTrace _) {});
+        },
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             dashboardAsync.when(
+              skipLoadingOnRefresh: false,
               skipLoadingOnReload: false,
               data: (data) =>
                   _buildDashboardContent(context, employeeName, data),
@@ -40,9 +50,9 @@ class DashboardScreen extends ConsumerWidget {
                 child: LoadingView(message: 'Loading dashboard...'),
               ),
               error: (error, stack) => SliverFillRemaining(
-                child: ErrorView(
-                  message: error is ApiError ? error.message : error.toString(),
-                  onRetry: () => ref.refresh(dashboardDataProvider),
+                child: ApiErrorView(
+                  error: error,
+                  onRetry: () => ref.invalidate(dashboardDataProvider),
                 ),
               ),
             ),

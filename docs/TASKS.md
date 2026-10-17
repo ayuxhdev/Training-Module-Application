@@ -17,7 +17,7 @@ The Excel roadmap may remain the management tracker, but it must not override th
 Current milestone:
 
 ```text
-M17 - Assessment + Certificates (implementation complete; final checkpoint pending)
+M18 - Notifications + Resilience (implementation complete; final acceptance/review)
 ```
 
 Completed milestones:
@@ -27,6 +27,7 @@ M0–M13 - Core Platform + Mobile API Foundation
 M14    - Flutter / Android Foundation
 M15    - Employee App Core
 M16    - Learning + Secure Video
+M17    - Assessment + Certificates (afdadb4; pushed/CI green per user confirmation)
 ```
 
 Current application state:
@@ -75,8 +76,8 @@ M13    - Mobile API Foundation & Versioning   COMPLETE
 M14    - Flutter / Android Foundation         COMPLETE
 M15    - Employee App Core                    COMPLETE
 M16    - Learning + Secure Video              COMPLETE
-M17    - Assessment + Certificates             IN PROGRESS
-M18    - Notifications + Resilience            PLANNED
+M17    - Assessment + Certificates             COMPLETE
+M18    - Notifications + Resilience            IMPLEMENTED; FINAL ACCEPTANCE/REVIEW
 M19    - Android Release Candidate             PLANNED
 M20    - Production + Deployment Hardening     PLANNED
 M21    - Final Bug Hunt + Security Review      PLANNED
@@ -546,7 +547,7 @@ Risk-based testing should include:
 Status:
 
 ```text
-IMPLEMENTED — final pre-commit checkpoint pending
+COMPLETE — committed at afdadb4; pushed/CI green per user confirmation
 ```
 
 ## Phase 1: secure mobile assessment API foundation
@@ -631,7 +632,7 @@ The backend remains authoritative for:
 Status:
 
 ```text
-PLANNED
+IMPLEMENTATION COMPLETE — final lifecycle acceptance and consolidated review
 ```
 
 ## Tasks
@@ -648,6 +649,172 @@ PLANNED
 - user-facing error handling
 
 M18 should improve reliability without introducing unnecessary architecture changes.
+
+## First batch and acceptance
+
+- Assignment/Dashboard reads depend on active employee identity and cancel obsolete
+  requests, including later pagination, on identity changes or provider disposal.
+- Assignment failures wait for explicit retry; POST/mutation retry behavior is unchanged.
+- Learning, assignment-detail and Dashboard show readable network/timeout recovery;
+  pull-refresh failures render without an unhandled future. 401/403 recovery uses an
+  explicit sign-out/sign-in action through the existing authentication controller.
+- Shared error panels announce status and scroll on small/landscape screens with
+  large text, preserving system themes and keyboard/touch controls.
+- Validate account/logout/race, cancellation, retry and UI regressions, full Flutter
+  suite and analyzer. Batch 1 Android recovery QA subsequently passed per user confirmation.
+
+## First-batch validation
+
+- Focused Flutter learning, Dashboard, networking, presentation and authentication
+  regressions: **190/190 passed**.
+- Complete Flutter suite: **337/337 passed**; analyzer: **clean**.
+- Debug APK: **built successfully**, without installation or emulator use.
+- Git whitespace checks: **passed**, including the new files.
+- No Django/backend changes or migrations; Django/MySQL tests and system/migration
+  checks were not rerun for this mobile/documentation batch. Earlier backend counts
+  remain historical evidence, not M18 rerun results.
+- Batch 1 Android QA subsequently passed per user confirmation; it was not rerun
+  during the notification API batch. M18 remains incomplete and uncommitted.
+
+## Notification Batches 2A/2B
+
+- Confirmed V1 scope: in-app ASSIGNED, APPROACHING, OVERDUE and COMPLETED events with
+  employee-specific read/unread state; no push, Firebase, SMS or email.
+- Batch 2A persists unique, server-derived assignment/completion events atomically;
+  full Django/MySQL validation: **458/458 passed** at that checkpoint.
+- Batch 2B implements GET list/unread-count and POST individual-read/read-all APIs
+  under `/api/v1/notifications/`. JWT and active Employee checks apply throughout;
+  owned querysets prevent IDOR and arbitrary employee filters. POST accepts no fields.
+- Repeated/concurrent reads preserve the first read timestamp. Mark-all uses one
+  scoped conditional update without relaxing generic model/queryset write guards.
+- The notification migration was subsequently applied to explicitly authorized local
+  development. Test migrations still run only on the isolated MySQL test database.
+
+### Batch 2B validation
+
+- Focused MySQL notification checks: **42/42 passed** (22 API tests and all 20
+  Batch 2A foundation regressions), including simultaneous read/read-all requests.
+- Complete Django/MySQL suite: **480/480 passed** at the Batch 2B checkpoint.
+- Django system check, migration drift check and scoped whitespace checks: **passed**.
+- No new migration; at the Batch 2B validation checkpoint,
+  `notifications.0001_initial` was unapplied to persistent development. It was
+  subsequently applied with explicit authorization. The isolated MySQL test database
+  was removed after validation.
+- Flutter/device tests were not rerun for this Django/API/documentation-only batch.
+  M18 remains in progress and uncommitted; CodeRabbit is reserved for its final checkpoint.
+
+## Batch 2C and Batch 2D
+
+- Batch 2C implements the Flutter Notification Center, Dashboard bell, pagination,
+  read actions, explicit recovery and account isolation. The subsequent live-theme
+  contrast fix passed **386/386 Flutter tests**, analyzer, debug APK build and actual
+  Light → Dark → Light emulator verification. These checks were not rerun in Batch 2D.
+- Batch 2D adds `generate_training_notifications --activation-cutoff <FIXED_ACTIVATION_ISO8601>`.
+  APPROACHING: future deadlines within the next 24 hours, including the upper boundary.
+  OVERDUE: strictly past deadlines, matching report semantics. Exact `due_at == now`
+  generates neither until time advances.
+- Only active Employees' open assignments with pinned published/retired versions
+  qualify. Per-assignment Employee → TrainingVersion → Assignment locks recheck
+  eligibility before validated insertion; no training/progress/scoring state is saved.
+- Unique assignment/type/UTC-deadline keys prevent duplicate events under repeat and
+  concurrent runs. New deadlines receive distinct keys; rollback removes the reminder.
+- Initial historical backfill is disabled. An operator must explicitly choose a
+  timezone-aware activation timestamp and persist it in deployment configuration.
+  Every hourly invocation must receive that same cutoff; do not reset it per run.
+  Deadlines before activation are excluded. Missing, naive, invalid or future cutoffs
+  fail before generation. No activation date is selected or persisted by this batch.
+- M20 owns production hourly scheduling and rollout configuration. No scheduled task,
+  background thread, Celery/Redis, retention cleanup, email/SMS or push is introduced.
+
+### Batch 2D validation
+
+- Notification/reminder/API regressions: **56/56 passed**, including actual concurrent
+  MySQL command execution and lock-order assertions.
+- Training/assessment regressions: **194/194 passed**; full Django/MySQL suite:
+  **494/494 passed**. These used isolated `test_gardens_training`, removed afterward;
+  fast password hashing was overridden only inside the test process, not app settings.
+- Django system check, migration drift and scoped whitespace checks: **passed**.
+- No new migration, live reminder invocation, scheduler or live notification fixture.
+  Flutter was not rerun for this backend/documentation-only batch. M18 stays open.
+
+## Final implementation and populated-QA checkpoint
+
+- Notification backend, APIs and Flutter UI are implemented for ASSIGNED,
+  APPROACHING, OVERDUE and COMPLETED, with employee-owned read/unread state.
+- Populated Android QA passed: bell/count synchronization, all four event types,
+  individual read and mark-all, first-read timestamp preservation, owned-assignment
+  navigation, pull-refresh, offline Retry, logout/account switching, Light/Dark Mode,
+  large text and portrait/landscape layouts. No crash/layout exception was observed.
+- Dark Mode heading contrast and notification singular/plural copy are fixed.
+  The copy fix added six 0/1/2-count app-theme/semantics cases and contrast coverage.
+- Latest Flutter checkpoint: focused notifications **55/55**, full suite **392/392**,
+  analyzer clean, debug APK successful and whitespace checks passed.
+- Latest backend checkpoint remains **494/494 Django/MySQL** from Batch 2D, with
+  system/migration checks passing then. The backend and Flutter checkpoints were
+  separate runs; neither full suite was rerun for this documentation/lifecycle task.
+- Disposable Notification IDs **1–5** were deleted. QA Assignment **95** was
+  cancelled and retained with explicit authorization because assignment history
+  cannot be deleted. Baseline checks verified existing assignments, Employees,
+  LessonProgress, VideoWatchSession, attempts and certificates unchanged. This final
+  acceptance task must not change Assignment 95 or other QA records.
+
+### Focused lifecycle QA — 2026-10-17 (Asia/Kolkata)
+
+Exclusive use of `emulator-5554` was explicitly authorized. The installed M18 debug
+APK reported `1.0.0` (build 1), last updated at 11:18:11 local time. It was used as
+installed, without rebuilding/reinstalling or changing source, authentication
+configuration or QA business records. The later count-copy build/test checkpoint
+above is separate; this lifecycle pass does not claim a device retest of that copy.
+
+| Scenario | Result | Runtime evidence / limit |
+|---|---|---|
+| Notification Center background/resume | PASS | Home then existing MainActivity resume retained a usable Notification Center. |
+| Background during an in-flight notification read | BLOCKED | Refresh was initiated, but emulator latency did not reliably expose a still-pending GET at backgrounding. No pending-request PASS is claimed. No disposable notification remained for a mark-read POST; no fixture was created. |
+| Disconnect while backgrounded, resume, explicit refresh | PASS | The resumed screen showed Connection unavailable with Retry. |
+| Restore connectivity and Retry | PASS | Notification list/unread-count GETs returned 200 and the current empty/zero state rendered. |
+| Logout/account switch after resume | PASS | `employee_test` logout returned 204; manual login as `qa_replay_web` loaded that learner's Profile and a fresh 0 unread / 0 notifications state. Both feeds are empty after cleanup; distinct populated-account isolation was verified in the earlier populated QA pass. |
+| Existing expired session after resume | PASS | Notification GETs returned 401; Sign in required and the explicit Sign in again action led to Login, followed by successful manual QA login. |
+| Exact expiry occurring while backgrounded | BLOCKED | The existing token was already expired. No token inspection, clock/authentication changes or forced expiry was used. |
+| Light/Dark appearance after resume | PASS | Readable empty/error states survived background/resume in both system themes. |
+| Crashes, unhandled errors or stale identity | PASS for observed scenarios | App-scoped error logs contained no matching Flutter exceptions, fatal crashes or RenderFlex overflows; the new learner identity replaced the prior Profile. |
+
+Screenshots and accessibility labels were captured outside Git, including
+`m18-lifecycle-light-resume.png`, `m18-lifecycle-refresh-resumed.png`,
+`m18-lifecycle-offline-dark.png`, `m18-lifecycle-retry-dark.png`,
+`m18-lifecycle-dark-resume.png`, `m18-lifecycle-switched-profile.png` and
+`m18-lifecycle-switched-notifications.png`.
+Emulator Wi-Fi/mobile data, zero network latency and Light Mode were restored.
+No existing QA assignment, notification, progress, attempt or certificate was changed;
+Assignment 95 remained untouched. Login/logout used only normal authentication flows.
+The blocked scenarios are verification limits, not reproducible defects.
+
+### Specialized live-QA limitations
+
+- Direct authenticated pagination, crafted-ID/IDOR and repeated-mutation requests
+  were not exercised in the live API credential session. Automated API regressions
+  cover these behaviors, including concurrent reads.
+- Inaccessible-assignment notification navigation lacked a safe live fixture;
+  the widget regression covers the controlled inaccessible state.
+- Full TalkBack interaction remains unverified; semantics, labels, contrast, large
+  text and responsive layouts have automated and sampled runtime evidence.
+- These are QA limitations, not confirmed defects or new feature requirements.
+
+## Decisions and remaining work
+
+The notification event types, in-app channel and read/unread API behavior are now
+confirmed and implemented, including Flutter screens and deadline generation. The
+approaching window is 24 hours, hourly execution is required, and initial historical
+backfill is disabled. Core disposable-fixture notification QA and the safely
+reproducible lifecycle checks are complete, with the explicit limits recorded above.
+The current checkpoint is consolidated review; no additional feature is required.
+The operator-selected activation cutoff and scheduler deployment belong to M20.
+Retention is not implemented. No automatic JWT refresh, persistent offline cache or
+offline completion is introduced.
+The authenticated `/api/v1/status/` is an API connectivity check, not a comprehensive
+infrastructure readiness probe. Production monitoring, deployment health checks,
+backups and secret configuration belong to M20; broad visual work remains M22.
+No further M18 feature requirement was identified by the acceptance audit. M18 is
+not committed, pushed or released; no M18 CI result is claimed.
 
 ---
 

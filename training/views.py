@@ -817,7 +817,7 @@ class RoleTrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMix
 				if employee.pk in existing_ids:
 					continue
 				try:
-					TrainingAssignment.objects.create(
+					assignment = TrainingAssignment.objects.create(
 						employee=employee,
 						training_version=requirement.training_version,
 						source=TrainingAssignment.Source.ROLE,
@@ -828,7 +828,6 @@ class RoleTrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMix
 						assigned_at=assigned_at,
 						due_at=due_at,
 					)
-					created += 1
 				except (IntegrityError, ValidationError):
 					if TrainingAssignment.objects.filter(
 						employee=employee, training_version=requirement.training_version,
@@ -836,6 +835,12 @@ class RoleTrainingAssignmentCreateView(LoginRequiredMixin, PermissionRequiredMix
 						existing_ids.add(employee.pk)
 					else:
 						raise
+				else:
+					from notifications.models import Notification
+					from notifications.services import create_assignment_notification
+
+					create_assignment_notification(assignment.pk, Notification.EventType.ASSIGNED)
+					created += 1
 			skipped = matching_employees.count() - created
 			if created:
 				record_event(

@@ -397,6 +397,8 @@ def assessment_overview(request, assignment_pk, assessment_pk):
 @transaction.atomic
 def _try_complete_assignment(assignment, actor=None):
 	from certifications.services import issue_completed_assignment_certificate
+	from notifications.models import Notification
+	from notifications.services import create_assignment_notification
 
 	assignment = TrainingAssignment.objects.select_for_update().get(pk=assignment.pk)
 	if assignment.status == TrainingAssignment.Status.COMPLETED:
@@ -420,6 +422,7 @@ def _try_complete_assignment(assignment, actor=None):
 			after={"status": assignment.status, "completed_at": assignment.completed_at.isoformat()},
 		)
 		issue_completed_assignment_certificate(assignment.pk, actor=actor)
+		create_assignment_notification(assignment.pk, Notification.EventType.COMPLETED)
 
 
 class AssessmentConflict(Exception):

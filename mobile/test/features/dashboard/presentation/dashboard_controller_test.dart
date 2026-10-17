@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -43,14 +45,19 @@ DashboardData dashboard(int count) => DashboardData(
 );
 
 void main() {
+  setUpAll(() => registerFallbackValue(CancelToken()));
   test('account switch ignores old in-flight dashboard and logout makes no request', () async {
     final repository = MockDashboardRepository();
     final oldResponse = Completer<DashboardData>();
     final newResponse = Completer<DashboardData>();
+    final tokens = <CancelToken>[];
     var calls = 0;
     when(
-      () => repository.getDashboardData(),
-    ).thenAnswer((_) => ++calls == 1 ? oldResponse.future : newResponse.future);
+      () => repository.getDashboardData(cancelToken: any(named: 'cancelToken')),
+    ).thenAnswer((call) {
+      tokens.add(call.namedArguments[#cancelToken] as CancelToken);
+      return ++calls == 1 ? oldResponse.future : newResponse.future;
+    });
     final auth = TestAuthController();
     final container = ProviderContainer(
       overrides: [
@@ -67,6 +74,7 @@ void main() {
     auth.setAuth(AuthAuthenticated(employee('B')));
     await Future<void>.delayed(Duration.zero);
     oldResponse.complete(dashboard(99));
+    expect(tokens.first.isCancelled, isTrue);
     await Future<void>.delayed(Duration.zero);
     expect(container.read(dashboardDataProvider).isLoading, isTrue);
     newResponse.complete(dashboard(2));
@@ -79,6 +87,25 @@ void main() {
       container.read(dashboardDataProvider.future),
       throwsA(isA<Exception>()),
     );
-    verify(() => repository.getDashboardData()).called(2);
+    expect(tokens.last.isCancelled, isTrue);
+    auth.setAuth(
+      AuthAuthenticated(
+        Employee(
+          username: 'inactive',
+          employeeCode: 'inactive',
+          displayName: 'Inactive',
+          department: 'QA',
+          jobRole: 'Learner',
+          isActive: false,
+        ),
+      ),
+    );
+    await expectLater(
+      container.read(dashboardDataProvider.future),
+      throwsA(isA<Exception>()),
+    );
+    verify(
+      () => repository.getDashboardData(cancelToken: any(named: 'cancelToken')),
+    ).called(2);
   });
 }

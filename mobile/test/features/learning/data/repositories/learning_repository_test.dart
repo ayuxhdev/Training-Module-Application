@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:dio/dio.dart';
@@ -24,6 +26,55 @@ void main() {
   });
 
   group('LearningRepository', () {
+    test(
+      'cancelled pagination never fetches another page or returns partial data',
+      () async {
+        final token = CancelToken();
+        final firstPage = Completer<Response<dynamic>>();
+        when(() => mockDio.get('/assignments/', cancelToken: token))
+            .thenAnswer((_) => firstPage.future);
+        final request = repository.getAssignments(cancelToken: token);
+        token.cancel();
+        firstPage.complete(
+          Response(
+            requestOptions: RequestOptions(path: '/assignments/'),
+            data: {
+              'next': '/assignments/?page=2',
+              'results': [
+                {'id': 1},
+              ],
+            },
+          ),
+        );
+        await expectLater(request, throwsA(isA<ApiError>()));
+        verifyNever(
+          () => mockDio.get(
+            '/assignments/',
+            queryParameters: {'page': 2},
+            cancelToken: token,
+          ),
+        );
+      },
+    );
+
+    test(
+      'cancelled assignment detail is not parsed as a successful read',
+      () async {
+        final token = CancelToken();
+        when(() => mockDio.get('/assignments/1/', cancelToken: token))
+            .thenAnswer((_) async {
+              token.cancel();
+              return Response(
+                requestOptions: RequestOptions(path: '/assignments/1/'),
+                data: {'id': 1},
+              );
+            });
+        await expectLater(
+          repository.getAssignmentDetail(1, cancelToken: token),
+          throwsA(isA<ApiError>()),
+        );
+      },
+    );
     test('getAssignments returns a list of Assignments on success', () async {
       final mockData = [
         {

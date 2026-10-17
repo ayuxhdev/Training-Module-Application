@@ -2,12 +2,16 @@
 
 ## Current Status
 
-The Garden’s Need Training Module Application has completed **M16: Learning + Secure Video**.
+The Garden’s Need Training Module Application has completed **M17: Assessment + Certificates**
+at commit `afdadb4`; the user confirmed the pushed checkpoint and green CI.
 
 The current milestone is:
 
-**M17: Assessment + Certificates** — APIs, Flutter integration and core Android QA
-complete; final pre-commit checkpoint pending.
+**M18: Notifications + Resilience** — implementation complete: account-scoped learner
+recovery, in-app notification events/APIs, Flutter Notification Center and deadline
+generation. Focused lifecycle QA is recorded with explicit verification limits;
+consolidated review is the current checkpoint;
+production rollout and operations remain M20 responsibilities. M18 is uncommitted.
 
 The project follows an Android-first development strategy:
 
@@ -26,8 +30,8 @@ iOS is intentionally outside the current Android V1 completion target. It will b
 | M14 | Flutter / Android Foundation | Complete | Flutter Android application foundation completed, including project structure, API/client architecture, secure authentication/session handling, navigation, application shell, reusable UI foundation, dashboard, profile, environment configuration, and Android build integration. |
 | M15 | Employee App Core | Complete | Employee dashboard/profile integration, assignments, assignment detail, curriculum navigation, lesson navigation, text lesson completion, learning progress, previous/next navigation, and end-to-end learning-flow integration completed. |
 | M16 | Learning + Secure Video | Complete | Protected tracked playback and completed-assignment read-only replay, server-authoritative progress, lifecycle recovery, protected media and Android screen-capture protection implemented and runtime-verified. |
-| M17 | Assessment + Certificates | In Progress | Assessment/eligibility and certificate list/detail APIs, Flutter data/state/screens, navigation and system Light/Dark themes implemented. Core Android QA passed; revoked-certificate runtime QA blocked by missing fixture. Final pre-commit checkpoint pending. |
-| M18 | Notifications + Resilience | Planned | Notifications, authentication/session resilience, network recovery, lifecycle reliability, operational observability, and production-oriented reliability. |
+| M17 | Assessment + Certificates | Complete | Assessment/certificate APIs, Flutter data/state/screens, navigation and system themes completed and pushed at `afdadb4`; CI green per user confirmation. The missing revoked-certificate runtime fixture remains a recorded QA limitation. |
+| M18 | Notifications + Resilience | Implementation complete; final acceptance/review | Learner recovery, all four in-app notification events, employee-owned APIs, Flutter Notification Center and deadline reminders implemented. Core populated Android QA passed; specialized live-QA limitations remain recorded. Production rollout/scheduling belongs to M20. Uncommitted. |
 | M19 | Android Release Candidate | Planned | Feature freeze and comprehensive security, architecture, data, playback, performance, device, UX, and regression validation, followed by pilot testing and release preparation. |
 | M20 | Production + Deployment Hardening | Planned | Production deployment readiness, infrastructure/configuration hardening, secrets/environment management, backups, monitoring, rollback procedures, release automation, and operational readiness. |
 | M21 | Final Bug Hunt + Security + Repository Review | Planned | Final cross-system defect hunt, security review, permission/IDOR review, dependency review, repository hygiene, documentation verification, and release-blocker elimination. |
@@ -131,7 +135,8 @@ Authoritative completion remains server-controlled.
 ## Phase 1: secure mobile assessment API foundation
 
 The assessment API foundation and subsequent certificate/Flutter integration are
-implemented. Final pre-commit review and validation remain the current checkpoint.
+implemented and committed at `afdadb4`. The earlier validation checkpoints below
+are retained as historical records.
 
 Employee-scoped overview, start/resume, attempt detail and submission endpoints reuse
 the authoritative website operations. Passing prevents new attempts for the same
@@ -203,6 +208,91 @@ Certificate revocation must not modify the historical training version.
 - Health checks
 - Error visibility
 - Production-readiness improvements
+
+## First batch: learner read isolation and recovery
+
+At the start of Batch 1, notification events and channels were unspecified and no
+notification infrastructure existed. Batch 1 introduced no notification delivery
+or offline completion. The confirmed in-app scope and subsequent batches are below.
+
+This batch uses existing Flutter repositories, providers and authentication to:
+
+- Scope assignment/Dashboard reads to the active authenticated employee and cancel
+  obsolete requests, including pagination, on identity changes or provider disposal.
+- Keep old responses/content out of the current learner's UI.
+- Disable implicit assignment-read retries and offer explicit read recovery.
+- Route explicit 401/403 recovery through existing logout/sign-in, without automatic
+  JWT refresh or automatic replay of state-changing requests.
+- Provide network/timeout messages, accessible announcements and scrollable error
+  layouts for large text/small screens in both system themes.
+
+Batch acceptance requires account/race/cancellation negative tests, explicit-retry
+and refresh-failure tests, responsive accessibility checks, the full Flutter suite
+and analyzer. The user subsequently confirmed Batch 1 Android QA passed; it was not
+rerun during the notification API batch.
+
+## Batches 2A-2D: in-app notifications
+
+V1 is in-app only: ASSIGNED, APPROACHING, OVERDUE and COMPLETED, with employee-owned
+read/unread state. No push, Firebase, SMS, email or external delivery service is added.
+
+Batch 2A adds notification persistence and deterministic database-unique event keys.
+Manual/role assignment and successful completion create notifications in their
+business transactions. Its full Django/MySQL validation passed **458/458**.
+
+Batch 2B adds JWT/active-employee APIs under `/api/v1/notifications/`: paginated GET
+list, GET `unread-count/`, POST `<id>/read/` and POST `read-all/`. Queries use only
+the authenticated employee; foreign IDs return 404. POST actions accept no fields.
+Read metadata changes use an owner-scoped conditional SQL update, preserving the
+first read timestamp and immutable event content. GET/HEAD perform no writes.
+
+The Batch 2A migration was subsequently applied to the explicitly authorized local
+development database. Batch 2C added the Flutter Notification Center and Dashboard
+bell, including account isolation and actual system Light/Dark themes. Its latest
+Flutter validation passed **386/386** after the contrast fix; this is historical
+evidence and is not a Flutter rerun during Batch 2D.
+
+Batch 2D adds `generate_training_notifications`: APPROACHING means strictly future
+and within 24 hours (inclusive); OVERDUE uses the existing strict `due_at < now`
+report semantics. Active Employees with open assignments pinned to published or
+retired versions qualify. Completed/cancelled assignments and missing deadlines do not.
+Per-assignment atomic Employee → TrainingVersion → Assignment locking rechecks
+eligibility before validated insertion. Unique keys include assignment, type and
+canonical UTC deadline; changed deadlines form new contexts.
+
+Initial rollout requires an explicit, fixed, timezone-aware `--activation-cutoff`.
+Deadlines before it are excluded, preventing historical overdue backfill. M20 must
+persist the operator-selected activation timestamp in deployment configuration and
+supply that same value to hourly invocations; never replace it with each run's time.
+No cutoff date, scheduler, background thread, retention cleanup or backfill is
+installed here. These deployment dependencies do not add M18 feature requirements.
+M18 implementation is complete and uncommitted; final acceptance/review is pending.
+
+## Final implementation and acceptance checkpoint
+
+All four notification types, employee-owned APIs, read/unread state, Flutter screens
+and reminder generation are implemented. Core populated Android QA passed, including
+read/count synchronization, owned-assignment navigation, offline Retry, account
+switching, system themes and large-text portrait/landscape layouts. The Dark Mode
+heading contrast and singular/plural count defects are fixed.
+
+Latest separate validation checkpoints: Django/MySQL **494/494** (Batch 2D);
+Flutter **392/392**, focused notification tests **55/55**, analyzer clean and debug
+APK successful (final count-copy fix). These were not rerun together or during the
+documentation/lifecycle acceptance task. Historical batch counts above remain valid.
+
+The five disposable notifications were deleted after populated QA. Assignment **95**
+was cancelled and retained with explicit authorization; existing learner history was
+preserved. Focused lifecycle checks on 2026-10-17 passed background/resume, offline
+recovery, logout/account switching, expired-session recovery and system themes.
+In-flight-request timing and expiry occurring specifically while backgrounded could
+not be safely established. See `docs/TASKS.md` for exact outcomes and remaining
+live-QA limitations. They are verification limits, not confirmed implementation defects.
+
+The production objectives below overlap M20. This batch performs no deployment,
+backup, secret, monitoring-service or infrastructure configuration. M19 retains
+release-candidate/device/pilot gates; M21 retains the comprehensive final audit;
+M22 retains broad visual redesign and readability refactoring.
 
 Production-oriented work should include:
 
@@ -508,13 +598,13 @@ Project-agent instructions, coding-agent workflow, model preferences, tool-speci
 
 # Current Next Step
 
-**M17: Assessment + Certificates**
+**M18: Notifications + Resilience**
 
-Resolve final review findings and complete the M17 pre-commit checkpoint for the
-implemented assessment/certificate APIs and Flutter experience. Retain the blocked
-revoked-certificate Android case for a suitable isolated QA fixture. Preserve M16
-playback and the authoritative scoring, prerequisites, completion and issuance rules.
-No commit, merge or release is implied by this implementation status.
+Prepare the consolidated M18 review. Safely reproducible lifecycle checks and core
+populated-notification QA are complete; preserve the specialized live-QA limitations
+recorded in `docs/TASKS.md`. M20 owns the fixed activation cutoff, hourly reminder
+scheduling, monitoring and deployment health checks. Preserve M16/M17 security rules.
+M18 implementation is complete but uncommitted; no push, CI or release is implied.
 
 ---
 

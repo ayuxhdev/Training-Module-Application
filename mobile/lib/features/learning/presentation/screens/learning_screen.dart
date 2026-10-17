@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
-import 'package:training_app/core/presentation/components/error_view.dart';
+import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
@@ -18,21 +18,26 @@ class LearningScreen extends ConsumerWidget {
     final assignmentsAsync = ref.watch(assignmentListProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Learning'),
-      ),
+      appBar: AppBar(title: const Text('Learning')),
       body: assignmentsAsync.when(
+        skipLoadingOnRefresh: false,
+        skipLoadingOnReload: false,
         data: (assignments) {
           return RefreshIndicator(
             onRefresh: () async {
-              return ref.refresh(assignmentListProvider.future);
+              // The provider renders refresh errors; don't leak a second async error.
+              await ref
+                  .refresh(assignmentListProvider.future)
+                  .then<void>((_) {}, onError: (Object _, StackTrace _) {});
             },
             child: assignments.isEmpty
                 ? CustomScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     slivers: [
                       SliverFillRemaining(
-                        child: const EmptyView(message: 'No assignments found.'),
+                        child: const EmptyView(
+                          message: 'No assignments found.',
+                        ),
                       ),
                     ],
                   )
@@ -49,9 +54,9 @@ class LearningScreen extends ConsumerWidget {
           );
         },
         loading: () => const LoadingView(),
-        error: (error, stackTrace) => ErrorView(
-          message: error.toString(),
-          onRetry: () => ref.refresh(assignmentListProvider.future),
+        error: (error, stackTrace) => ApiErrorView(
+          error: error,
+          onRetry: () => ref.invalidate(assignmentListProvider),
         ),
       ),
     );

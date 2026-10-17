@@ -1,8 +1,11 @@
 from datetime import datetime, time
 
 from django import forms
+from django.db import transaction
 from django.utils import timezone
 
+from notifications.models import Notification
+from notifications.services import create_assignment_notification
 from .models import Lesson, Module, RoleTrainingRequirement, Training, TrainingAssignment, TrainingVersion
 from organization.models import Employee, JobRole
 
@@ -133,7 +136,11 @@ class TrainingAssignmentForm(forms.ModelForm):
                 datetime.combine(self.cleaned_data["due_date"], time.max)
             )
         if commit:
-            assignment.save()
+            with transaction.atomic():
+                creating = assignment._state.adding
+                assignment.save()
+                if creating:
+                    create_assignment_notification(assignment.pk, Notification.EventType.ASSIGNED)
         return assignment
 
 

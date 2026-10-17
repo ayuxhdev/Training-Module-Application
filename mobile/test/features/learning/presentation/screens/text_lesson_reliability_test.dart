@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +13,23 @@ import 'package:training_app/features/learning/domain/models/assignment.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 import 'package:training_app/features/learning/presentation/screens/text_lesson_screen.dart';
+import 'package:training_app/features/auth/domain/models/auth_state.dart';
+import 'package:training_app/features/auth/domain/models/employee.dart';
+import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
+
+class _Learner extends AuthController {
+  @override
+  AuthState build() => AuthAuthenticated(
+    Employee(
+      username: 'QA',
+      employeeCode: 'QA',
+      displayName: 'QA',
+      department: 'QA',
+      jobRole: 'Learner',
+      isActive: true,
+    ),
+  );
+}
 
 LessonProgress progress(bool completed) => LessonProgress(
   resumePosition: 0,
@@ -39,7 +58,10 @@ class CompletionRepository implements LearningRepository {
   }
 
   @override
-  Future<AssignmentDetail> getAssignmentDetail(int assignmentId) async {
+  Future<AssignmentDetail> getAssignmentDetail(
+    int assignmentId, {
+    CancelToken? cancelToken,
+  }) async {
     detailFetches++;
     if (detailFetches > 1 && refreshGate != null) await refreshGate!.future;
     return AssignmentDetail(
@@ -73,7 +95,7 @@ class CompletionRepository implements LearningRepository {
   }
 
   @override
-  Future<List<Assignment>> getAssignments() async {
+  Future<List<Assignment>> getAssignments({CancelToken? cancelToken}) async {
     listFetches++;
     return [
       Assignment(
@@ -105,7 +127,10 @@ void main() {
     repository.responses[10] = Completer<LessonProgress>();
     repository.responses[11] = Completer<LessonProgress>();
     container = ProviderContainer(
-      overrides: [learningRepositoryProvider.overrideWithValue(repository)],
+      overrides: [
+        learningRepositoryProvider.overrideWithValue(repository),
+        authControllerProvider.overrideWith(_Learner.new),
+      ],
     );
     container.listen(assignmentDetailProvider(1), (_, _) {});
     container.listen(assignmentListProvider, (_, _) {});

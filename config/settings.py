@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'accounts.apps.AccountsConfig',
     'organization.apps.OrganizationConfig',
     'training.apps.TrainingConfig',
+    'notifications.apps.NotificationsConfig',
     'assessments.apps.AssessmentsConfig',
     'certifications.apps.CertificationsConfig',
     'reports.apps.ReportsConfig',
