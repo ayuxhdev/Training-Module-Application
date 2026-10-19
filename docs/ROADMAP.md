@@ -2,16 +2,16 @@
 
 ## Current Status
 
-The Garden’s Need Training Module Application has completed **M17: Assessment + Certificates**
-at commit `afdadb4`; the user confirmed the pushed checkpoint and green CI.
+M0-M18 are complete, committed and pushed. M18 checkpoint **88a4cda** has green
+CI per user confirmation; historical validation remains recorded below.
 
-The current milestone is:
+The current milestone is **M19: Android Release Candidate - IN PROGRESS**.
+The core integration journey passed; final release acceptance remains open.
+Current Flutter fixes and this checkpoint remain uncommitted.
 
-**M18: Notifications + Resilience** — implementation complete: account-scoped learner
-recovery, in-app notification events/APIs, Flutter Notification Center and deadline
-generation. Focused lifecycle QA is recorded with explicit verification limits;
-consolidated review is the current checkpoint;
-production rollout and operations remain M20 responsibilities. M18 is uncommitted.
+**Agreed sequencing adjustment:** bring M22 design forward after this M19
+checkpoint, then resume final M19 QA. The milestone list retains scope ownership;
+neither M19 nor M22 is complete. M20/M21/M23 obligations remain unchanged.
 
 The project follows an Android-first development strategy:
 
@@ -31,8 +31,8 @@ iOS is intentionally outside the current Android V1 completion target. It will b
 | M15 | Employee App Core | Complete | Employee dashboard/profile integration, assignments, assignment detail, curriculum navigation, lesson navigation, text lesson completion, learning progress, previous/next navigation, and end-to-end learning-flow integration completed. |
 | M16 | Learning + Secure Video | Complete | Protected tracked playback and completed-assignment read-only replay, server-authoritative progress, lifecycle recovery, protected media and Android screen-capture protection implemented and runtime-verified. |
 | M17 | Assessment + Certificates | Complete | Assessment/certificate APIs, Flutter data/state/screens, navigation and system themes completed and pushed at `afdadb4`; CI green per user confirmation. The missing revoked-certificate runtime fixture remains a recorded QA limitation. |
-| M18 | Notifications + Resilience | Implementation complete; final acceptance/review | Learner recovery, all four in-app notification events, employee-owned APIs, Flutter Notification Center and deadline reminders implemented. Core populated Android QA passed; specialized live-QA limitations remain recorded. Production rollout/scheduling belongs to M20. Uncommitted. |
-| M19 | Android Release Candidate | Planned | Feature freeze and comprehensive security, architecture, data, playback, performance, device, UX, and regression validation, followed by pilot testing and release preparation. |
+| M18 | Notifications + Resilience | Complete | Learner recovery, all four in-app notification events, employee-owned APIs, Flutter Notification Center and deadline reminders implemented. Core populated Android QA passed; specialized live-QA limitations remain recorded. Production rollout/scheduling belongs to M20. Committed/pushed at `88a4cda`; CI green per user confirmation. |
+| M19 | Android Release Candidate | In progress | Feature freeze and comprehensive security, architecture, data, playback, performance, device, UX, and regression validation, followed by pilot testing and release preparation. |
 | M20 | Production + Deployment Hardening | Planned | Production deployment readiness, infrastructure/configuration hardening, secrets/environment management, backups, monitoring, rollback procedures, release automation, and operational readiness. |
 | M21 | Final Bug Hunt + Security + Repository Review | Planned | Final cross-system defect hunt, security review, permission/IDOR review, dependency review, repository hygiene, documentation verification, and release-blocker elimination. |
 | M22 | Final Readability + Refactor + Garden’s Need Visual Polish | Planned | Targeted maintainability improvements, removal of unnecessary technical debt, final UI/UX refinement, animation, interaction polish, accessibility refinement, and Garden’s Need visual identity integration. |
@@ -310,6 +310,38 @@ Production-oriented work should include:
 
 M19 is the primary release-hardening milestone.
 
+## Phase 2B integration checkpoint - 2026-10-19
+
+The core cross-system journey passed. Assignment **96** was created through the
+Django web portal for `qa_employee`, pinned to published TrainingVersion **3**.
+Android completed TEXT Lesson **7** and VIDEO Lesson **8**; server-confirmed unique
+video coverage is **55.350/69 seconds (80.217%)**, meeting the 80% threshold.
+
+Assessment **2** passed on Attempt **39** (**1/1, 100%**), after failed Attempts
+**37** and **38**. All three permitted attempts are consumed. Assignment 96 is
+**COMPLETED**, with exactly one Certificate **36**, ASSIGNED Notification **6**
+and COMPLETED Notification **7**. No duplicate certificate or notification events
+were found.
+
+Flutter fixes address premature pause during buffering, observation scheduling
+across interrupted playback, and stale initialization closing newer sessions.
+Latest validation: **418/418 Flutter tests passed**, analyzer clean and fresh debug
+APK built; Android runtime completion subsequently verified. Earlier full baseline:
+Django/MySQL **497/497**, Flutter **408/408**, JavaScript **33 passed, 1 optional
+browser test skipped**. These are separate checkpoints; Django/JavaScript were not
+rerun for this documentation update. Historical results remain valid as recorded.
+
+**Unresolved performance issue:** frequent Android emulator video buffering.
+Final physical-device, performance, accessibility and release-candidate checks
+remain pending. M19 stays **IN PROGRESS**; the core journey does not satisfy every
+release gate. Current Flutter fixes and this checkpoint remain uncommitted; no new
+CI result is claimed.
+
+**Agreed revised sequence:** bring M22 design forward after this M19 checkpoint,
+then resume final M19 QA against the resulting application. Neither milestone is
+complete. This does not authorize unrelated refactoring or remove M20/M21/M23
+obligations.
+
 ## Required Activities
 
 - Feature freeze
@@ -440,7 +472,9 @@ Avoid broad refactors that introduce unnecessary regression risk.
 
 # M22: Final Readability + Refactor + Garden’s Need Visual Polish
 
-M22 is the deliberate final product-polish phase.
+M22 is the deliberate final product-polish phase. By user agreement, bring its
+design work forward after the M19 Phase 2B checkpoint, then resume final M19 QA.
+This sequencing change does not mark M22 complete.
 
 The purpose is not to redesign the application's architecture.
 

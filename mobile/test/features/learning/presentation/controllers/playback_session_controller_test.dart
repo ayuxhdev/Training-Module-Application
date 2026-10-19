@@ -413,6 +413,75 @@ void main() {
     },
   );
 
+  test(
+    'observation deadline resets only after an accepted server response',
+    () async {
+      final scheduled =
+          <({Duration delay, Timer timer, void Function() fire})>[];
+      await runZoned(
+        () async {
+          await controller.start();
+          expect(scheduled, hasLength(2));
+          expect(
+            scheduled.first.delay,
+            lessThanOrEqualTo(const Duration(seconds: 10)),
+          );
+          scheduled.first.fire();
+          expect(container.read(provider).observationDue, isTrue);
+
+          final response = Completer<LessonProgress>();
+          when(
+            () => repository.submitPlaybackHeartbeat(
+              1,
+              2,
+              7,
+              1,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenAnswer((_) => response.future);
+          final request = controller.heartbeat(1);
+          await Future<void>.value();
+          expect(container.read(provider).observationDue, isTrue);
+          expect(scheduled, hasLength(2));
+          expect(container.read(provider).progress!.watchedSeconds, 0);
+          response.complete(progress());
+          await request;
+          expect(container.read(provider).observationDue, isFalse);
+          expect(container.read(provider).lastObservationPosition, 1);
+          expect(container.read(provider).progress!.watchedSeconds, 0);
+          expect(scheduled, hasLength(4));
+          expect(
+            scheduled.take(2).every((entry) => !entry.timer.isActive),
+            isTrue,
+          );
+          expect(
+            scheduled[2].delay,
+            lessThanOrEqualTo(const Duration(seconds: 10)),
+          );
+          expect(
+            scheduled[3].delay,
+            lessThanOrEqualTo(const Duration(seconds: 30)),
+          );
+          scheduled[2].fire();
+          expect(container.read(provider).observationDue, isTrue);
+          await controller.close();
+          expect(scheduled.every((entry) => !entry.timer.isActive), isTrue);
+        },
+        zoneSpecification: ZoneSpecification(
+          createTimer: (self, parent, zone, delay, callback) {
+            final timer = parent.createTimer(
+              zone,
+              const Duration(days: 1),
+              () {},
+            );
+            scheduled.add((delay: delay, timer: timer, fire: callback));
+            return timer;
+          },
+        ),
+      );
+    },
+  );
+
   test('idle expiry closes conservatively without adding coverage', () async {
     late void Function() expire;
     late Duration delay;

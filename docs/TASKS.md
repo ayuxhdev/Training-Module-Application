@@ -17,7 +17,7 @@ The Excel roadmap may remain the management tracker, but it must not override th
 Current milestone:
 
 ```text
-M18 - Notifications + Resilience (implementation complete; final acceptance/review)
+M19 - Android Release Candidate (IN PROGRESS; core integration checkpoint passed)
 ```
 
 Completed milestones:
@@ -28,6 +28,7 @@ M14    - Flutter / Android Foundation
 M15    - Employee App Core
 M16    - Learning + Secure Video
 M17    - Assessment + Certificates (afdadb4; pushed/CI green per user confirmation)
+M18    - Notifications + Resilience (88a4cda; pushed/CI green per user confirmation)
 ```
 
 Current application state:
@@ -77,8 +78,8 @@ M14    - Flutter / Android Foundation         COMPLETE
 M15    - Employee App Core                    COMPLETE
 M16    - Learning + Secure Video              COMPLETE
 M17    - Assessment + Certificates             COMPLETE
-M18    - Notifications + Resilience            IMPLEMENTED; FINAL ACCEPTANCE/REVIEW
-M19    - Android Release Candidate             PLANNED
+M18    - Notifications + Resilience            COMPLETE
+M19    - Android Release Candidate             IN PROGRESS
 M20    - Production + Deployment Hardening     PLANNED
 M21    - Final Bug Hunt + Security Review      PLANNED
 M22    - Readability + Refactor + Visual Polish PLANNED
@@ -823,8 +824,40 @@ not committed, pushed or released; no M18 CI result is claimed.
 Status:
 
 ```text
-PLANNED
+IN PROGRESS
 ```
+
+## Phase 2B integration checkpoint - 2026-10-19
+
+The core cross-system journey passed. Assignment **96** was created through the
+Django web portal for `qa_employee`, pinned to published TrainingVersion **3**.
+Android completed TEXT Lesson **7** and VIDEO Lesson **8**; server-confirmed unique
+video coverage is **55.350/69 seconds (80.217%)**, meeting the 80% threshold.
+
+Assessment **2** passed on Attempt **39** (**1/1, 100%**), after failed Attempts
+**37** and **38**. All three permitted attempts are consumed. Assignment 96 is
+**COMPLETED**, with exactly one Certificate **36**, ASSIGNED Notification **6**
+and COMPLETED Notification **7**. No duplicate certificate or notification events
+were found.
+
+Flutter fixes address premature pause during buffering, observation scheduling
+across interrupted playback, and stale initialization closing newer sessions.
+Latest validation: **418/418 Flutter tests passed**, analyzer clean and fresh debug
+APK built; Android runtime completion subsequently verified. Earlier full baseline:
+Django/MySQL **497/497**, Flutter **408/408**, JavaScript **33 passed, 1 optional
+browser test skipped**. These are separate checkpoints; Django/JavaScript were not
+rerun for this documentation update. Historical results remain valid as recorded.
+
+**Unresolved performance issue:** frequent Android emulator video buffering.
+Final physical-device, performance, accessibility and release-candidate checks
+remain pending. M19 stays **IN PROGRESS**; the core journey does not satisfy every
+release gate. Current Flutter fixes and this checkpoint remain uncommitted; no new
+CI result is claimed.
+
+**Agreed revised sequence:** bring M22 design forward after this M19 checkpoint,
+then resume final M19 QA against the resulting application. Neither milestone is
+complete. This does not authorize unrelated refactoring or remove M20/M21/M23
+obligations.
 
 ## Tasks
 
@@ -944,6 +977,9 @@ Only genuine defects or justified maintainability problems should be fixed.
 ---
 
 # 14. M22 - Readability + Refactor + Garden's Need Visual Polish
+
+By user agreement, bring M22 design forward after the M19 Phase 2B checkpoint,
+then resume final M19 QA. M22 remains planned, not complete.
 
 Status:
 

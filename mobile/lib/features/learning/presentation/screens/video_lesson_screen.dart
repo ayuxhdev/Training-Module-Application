@@ -47,7 +47,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   static const _window = MethodChannel('gardensneed/protected_video');
   VideoPlayerController? _video;
   PlaybackSessionController? _session;
-  Timer? _heartbeat, _fade, _warningExpiry;
+  Timer? _fade, _warningExpiry;
   int _generation = 0;
   int? _windowLease;
   Future<void>? _windowReady;
@@ -57,6 +57,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   double _origin = 0;
   bool _accountChanged = false;
   bool _readOnlyReplay = false;
+  bool _recoveringFromBuffering = false;
   String? _message;
 
   PlaybackLesson get _lesson =>
@@ -161,8 +162,6 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   }
 
   void _cancelTimers() {
-    _heartbeat?.cancel();
-    _heartbeat = null;
     _fade?.cancel();
   }
 
@@ -201,6 +200,13 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
       }
       return; // Read-only media never starts a heartbeat or writes watch credit.
     }
+    // Native buffering-end and playing updates arrive separately. Wait for
+    // playback to resume before interpreting a stopped value as a native pause.
+    if (value.isBuffering) {
+      _recoveringFromBuffering = true;
+    } else if (value.isPlaying) {
+      _recoveringFromBuffering = false;
+    }
     if (value.isPlaying &&
         (!_foreground ||
             ref.read(playbackSessionProvider(_lesson)).phase !=
@@ -217,25 +223,18 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
       unawaited(_pause(ended: true));
     } else if (!value.isPlaying &&
         !value.isBuffering &&
+        !_recoveringFromBuffering &&
         !_busy &&
         ref.read(playbackSessionProvider(_lesson)).phase ==
             PlaybackPhase.active) {
       unawaited(_pause()); // Includes native/audio-focus pauses.
     }
-    // Buffering never counts as playing and never generates keep-alive credit.
-    if (value.isPlaying && !value.isBuffering && _foreground && !_busy) {
-      _heartbeat ??= Timer.periodic(
-        const Duration(seconds: 10),
-        (_) => _observe(),
-      );
-    } else {
-      _heartbeat?.cancel();
-      _heartbeat = null;
-    }
+    unawaited(_observe());
   }
 
   Future<void> _observe() async {
-    if (_readOnlyReplay ||
+    if (!mounted ||
+        _readOnlyReplay ||
         _observing ||
         _busy ||
         !_foreground ||
@@ -243,9 +242,18 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
         _video?.value.isBuffering == true) {
       return;
     }
+    final state = ref.read(playbackSessionProvider(_lesson));
+    final position = _reported;
+    // A due observation survives buffering, but only real forward playback
+    // may dispatch it. Initialization/stalls never become keep-alives or credit.
+    if (state.phase != PlaybackPhase.active ||
+        !state.observationDue ||
+        position <= (state.lastObservationPosition ?? _origin)) {
+      return;
+    }
     _observing = true;
     try {
-      await _session?.heartbeat(_reported);
+      await _session?.heartbeat(position);
     } finally {
       _observing = false;
     }
@@ -258,6 +266,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     final media = await session.mediaRequest();
     if (!_current(generation) || media == null) return null;
     final video = await _loadMedia(media, generation);
+    if (!_current(generation)) return null;
     if (video == null ||
         ref.read(playbackSessionProvider(_lesson)).phase !=
             PlaybackPhase.active) {
@@ -273,6 +282,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   ) async {
     final previous = _video;
     _video = null;
+    _recoveringFromBuffering = false;
     previous?.removeListener(_onVideo);
     await previous?.dispose();
     if (!_current(generation)) return null;
@@ -405,6 +415,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
 
   Future<void> _pause({bool ended = false, bool approvedOnly = false}) async {
     _cancelTimers();
+    _recoveringFromBuffering = false;
     final position = _reported;
     final generation = ++_generation; // Invalidates initialization and in-flight seek callbacks.
     final assignmentId = widget.assignmentId;
@@ -587,6 +598,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     final session = ref.watch(playbackSessionProvider(_lesson));
     _session = ref.read(playbackSessionProvider(_lesson).notifier);
     ref.listen(playbackSessionProvider(_lesson), (_, next) {
+      if (next.observationDue) unawaited(_observe());
       if (next.phase == PlaybackPhase.failed ||
           next.phase == PlaybackPhase.unavailable) {
         ++_generation;

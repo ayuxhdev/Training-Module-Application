@@ -26,12 +26,17 @@ class PlaybackSessionState {
   final LessonProgress? progress;
   final int? sessionId;
   final ApiError? error;
+  final bool observationDue;
+  // Last accepted request position, not credited coverage or a seek allowance.
+  final double? lastObservationPosition;
 
   const PlaybackSessionState({
     this.phase = PlaybackPhase.idle,
     this.progress,
     this.sessionId,
     this.error,
+    this.observationDue = false,
+    this.lastObservationPosition,
   });
 }
 
@@ -51,6 +56,7 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
   Future<void>? _starting;
   Future<void>? _closing;
   Timer? _expiry;
+  Timer? _observationTimer;
 
   PlaybackSessionController(this.lesson);
 
@@ -87,6 +93,7 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
   void _cancelRequests() {
     _generation++;
     _expiry?.cancel();
+    _observationTimer?.cancel();
     _requests.cancel();
     _requests = CancelToken();
     _queue = Future.value();
@@ -110,7 +117,12 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
   ApiError _error(Object error) =>
       error is ApiError ? error : ApiError.unexpected();
 
-  void _accept(LessonProgress progress, int sessionId, Stopwatch observed) {
+  void _accept(
+    LessonProgress progress,
+    int sessionId,
+    Stopwatch observed, {
+    double? position,
+  }) {
     if (progress.sessionId != sessionId) {
       throw const FormatException(
         'Playback response has a mismatched session.',
@@ -120,11 +132,32 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
       phase: _closing == null ? PlaybackPhase.active : PlaybackPhase.closing,
       progress: progress,
       sessionId: sessionId,
+      lastObservationPosition: position ?? progress.resumePosition,
     );
     _expiry?.cancel();
+    _observationTimer?.cancel();
     if (_closing != null) return;
-    // Count from request dispatch, not response receipt. This is conservative
-    // relative to the backend's 30-second media freshness check.
+    final generation = _generation;
+    // No server observation timestamp is returned. Use dispatch time for both
+    // deadlines, conservatively including request/response latency.
+    final observationDelay = const Duration(seconds: 10) - observed.elapsed;
+    _observationTimer = Timer(
+      observationDelay.isNegative ? Duration.zero : observationDelay,
+      () {
+        if (!_current(generation) ||
+            _sessionId != sessionId ||
+            state.phase != PlaybackPhase.active) {
+          return;
+        }
+        state = PlaybackSessionState(
+          phase: state.phase,
+          progress: state.progress,
+          sessionId: sessionId,
+          observationDue: true,
+          lastObservationPosition: state.lastObservationPosition,
+        );
+      },
+    );
     final remaining = const Duration(seconds: 30) - observed.elapsed;
     _expiry = Timer(remaining.isNegative ? Duration.zero : remaining, () {
       _cancelRequests();
@@ -253,7 +286,9 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
           position,
           cancelToken: requests,
         );
-        if (_current(generation)) _accept(progress, sessionId, observed);
+        if (_current(generation)) {
+          _accept(progress, sessionId, observed, position: position);
+        }
       } catch (error) {
         if (_current(generation)) {
           await _fail(_error(error), generation, requests);
@@ -266,6 +301,7 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
     if (position != null) _validatePosition(position);
     if (_closing != null) return _closing!;
     _expiry?.cancel();
+    _observationTimer?.cancel();
     final work = _enqueue((generation, requests) async {
       await _closeSession(
         position ?? state.progress?.resumePosition ?? 0,
@@ -289,6 +325,7 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
     final sessionId = _sessionId;
     if (sessionId == null) return;
     _expiry?.cancel();
+    _observationTimer?.cancel();
     state = PlaybackSessionState(
       phase: PlaybackPhase.closing,
       progress: state.progress,
@@ -335,6 +372,7 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
     CancelToken requests,
   ) async {
     _expiry?.cancel();
+    _observationTimer?.cancel();
     if ([401, 403, 404, 409].contains(error.statusCode)) {
       _sessionId = null;
     } else if (_sessionId != null) {

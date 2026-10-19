@@ -51,6 +51,7 @@ class Player extends VideoPlayerController {
   @override
   Future<void> initialize() async {
     await initialization?.future;
+    if (disposed) return;
     value = VideoPlayerValue(
       duration: mediaDuration,
       isInitialized: true,
@@ -948,6 +949,385 @@ void main() {
       await remove(tester);
     },
   );
+
+  testWidgets(
+    'slow initialization leaves observations due when playback advances',
+    (tester) async {
+      initialization = Completer<void>();
+      await show(tester);
+      await play(tester);
+      await tester.pump(const Duration(seconds: 27));
+      verifyNever(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+      initialization!.complete();
+      await tester.pump();
+      await tester.pump();
+      final player = players.single;
+      expect(player.value.isPlaying, isTrue);
+      player.value = player.value.copyWith(
+        position: const Duration(seconds: 1),
+      );
+      await tester.pump();
+      await tester.pump();
+      verify(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          .99,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      await tester.pump(const Duration(seconds: 4));
+      expect(player.value.isPlaying, isTrue);
+      expect(
+        find.text('Playback session expired. Start again to resume.'),
+        findsNothing,
+      );
+      expect(find.text('Watched coverage: 0%'), findsOneWidget);
+      await remove(tester);
+    },
+  );
+
+  testWidgets(
+    'short playback intervals do not postpone observations after buffering',
+    (tester) async {
+      final observations = <double>[];
+      when(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((call) async {
+        observations.add(call.positionalArguments[3] as double);
+        return progress();
+      });
+      await show(tester);
+      await play(tester);
+      final player = players.single;
+      for (var cycle = 1; cycle <= 4; cycle++) {
+        player.value = player.value.copyWith(
+          position: Duration(seconds: cycle * 3),
+        );
+        await tester.pump(const Duration(seconds: 3));
+        player.value = player.value.copyWith(isBuffering: true);
+        player.value = player.value.copyWith(isPlaying: false);
+        final count = observations.length;
+        await tester.pump(const Duration(seconds: 5));
+        expect(observations, hasLength(count));
+        player.value = player.value.copyWith(isBuffering: false);
+        player.value = player.value.copyWith(isPlaying: true);
+        await tester.pump();
+        await tester.pump();
+      }
+      expect(player.value.isPlaying, isTrue);
+      expect(observations, isNotEmpty);
+      expect(observations.every((position) => position > 0), isTrue);
+      expect(find.text('Watched coverage: 0%'), findsOneWidget);
+      verify(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      verifyNever(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          any(),
+          completedNormally: any(named: 'completedNormally'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+      await remove(tester);
+    },
+  );
+
+  for (final retryWhileInitializing in [false, true]) {
+    testWidgets(
+      'initialization expiry and fresh retry (old initialization pending: $retryWhileInitializing)',
+      (tester) async {
+        final oldInitialization = Completer<void>();
+        initialization = oldInitialization;
+        await show(tester);
+        await play(tester);
+        await tester.pump(const Duration(seconds: 31));
+        await tester.pump();
+        expect(
+          find.text('Playback session expired. Start again to resume.'),
+          findsOneWidget,
+        );
+        verify(
+          () => repository.endPlaybackSession(
+            1,
+            2,
+            7,
+            0,
+            completedNormally: false,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+        if (!retryWhileInitializing) {
+          oldInitialization.complete();
+          await tester.pump();
+          await tester.pump();
+        }
+        expect(players.single.value.isPlaying, isFalse);
+        verifyNever(
+          () => repository.submitPlaybackHeartbeat(
+            1,
+            2,
+            7,
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+        verifyNever(
+          () => repository.endPlaybackSession(
+            1,
+            2,
+            7,
+            any(),
+            completedNormally: any(named: 'completedNormally'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+        verify(
+          () => repository.startPlaybackSession(
+            1,
+            2,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+        initialization = null;
+        when(
+          () => repository.startPlaybackSession(
+            1,
+            2,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async => progress(session: 8));
+        when(() => repository.protectedMediaRequest(1, 2, 8)).thenAnswer(
+          (_) async => ProtectedMediaRequest(
+            uri: Uri.parse(
+              'https://qa.invalid/api/v1/assignments/1/lessons/2/sessions/8/media/',
+            ),
+            headers: {'Authorization': 'Bearer qa-token'},
+          ),
+        );
+        when(
+          () => repository.endPlaybackSession(
+            1,
+            2,
+            8,
+            any(),
+            completedNormally: any(named: 'completedNormally'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async => progress(session: 8));
+        await play(tester);
+        if (retryWhileInitializing) {
+          oldInitialization.complete();
+          await tester.pump();
+          await tester.pump();
+        }
+        expect(players, hasLength(2));
+        expect(players.first.disposed, isTrue);
+        expect(players.last.value.isPlaying, isTrue);
+        expect(requests.last.uri.path, endsWith('/sessions/8/media/'));
+        verifyNever(
+          () => repository.endPlaybackSession(
+            1,
+            2,
+            8,
+            any(),
+            completedNormally: any(named: 'completedNormally'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+        verify(
+          () => repository.startPlaybackSession(
+            1,
+            2,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+        await remove(tester);
+      },
+    );
+  }
+
+  testWidgets('a stalled native playing state cannot keep a session alive', (
+    tester,
+  ) async {
+    await show(tester);
+    await play(tester);
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pump();
+    verifyNever(
+      () => repository.submitPlaybackHeartbeat(
+        1,
+        2,
+        7,
+        any(),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+    expect(
+      find.text('Playback session expired. Start again to resume.'),
+      findsOneWidget,
+    );
+    expect(find.text('Watched coverage: 0%'), findsOneWidget);
+    await remove(tester);
+  });
+
+  testWidgets('buffering recovery keeps the session until playback resumes', (
+    tester,
+  ) async {
+    await show(tester);
+    await play(tester);
+    final player = players.single;
+    player.value = player.value.copyWith(isBuffering: true);
+    player.value = player.value.copyWith(isPlaying: false);
+    await tester.pump(const Duration(seconds: 12));
+    verifyNever(
+      () => repository.submitPlaybackHeartbeat(
+        1,
+        2,
+        7,
+        any(),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+
+    // Native buffering-end and playing events arrive separately.
+    player.value = player.value.copyWith(isBuffering: false);
+    await tester.pump(const Duration(seconds: 1));
+    verifyNever(
+      () => repository.endPlaybackSession(
+        1,
+        2,
+        7,
+        any(),
+        completedNormally: any(named: 'completedNormally'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+    player.value = player.value.copyWith(isPlaying: true);
+    await tester.pump();
+    expect(player.value.isPlaying, isTrue);
+    expect(find.text('Watched coverage: 0%'), findsOneWidget);
+    player.value = player.value.copyWith(position: const Duration(seconds: 9));
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pump();
+    verify(
+      () => repository.submitPlaybackHeartbeat(
+        1,
+        2,
+        7,
+        8.91,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+    verify(
+      () => repository.startPlaybackSession(
+        1,
+        2,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+    expect(players, hasLength(1));
+    expect(find.text('Watched coverage: 0%'), findsOneWidget);
+    // Once recovery finishes, a genuine native pause must still close normally.
+    player.value = player.value.copyWith(isPlaying: false);
+    await tester.pump();
+    await tester.pump();
+    verify(
+      () => repository.endPlaybackSession(
+        1,
+        2,
+        7,
+        any(),
+        completedNormally: false,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+    await remove(tester);
+  });
+
+  for (final interruption in ['explicit pause', 'background', 'error']) {
+    testWidgets('$interruption still closes during buffering recovery', (
+      tester,
+    ) async {
+      await show(tester);
+      await play(tester);
+      final player = players.single;
+      player.value = player.value.copyWith(isBuffering: true);
+      if (interruption != 'explicit pause') {
+        player.value = player.value.copyWith(isPlaying: false);
+        player.value = player.value.copyWith(isBuffering: false);
+      }
+      await tester.pump();
+      switch (interruption) {
+        case 'explicit pause':
+          await tester.tap(find.byKey(const ValueKey('video-playback-action')));
+        case 'background':
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.paused,
+          );
+        case 'error':
+          player.value = player.value.copyWith(
+            errorDescription: 'Decoder failed',
+          );
+      }
+      await tester.pump();
+      await tester.pump();
+      expect(player.value.isPlaying, isFalse);
+      verify(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          any(),
+          completedNormally: false,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      verifyNever(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+      if (interruption == 'background') {
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump();
+        expect(player.value.isPlaying, isFalse);
+      }
+      await remove(tester);
+    });
+  }
 
   testWidgets('buffering cancels heartbeat; expired session stops playback', (
     tester,
