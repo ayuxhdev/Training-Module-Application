@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:video_player/video_player.dart';
 import 'package:training_app/core/errors/api_error.dart';
+import 'package:training_app/core/theme/app_theme.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/domain/models/employee.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
@@ -265,13 +266,21 @@ void main() {
     container.dispose();
     debugDefaultTargetPlatformOverride = null;
   });
-  Future<void> show(WidgetTester tester) async {
+  Future<void> show(
+    WidgetTester tester, {
+    ThemeMode mode = ThemeMode.light,
+  }) async {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
         child: RepaintBoundary(
           key: const ValueKey('learner-page-preview'),
-          child: MaterialApp.router(routerConfig: router),
+          child: MaterialApp.router(
+            routerConfig: router,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: mode,
+          ),
         ),
       ),
     );
@@ -1426,51 +1435,123 @@ void main() {
     },
   );
 
-  testWidgets(
-    'player layout fits phone, tablet and desktop widths in the light app theme',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-      tester.platformDispatcher.textScaleFactorTestValue = 1.6;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      await show(tester);
-      for (final size in [
-        const Size(320, 568),
-        const Size(390, 844),
-        const Size(844, 390),
-        const Size(768, 1024),
-        const Size(1440, 900),
-      ]) {
-        tester.view.physicalSize = size;
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-        expect(
-          Theme.of(
+  for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+    testWidgets(
+      'player stays dark with ${mode.name} surroundings across viewport sizes',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+        tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await show(tester, mode: mode);
+        for (final size in [
+          const Size(320, 568),
+          const Size(390, 844),
+          const Size(844, 390),
+          const Size(768, 1024),
+          const Size(1440, 900),
+        ]) {
+          tester.view.physicalSize = size;
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          final surroundings = Theme.of(
+            tester.element(find.text('Protected lesson')),
+          );
+          expect(
+            surroundings.brightness,
+            mode == ThemeMode.light ? Brightness.light : Brightness.dark,
+          );
+          final panel = tester.widget<Container>(
+            find.byKey(const ValueKey('video-coverage-panel')),
+          );
+          expect(
+            (panel.decoration! as BoxDecoration).color,
+            surroundings.colorScheme.surfaceContainerLow,
+          );
+          expect(
+            tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
+            surroundings.scaffoldBackgroundColor,
+          );
+          expect(
+            Theme.of(tester.element(find.byTooltip('Back to lessons')))
+                .brightness,
+            surroundings.brightness,
+          );
+          expect(
+            Theme.of(
+              tester.element(
+                find.byKey(const ValueKey('video-playback-action')),
+              ),
+            ).brightness,
+            Brightness.dark,
+          );
+          expect(
+            tester.getSize(find.byType(Slider)).width,
+            lessThan(size.width),
+          );
+          expect(
+            find.text('Watch 80% to complete this lesson.'),
+            findsOneWidget,
+          );
+          final colors = Theme.of(
             tester.element(find.byKey(const ValueKey('video-playback-action'))),
-          ).brightness,
-          Brightness.dark,
-        );
-        expect(tester.getSize(find.byType(Slider)).width, lessThan(size.width));
-        expect(find.text('Watch 80% to complete this lesson.'), findsOneWidget);
-        final colors = Theme.of(
-          tester.element(find.byKey(const ValueKey('video-playback-action'))),
-        ).colorScheme;
-        double contrast(Color a, Color b) {
-          final light = a.computeLuminance();
-          final dark = b.computeLuminance();
-          return (light + .05) / (dark + .05);
-        }
+          ).colorScheme;
+          double contrast(Color a, Color b) {
+            final light = a.computeLuminance();
+            final dark = b.computeLuminance();
+            return (light + .05) / (dark + .05);
+          }
 
-        expect(
-          contrast(colors.onSurface, colors.surface),
-          greaterThanOrEqualTo(4.5),
-        );
-        expect(
-          contrast(colors.primary, colors.onPrimary),
-          greaterThanOrEqualTo(4.5),
-        );
-      }
+          expect(
+            contrast(colors.onSurface, colors.surface),
+            greaterThanOrEqualTo(4.5),
+          );
+          expect(
+            contrast(colors.primary, colors.onPrimary),
+            greaterThanOrEqualTo(4.5),
+          );
+        }
+        await remove(tester);
+      },
+    );
+  }
+
+  testWidgets(
+    'changing app appearance preserves the active dark player and session',
+    (tester) async {
+      await show(tester);
+      await play(tester);
+      final player = players.single;
+      await show(tester, mode: ThemeMode.dark);
+      await show(tester, mode: ThemeMode.light);
+      expect(players.single, same(player));
+      expect(player.value.isPlaying, isTrue);
+      expect(
+        Theme.of(tester.element(find.text('Protected lesson'))).brightness,
+        Brightness.light,
+      );
+      expect(
+        Theme.of(tester.element(find.byType(ProtectedVideoSurface))).brightness,
+        Brightness.dark,
+      );
+      verify(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      verifyNever(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          any(),
+          completedNormally: any(named: 'completedNormally'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
       await remove(tester);
     },
   );

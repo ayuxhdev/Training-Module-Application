@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'feedback_panel.dart';
+
 class LoadingView extends StatelessWidget {
   final String? message;
 
@@ -7,17 +9,16 @@ class LoadingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const CircularProgressIndicator(),
-          if (message != null) ...[
-            const SizedBox(height: 16),
-            Text(message!, style: Theme.of(context).textTheme.bodyMedium),
-          ]
-        ],
-      ),
+    return FeedbackPanel(
+      announce: true,
+      visual: MediaQuery.disableAnimationsOf(context)
+          ? Icon(
+              Icons.hourglass_empty_rounded,
+              size: 40,
+              color: Theme.of(context).colorScheme.primary,
+            )
+          : const CircularProgressIndicator(),
+      message: message ?? 'Loading…',
     );
   }
 }

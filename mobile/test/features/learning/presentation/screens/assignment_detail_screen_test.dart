@@ -134,6 +134,7 @@ void main() {
     final button = find.widgetWithText(PrimaryButton, 'Start Training');
     expect(button, findsOneWidget);
 
+    await tester.ensureVisible(button);
     await tester.tap(button);
     await tester.pumpAndSettle();
 

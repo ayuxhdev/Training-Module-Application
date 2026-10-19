@@ -86,7 +86,7 @@ void main() {
 
     expect(find.text('1. Module 1'), findsOneWidget);
     expect(find.text('Desc 1'), findsOneWidget);
-    expect(find.text('0 Lessons'), findsOneWidget);
+    expect(find.text('0 LESSONS'), findsOneWidget);
   });
 }
 

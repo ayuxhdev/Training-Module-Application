@@ -532,7 +532,7 @@ void main() {
           expect(headingStyle.color, theme.colorScheme.onSurface);
           expect(
             headingStyle.fontSize,
-            theme.textTheme.headlineSmall!.fontSize,
+            theme.textTheme.displayLarge!.fontSize,
           );
           final card = tester.widget<Card>(find.byType(Card).first);
           for (final (finder, background) in [

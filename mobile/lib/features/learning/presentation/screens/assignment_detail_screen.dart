@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/core/presentation/components/primary_button.dart';
@@ -58,38 +58,22 @@ class AssignmentDetailScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        CustomCard(
+                        CinematicHero(
+                          eyebrow: 'Your training',
+                          title: detail.trainingTitle,
+                          subtitle: 'Version: ${detail.versionNumber}',
+                          icon: Icons.play_lesson_outlined,
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      detail.trainingTitle,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .headlineSmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                    ),
-                                  ),
-                                  AppSpacing.gapSm,
-                                  StatusBadge(
-                                    text: detail.status.replaceAll('_', ' '),
-                                    status: _getStatusBadge(detail.status),
-                                  ),
-                                ],
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: StatusBadge(
+                                  text: detail.status.replaceAll('_', ' '),
+                                  status: _getStatusBadge(detail.status),
+                                ),
                               ),
-                              AppSpacing.gapMd,
-                              Text(
-                                'Version: ${detail.versionNumber}',
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                              AppSpacing.gapSm,
+                              AppSpacing.gapLg,
                               Text(
                                 'Due: $formattedDate',
                                 style: Theme.of(context).textTheme.bodyMedium
@@ -97,24 +81,21 @@ class AssignmentDetailScreen extends ConsumerWidget {
                                       color: detail.isOverdue
                                           ? Theme.of(context).colorScheme.error
                                           : null,
-                                      fontWeight: detail.isOverdue
-                                          ? FontWeight.bold
-                                          : null,
                                     ),
                               ),
-                              AppSpacing.gapSm,
-                              Text(
-                                'Progress: ${detail.requiredLessonsCompleted}/${detail.requiredLessonsTotal} lessons',
-                                style: Theme.of(context).textTheme.bodyMedium,
+                              AppSpacing.gapLg,
+                              LearningProgress(
+                                completed: detail.requiredLessonsCompleted,
+                                total: detail.requiredLessonsTotal,
+                                label:
+                                    'Progress: ${detail.requiredLessonsCompleted}/${detail.requiredLessonsTotal} lessons',
                               ),
                               AppSpacing.gapLg,
                               PrimaryButton(
                                 text: 'Start Training',
-                                onPressed: () {
-                                  context.go(
-                                    '/learning/assignments/$assignmentId/modules',
-                                  );
-                                },
+                                onPressed: () => context.go(
+                                  '/learning/assignments/$assignmentId/modules',
+                                ),
                               ),
                             ],
                           ),
@@ -127,13 +108,15 @@ class AssignmentDetailScreen extends ConsumerWidget {
                           icon: const Icon(Icons.quiz_outlined),
                           label: const Text('Assessments and attempts'),
                         ),
-                        if (detail.status.toUpperCase() == 'COMPLETED')
+                        if (detail.status.toUpperCase() == 'COMPLETED') ...[
+                          const SizedBox(height: 12),
                           OutlinedButton.icon(
                             onPressed: () =>
                                 context.push('/profile/certificates'),
                             icon: const Icon(Icons.workspace_premium_outlined),
                             label: const Text('My Certificates'),
                           ),
+                        ],
                       ],
                     ),
                   ),

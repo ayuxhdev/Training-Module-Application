@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
@@ -71,9 +72,11 @@ class DashboardScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(AppSpacing.md),
       sliver: SliverList(
         delegate: SliverChildListDelegate([
-          Text(
-            'Welcome, $employeeName!',
-            style: Theme.of(context).textTheme.titleLarge,
+          CinematicHero(
+            eyebrow: 'Your learning journey',
+            title: 'Welcome, $employeeName!',
+            subtitle: 'Build your skills. Make every lesson count.',
+            icon: Icons.auto_awesome_outlined,
           ),
           const SizedBox(height: AppSpacing.lg),
           _buildMetricsOverview(context, data.metrics),
@@ -87,50 +90,56 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   Widget _buildMetricsOverview(BuildContext context, DashboardMetrics metrics) {
-    return CustomCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Overview', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: AppSpacing.md),
-          Wrap(
-            alignment: WrapAlignment.spaceAround,
-            spacing: AppSpacing.md,
-            runSpacing: AppSpacing.md,
-            children: [
-              _buildMetricItem(
-                context,
-                'Assigned',
-                metrics.assigned.toString(),
-              ),
-              _buildMetricItem(
-                context,
-                'In Progress',
-                metrics.inProgress.toString(),
-              ),
-              _buildMetricItem(
-                context,
-                'Completed',
-                metrics.completed.toString(),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMetricItem(BuildContext context, String label, String value) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          value,
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-            fontWeight: FontWeight.bold,
-          ),
+        const SectionHeading('Overview'),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            // Wrap metrics at large text sizes rather than compressing labels.
+            final width = constraints.maxWidth < 720
+                ? constraints.maxWidth
+                : (constraints.maxWidth - 24) / 3;
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final metric in [
+                  ('Assigned', metrics.assigned, Icons.bookmark_outline),
+                  ('In Progress', metrics.inProgress, Icons.timelapse_rounded),
+                  ('Completed', metrics.completed, Icons.check_circle_outline),
+                ])
+                  SizedBox(
+                    width: width,
+                    child: CustomCard(
+                      child: Row(
+                        children: [
+                          Icon(metric.$3, color: colors.primary),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Text(
+                              metric.$1,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${metric.$2}',
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.primary,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
-        Text(label, style: Theme.of(context).textTheme.bodyMedium),
       ],
     );
   }
@@ -142,7 +151,10 @@ class DashboardScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Action Required', style: Theme.of(context).textTheme.titleMedium),
+        const SectionHeading(
+          'Action Required',
+          subtitle: 'Your next steps, all in one place.',
+        ),
         const SizedBox(height: AppSpacing.md),
         if (assignments.isEmpty)
           const EmptyView(
@@ -153,51 +165,26 @@ class DashboardScreen extends ConsumerWidget {
           ...assignments.map(
             (assignment) => Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: CustomCard(
-                child: InkWell(
-                  onTap: () =>
-                      context.push('/learning/assignments/${assignment.id}'),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              assignment.trainingTitle,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text('Version ${assignment.versionNumber}'),
-                            if (assignment.dueAt != null)
-                              Text(
-                                'Due: ${_formatDate(assignment.dueAt)}',
-                                style: TextStyle(
-                                  color: assignment.isOverdue
-                                      ? Theme.of(context).colorScheme.error
-                                      : null,
-                                  fontWeight: assignment.isOverdue
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      StatusBadge(
-                        text: assignment.status,
-                        status: _getBadgeStatus(
-                          assignment.status,
-                          assignment.isOverdue,
-                        ),
-                      ),
-                    ],
-                  ),
+              child: LearningCard(
+                title: assignment.trainingTitle,
+                subtitle: 'Version ${assignment.versionNumber}',
+                status: assignment.status,
+                badgeStatus: _getBadgeStatus(
+                  assignment.status,
+                  assignment.isOverdue,
                 ),
+                onTap: () =>
+                    context.push('/learning/assignments/${assignment.id}'),
+                footer: assignment.dueAt == null
+                    ? null
+                    : Text(
+                        'Due: ${_formatDate(assignment.dueAt)}',
+                        style: TextStyle(
+                          color: assignment.isOverdue
+                              ? Theme.of(context).colorScheme.error
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
               ),
             ),
           ),
@@ -212,9 +199,9 @@ class DashboardScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        const SectionHeading(
           'Recent Certificates',
-          style: Theme.of(context).textTheme.titleMedium,
+          subtitle: 'Milestones you have earned.',
         ),
         const SizedBox(height: AppSpacing.md),
         if (certificates.isEmpty)

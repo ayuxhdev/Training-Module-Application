@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
+import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
@@ -26,7 +27,6 @@ class NotificationCenterScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final result = ref.watch(notificationListProvider);
     final unread = ref.watch(notificationUnreadCountProvider);
     final feed = result.asData?.value;
@@ -52,9 +52,7 @@ class NotificationCenterScreen extends ConsumerWidget {
       body: result.when(
         skipLoadingOnRefresh: false,
         skipLoadingOnReload: false,
-        loading: () => MediaQuery.disableAnimationsOf(context)
-            ? const Center(child: Text('Loading notifications…'))
-            : const LoadingView(message: 'Loading notifications…'),
+        loading: () => const LoadingView(message: 'Loading notifications…'),
         error: (error, _) =>
             error is NotificationMutationError &&
                 error.statusCode != 401 &&
@@ -78,43 +76,45 @@ class NotificationCenterScreen extends ConsumerWidget {
                 if (index == 0) {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Your updates',
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            color: theme.colorScheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        Semantics(
-                          liveRegion: true,
-                          child: Text(
-                            unread.isLoading
-                                ? 'Checking unread notifications…'
-                                : unread.hasError ||
-                                      unread.asData?.value == null
-                                ? 'Unread count unavailable'
-                                : '${unread.asData!.value} unread · ${feed.count} notification${feed.count == 1 ? '' : 's'}',
-                          ),
-                        ),
-                        if (unread.hasError)
-                          TextButton.icon(
-                            onPressed: () =>
-                                ref.invalidate(notificationUnreadCountProvider),
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Refresh unread count'),
-                          ),
-                        if (feed.busy)
-                          Padding(
-                            padding: const EdgeInsets.only(top: AppSpacing.sm),
-                            child: Semantics(
-                              liveRegion: true,
-                              child: const Text('Saving read status…'),
+                    child: CinematicHero(
+                      eyebrow: 'Notification center',
+                      title: 'Your updates',
+                      subtitle: 'Stay in step with your training.',
+                      icon: Icons.notifications_none_rounded,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Semantics(
+                            liveRegion: true,
+                            child: Text(
+                              unread.isLoading
+                                  ? 'Checking unread notifications…'
+                                  : unread.hasError ||
+                                        unread.asData?.value == null
+                                  ? 'Unread count unavailable'
+                                  : '${unread.asData!.value} unread · ${feed.count} notification${feed.count == 1 ? '' : 's'}',
                             ),
                           ),
-                      ],
+                          if (unread.hasError)
+                            TextButton.icon(
+                              onPressed: () => ref.invalidate(
+                                notificationUnreadCountProvider,
+                              ),
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Refresh unread count'),
+                            ),
+                          if (feed.busy)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: AppSpacing.sm,
+                              ),
+                              child: Semantics(
+                                liveRegion: true,
+                                child: const Text('Saving read status…'),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   );
                 }
@@ -202,13 +202,13 @@ class _NotificationCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       color: item.isRead ? colors.surface : colors.surfaceContainerLow,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(24),
         side: BorderSide(
           color: item.isRead ? colors.outlineVariant : colors.primary,
         ),
       ),
       child: Padding(
-        padding: AppSpacing.pagePadding,
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -246,7 +246,12 @@ class _NotificationCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.sm),
             Text(item.message, style: theme.textTheme.bodyLarge),
             const SizedBox(height: AppSpacing.sm),
-            Text('Received $received', style: theme.textTheme.bodySmall),
+            Text(
+              'Received $received',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: AppSpacing.sm),
             Wrap(
               spacing: AppSpacing.sm,

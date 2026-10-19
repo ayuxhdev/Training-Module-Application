@@ -692,179 +692,173 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
       onFullscreen: _android ? _toggleFullscreen : null,
       onBack: _exit,
     );
-    return Theme(
-      data: ThemeData.dark(useMaterial3: true).copyWith(
-        colorScheme:
-            ColorScheme.fromSeed(
-              seedColor: const Color(0xff10b981),
-              brightness: Brightness.dark,
-            ).copyWith(
-              primary: const Color(0xff2dd4bf),
-              onPrimary: const Color(0xff04070a),
-              surface: const Color(0xff0d1520),
-              onSurface: const Color(0xfff8fafc),
-              onSurfaceVariant: const Color(0xff94a3b8),
-              outline: const Color(0xff64748b),
-              outlineVariant: const Color(0xff24303d),
-            ),
-        scaffoldBackgroundColor: const Color(0xff04070a),
-      ),
-      child: PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) unawaited(_exit());
-        },
-        child: Scaffold(
-          body: SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final minimumHeight =
-                    260.0 +
-                    math.max(
-                          0,
-                          MediaQuery.textScalerOf(context).scale(12) - 12,
-                        ) *
-                        4;
-                final aspect = _video?.value.isInitialized == true
-                    ? _video!.value.aspectRatio
-                    : 16 / 9;
-                final stageHeight = _fullscreen
-                    ? constraints.maxHeight
-                    : math.max(
-                        minimumHeight,
-                        math.min(
-                          (constraints.maxWidth - 24) / aspect,
-                          math.max(minimumHeight, constraints.maxHeight - 220),
-                        ),
-                      );
-                return SingleChildScrollView(
-                  physics: _fullscreen
-                      ? const NeverScrollableScrollPhysics()
-                      : null,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (!_fullscreen)
-                        ListTile(
-                          leading: IconButton(
-                            tooltip: 'Back to lessons',
-                            onPressed: _exit,
-                            icon: const Icon(Icons.arrow_back),
-                          ),
-                          title: const Text(
-                            'Video lesson',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          subtitle: moduleTitle == null
-                              ? null
-                              : Text(
-                                  moduleTitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                        ),
-                      SizedBox(
-                        key: const ValueKey('video-stage-layout'),
-                        height: stageHeight,
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: _fullscreen ? 0 : 12,
-                          ),
-                          child: player,
-                        ),
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final playerTheme = ThemeData.dark(useMaterial3: true).copyWith(
+      colorScheme:
+          ColorScheme.fromSeed(
+            seedColor: const Color(0xff10b981),
+            brightness: Brightness.dark,
+          ).copyWith(
+            primary: const Color(0xff2dd4bf),
+            onPrimary: const Color(0xff04070a),
+            surface: const Color(0xff0d1520),
+            onSurface: const Color(0xfff8fafc),
+            onSurfaceVariant: const Color(0xff94a3b8),
+            outline: const Color(0xff64748b),
+            outlineVariant: const Color(0xff24303d),
+          ),
+      scaffoldBackgroundColor: const Color(0xff04070a),
+    );
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) unawaited(_exit());
+      },
+      child: Scaffold(
+        backgroundColor: _fullscreen
+            ? playerTheme.scaffoldBackgroundColor
+            : theme.scaffoldBackgroundColor,
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final minimumHeight =
+                  260.0 +
+                  math.max(0, MediaQuery.textScalerOf(context).scale(12) - 12) *
+                      4;
+              final aspect = _video?.value.isInitialized == true
+                  ? _video!.value.aspectRatio
+                  : 16 / 9;
+              final stageHeight = _fullscreen
+                  ? constraints.maxHeight
+                  : math.max(
+                      minimumHeight,
+                      math.min(
+                        (constraints.maxWidth - 24) / aspect,
+                        math.max(minimumHeight, constraints.maxHeight - 220),
                       ),
-                      if (!_fullscreen)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              if (lesson?.playbackMode ==
-                                  'read_only_replay') ...[
-                                const Text(
-                                  'Read-only replay. Recorded completion and watched coverage will not change.',
-                                ),
-                                const SizedBox(height: 12),
-                              ],
-                              Text(
-                                lesson?.title ?? 'Protected video',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                    );
+              return SingleChildScrollView(
+                physics: _fullscreen
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (!_fullscreen)
+                      ListTile(
+                        leading: IconButton(
+                          tooltip: 'Back to lessons',
+                          onPressed: _exit,
+                          icon: const Icon(Icons.arrow_back),
+                        ),
+                        title: const Text(
+                          'Video lesson',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: moduleTitle == null
+                            ? null
+                            : Text(
+                                moduleTitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              if (lesson != null) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  detail.asData!.value.trainingTitle,
-                                  style: const TextStyle(
-                                    color: Color(0xff94a3b8),
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 16),
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xff080d14),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: .08),
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    Text(
-                                      progress?.completed == true
-                                          ? 'Lesson completed'
-                                          : 'Watched coverage: ${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    LinearProgressIndicator(
-                                      value:
-                                          (progress?.progressPercent ?? 0) /
-                                          100,
-                                      borderRadius: BorderRadius.circular(4),
-                                      minHeight: 5,
-                                      semanticsLabel:
-                                          'Confirmed watched coverage',
-                                      semanticsValue:
-                                          '${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
-                                    ),
-                                    if (progress?.completed != true &&
-                                        lesson?.minimumWatchPercent !=
-                                            null) ...[
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Watch ${lesson!.minimumWatchPercent!.toStringAsFixed(0)}% to complete this lesson.',
-                                      ),
-                                    ],
-                                    if (session.phase == PlaybackPhase.ended &&
-                                        session.error == null) ...[
-                                      const SizedBox(height: 8),
-                                      const Text(
-                                        'Progress saved',
-                                        style: TextStyle(
-                                          color: Color(0xff2dd4bf),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
+                      ),
+                    SizedBox(
+                      key: const ValueKey('video-stage-layout'),
+                      height: stageHeight,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: _fullscreen ? 0 : 12,
+                        ),
+                        child: Theme(data: playerTheme, child: player),
+                      ),
+                    ),
+                    if (!_fullscreen)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (lesson?.playbackMode == 'read_only_replay') ...[
+                              const Text(
+                                'Read-only replay. Recorded completion and watched coverage will not change.',
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            Text(
+                              lesson?.title ?? 'Protected video',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            if (lesson != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                detail.asData!.value.trainingTitle,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: colors.onSurfaceVariant,
                                 ),
                               ),
                             ],
-                          ),
+                            const SizedBox(height: 16),
+                            Container(
+                              key: const ValueKey('video-coverage-panel'),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: colors.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: colors.outlineVariant,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    progress?.completed == true
+                                        ? 'Lesson completed'
+                                        : 'Watched coverage: ${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  LinearProgressIndicator(
+                                    value:
+                                        (progress?.progressPercent ?? 0) / 100,
+                                    borderRadius: BorderRadius.circular(4),
+                                    minHeight: 5,
+                                    semanticsLabel:
+                                        'Confirmed watched coverage',
+                                    semanticsValue:
+                                        '${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
+                                  ),
+                                  if (progress?.completed != true &&
+                                      lesson?.minimumWatchPercent != null) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Watch ${lesson!.minimumWatchPercent!.toStringAsFixed(0)}% to complete this lesson.',
+                                    ),
+                                  ],
+                                  if (session.phase == PlaybackPhase.ended &&
+                                      session.error == null) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Progress saved',
+                                      style: TextStyle(color: colors.primary),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                      ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),

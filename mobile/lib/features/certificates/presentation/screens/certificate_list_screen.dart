@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/errors/api_error.dart';
+import 'package:training_app/core/presentation/components/cinematic_components.dart';
+import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
@@ -12,7 +14,6 @@ class CertificateListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('My Certificates')),
       body: ref
@@ -20,9 +21,11 @@ class CertificateListScreen extends ConsumerWidget {
           .when(
             skipLoadingOnRefresh: false,
             skipLoadingOnReload: false,
-            loading: () => const LoadingView(),
+            loading: () =>
+                const LoadingView(message: 'Loading your certificates...'),
             error: (error, _) => SingleChildScrollView(
               child: ErrorView(
+                title: 'Certificates unavailable',
                 message: error is ApiError
                     ? error.message
                     : 'Unable to load certificates.',
@@ -42,36 +45,41 @@ class CertificateListScreen extends ConsumerWidget {
               child: ListView.builder(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
-                itemCount: certificates.isEmpty ? 1 : certificates.length,
+                itemCount: certificates.isEmpty ? 2 : certificates.length + 1,
                 itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return const Padding(
+                      padding: EdgeInsets.only(bottom: 24),
+                      child: CinematicHero(
+                        eyebrow: 'Your achievements',
+                        title: 'Learning worth celebrating.',
+                        subtitle: 'View your issued certificates and their recorded training details.',
+                        icon: Icons.workspace_premium_outlined,
+                      ),
+                    );
+                  }
                   if (certificates.isEmpty) {
                     return const EmptyView(
                       message: 'No certificates earned yet. Complete your assigned training to earn a certificate.',
                       icon: Icons.workspace_premium_outlined,
                     );
                   }
-                  final certificate = certificates[index];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    clipBehavior: Clip.antiAlias,
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(16),
-                      leading: Icon(
-                        certificate.isRevoked
-                            ? Icons.block
-                            : Icons.workspace_premium_outlined,
-                        color: certificate.isRevoked
-                            ? theme.colorScheme.error
-                            : theme.colorScheme.primary,
+                  final certificate = certificates[index - 1];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: LearningCard(
+                      title: certificate.trainingTitle,
+                      subtitle: certificate.certificateNumber,
+                      status: certificate.isRevoked ? 'Revoked' : 'Issued',
+                      badgeStatus: certificate.isRevoked
+                          ? BadgeStatus.error
+                          : BadgeStatus.success,
+                      icon: certificate.isRevoked
+                          ? Icons.block
+                          : Icons.workspace_premium_outlined,
+                      footer: Text(
+                        'Issued ${certificateDate(certificate.issuedAt)}',
                       ),
-                      title: Text(
-                        certificate.trainingTitle,
-                        style: theme.textTheme.titleMedium,
-                      ),
-                      subtitle: Text(
-                        '${certificate.certificateNumber}\nIssued ${certificateDate(certificate.issuedAt)}\n${certificate.isRevoked ? 'Revoked' : 'Issued'}',
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
                       onTap: () => context.push(
                         '/profile/certificates/${certificate.id}',
                       ),

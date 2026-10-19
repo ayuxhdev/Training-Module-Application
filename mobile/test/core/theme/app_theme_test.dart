@@ -32,6 +32,13 @@ void main() {
             colors.surfaceContainerHighest,
           ),
           'primary text': (colors.primary, colors.surface),
+          'hero accent': (
+            colors.primary,
+            Color.alphaBlend(
+              colors.primary.withValues(alpha: .13),
+              colors.surfaceContainerLow,
+            ),
+          ),
           'primary button': (colors.onPrimary, colors.primary),
           'selected answer': (
             colors.onPrimaryContainer,
@@ -92,15 +99,12 @@ void main() {
     );
   }
 
-  test(
-    'light theme preserves established surfaces, primary color and typography',
-    () {
-      final theme = AppTheme.lightTheme;
-      expect(theme.scaffoldBackgroundColor, Colors.white);
-      expect(theme.colorScheme.surface, Colors.white);
-      expect(theme.colorScheme.primary, Colors.green.shade800);
-      expect(theme.inputDecorationTheme.fillColor, Colors.grey.shade50);
-      expect(theme.textTheme.titleLarge!.fontSize, 22);
-    },
-  );
+  test('light theme uses layered daylight surfaces and cinematic geometry', () {
+    final theme = AppTheme.lightTheme;
+    expect(theme.scaffoldBackgroundColor, const Color(0xfff3f6f5));
+    expect(theme.colorScheme.surface, Colors.white);
+    expect(theme.colorScheme.primary, const Color(0xff006b5b));
+    expect(theme.inputDecorationTheme.fillColor, const Color(0xffedf2ef));
+    expect(theme.textTheme.titleLarge!.fontSize, 26);
+  });
 }

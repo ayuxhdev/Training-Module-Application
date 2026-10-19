@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:training_app/core/errors/api_error.dart';
+import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/router/app_router.dart';
 import 'package:training_app/main.dart';
 import 'package:training_app/features/assessments/data/repositories/assessment_repository.dart';
@@ -698,6 +699,58 @@ void main() {
     },
   );
 
+  testWidgets(
+    'failed result badge retains readable contrast over the cinematic hero',
+    (tester) async {
+      final result = attemptJson(status: 'SUBMITTED', passed: false)
+        ..['certificate_id'] = null;
+      when(
+        () => assessments.getAttempt(7, cancelToken: any(named: 'cancelToken')),
+      ).thenAnswer((_) async => AssessmentAttempt.fromJson(result));
+      await open(tester, '$overviewPath/2/attempts/7');
+      final badge = find.byType(StatusBadge);
+      final label = tester.widget<Text>(
+        find.descendant(of: badge, matching: find.byType(Text)),
+      );
+      final tint =
+          (tester
+                      .widget<Container>(
+                        find.descendant(
+                          of: badge,
+                          matching: find.byType(Container),
+                        ),
+                      )
+                      .decoration!
+                  as BoxDecoration)
+              .color!;
+      final backing =
+          tester
+                  .widgetList<DecoratedBox>(
+                    find.ancestor(
+                      of: badge,
+                      matching: find.byType(DecoratedBox),
+                    ),
+                  )
+                  .first
+                  .decoration
+              as BoxDecoration;
+      // A badge must remain legible across the full hero gradient, including its
+      // darkest stop, rather than assuming the page background shows through.
+      final background = Color.alphaBlend(
+        tint,
+        backing.color ?? (backing.gradient! as LinearGradient).colors.first,
+      );
+      final values = [
+        label.style!.color!.computeLuminance(),
+        background.computeLuminance(),
+      ]..sort();
+      expect(
+        (values.last + .05) / (values.first + .05),
+        greaterThanOrEqualTo(4.5),
+      );
+    },
+  );
+
   for (final dark in [false, true]) {
     testWidgets(
       '${dark ? 'dark' : 'light'} pages fit small width/large text with reduced motion',
@@ -734,6 +787,12 @@ void main() {
         );
         expect(tester.takeException(), isNull);
         router.go('/profile/certificates/8');
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('Historical name'),
+          180,
+          scrollable: find.byType(Scrollable).first,
+        );
         await tester.pumpAndSettle();
         expect(find.text('Historical name'), findsOneWidget);
         expect(
@@ -972,7 +1031,7 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
-      expect(find.textContaining('Revoked'), findsOneWidget);
+      expect(find.text('REVOKED'), findsOneWidget);
     },
   );
 
@@ -1010,4 +1069,128 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  for (final dark in [false, true]) {
+    for (final (size, scale) in [
+      (const Size(320, 640), 2.0),
+      (const Size(390, 844), 1.0),
+      (const Size(844, 390), 1.4),
+    ]) {
+      testWidgets(
+        'cinematic ${dark ? 'dark' : 'light'} Batch 2 fits $size at ${scale}x',
+        (tester) async {
+          tester.view.physicalSize = size;
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final json = attemptJson();
+          json['questions'][0]['prompt'] = 'Before operating equipment, how should you respond to a newly identified hazard in your working area?';
+          json['questions'][0]['options'][0]['text'] =
+              'Stop and report the hazard before continuing with the task.';
+          when(
+            () => assessments.startOrResume(
+              1,
+              2,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenAnswer((_) async => AssessmentAttempt.fromJson(json));
+
+          Future<void> sweep() async {
+            expect(tester.takeException(), isNull);
+            final scroll = find.byType(Scrollable).first;
+            for (var step = 0; step < 30; step++) {
+              final position = tester.state<ScrollableState>(scroll).position;
+              if (position.pixels >= position.maxScrollExtent) break;
+              await tester.drag(scroll, const Offset(0, -400));
+              await tester.pumpAndSettle();
+              expect(tester.takeException(), isNull);
+            }
+          }
+
+          await open(
+            tester,
+            attemptPath,
+            dark: dark,
+            scale: scale,
+            reducedMotion: true,
+          );
+          await sweep();
+          await tap(
+            tester,
+            json['questions'][0]['options'][0]['text'] as String,
+          );
+          expect(find.text('1 of 1 answered'), findsOneWidget);
+          await tap(tester, 'Submit assessment');
+          expect(find.text('Submit assessment?'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await tap(tester, 'Keep working');
+          verifyNever(
+            () => assessments.submitAttempt(
+              any(),
+              any(),
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          );
+
+          for (final passed in [false, true]) {
+            router.go(overviewPath);
+            await tester.pumpAndSettle();
+            final result = attemptJson(status: 'SUBMITTED', passed: passed);
+            if (!passed) {
+              result['certificate_id'] = null;
+              result['assignment_status'] = 'IN_PROGRESS';
+            }
+            when(
+              () => assessments.getAttempt(
+                7,
+                cancelToken: any(named: 'cancelToken'),
+              ),
+            ).thenAnswer((_) async => AssessmentAttempt.fromJson(result));
+            router.go('$overviewPath/2/attempts/7');
+            await tester.pumpAndSettle();
+            expect(find.text(passed ? 'Passed' : 'Not passed'), findsOneWidget);
+            expect(
+              find.text(passed ? 'Score: 2.00 / 2.00' : 'Score: 0.00 / 2.00'),
+              findsOneWidget,
+            );
+            await sweep();
+            expect(find.text('Submit assessment'), findsNothing);
+          }
+
+          final item = catalog['assessments'][0];
+          item['can_resume'] = false;
+          item['ongoing_attempt_id'] = null;
+          item['attempts_remaining'] = 0;
+          item['attempts_used'] = 3;
+          item['blocking_reason'] = 'Maximum attempts reached.';
+          container.invalidate(assessmentOverviewProvider(1));
+          router.go(overviewPath);
+          await tester.pumpAndSettle();
+          await sweep();
+          expect(find.text('NO ATTEMPTS LEFT'), findsOneWidget);
+          expect(find.text('Start assessment'), findsNothing);
+          expect(find.text('Resume assessment'), findsNothing);
+
+          router.go('/profile/certificates');
+          await tester.pumpAndSettle();
+          await sweep();
+          await tap(tester, 'Safety award');
+          await sweep();
+          expect(find.text('Historical name'), findsOneWidget);
+          when(
+            () => certificates.getCertificateDetail(
+              8,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenAnswer((_) async => detail(revoked: true));
+          container.invalidate(certificateDetailProvider(8));
+          await tester.pumpAndSettle();
+          await sweep();
+          expect(find.text('Revoked on'), findsOneWidget);
+          expect(find.text('Download'), findsNothing);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
 }

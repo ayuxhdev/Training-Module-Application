@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/cinematic_components.dart';
+import 'package:training_app/core/presentation/components/cinematic_notice.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/features/certificates/presentation/controllers/certificate_controller.dart';
@@ -16,7 +18,6 @@ class CertificateDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final provider = certificateDetailProvider(certificateId);
-    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Certificate')),
       body: ref
@@ -24,9 +25,11 @@ class CertificateDetailScreen extends ConsumerWidget {
           .when(
             skipLoadingOnRefresh: false,
             skipLoadingOnReload: false,
-            loading: () => const LoadingView(),
+            loading: () =>
+                const LoadingView(message: 'Loading certificate details...'),
             error: (error, _) => SingleChildScrollView(
               child: ErrorView(
+                title: 'Certificate unavailable',
                 message: error is ApiError
                     ? error.message
                     : 'Unable to load this certificate.',
@@ -47,39 +50,30 @@ class CertificateDetailScreen extends ConsumerWidget {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(16),
                   children: [
+                    CinematicHero(
+                      eyebrow: 'Certificate of completion',
+                      title: certificate.trainingTitle,
+                      subtitle: 'A record of your completed training.',
+                      icon: certificate.isRevoked
+                          ? Icons.block
+                          : Icons.workspace_premium_outlined,
+                      child: CinematicNotice(
+                        message: certificate.isRevoked ? 'Revoked' : 'Issued',
+                        isError: certificate.isRevoked,
+                        icon: certificate.isRevoked
+                            ? Icons.block
+                            : Icons.verified_outlined,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const SectionHeading(
+                      'Certificate details',
+                      subtitle: 'Your historical training record.',
+                    ),
                     CustomCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Icon(
-                            certificate.isRevoked
-                                ? Icons.block
-                                : Icons.workspace_premium_outlined,
-                            size: 56,
-                            color: certificate.isRevoked
-                                ? theme.colorScheme.error
-                                : theme.colorScheme.primary,
-                          ),
-                          const SizedBox(height: 16),
-                          Semantics(
-                            header: true,
-                            child: Text(
-                              certificate.trainingTitle,
-                              style: theme.textTheme.headlineSmall,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            certificate.isRevoked ? 'Revoked' : 'Issued',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: certificate.isRevoked
-                                  ? theme.colorScheme.error
-                                  : theme.colorScheme.primary,
-                            ),
-                          ),
-                          const Divider(height: 32),
                           _Field(
                             label: 'Certificate number',
                             value: certificate.certificateNumber,
@@ -106,8 +100,9 @@ class CertificateDetailScreen extends ConsumerWidget {
                               value: certificateDate(certificate.revokedAt!),
                             ),
                           const SizedBox(height: 12),
-                          const Text(
-                            'These details reflect the employee and training recorded when this certificate was issued.',
+                          const CinematicNotice(
+                            message: 'These details reflect the employee and training recorded when this certificate was issued.',
+                            icon: Icons.history_rounded,
                           ),
                         ],
                       ),

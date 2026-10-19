@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:training_app/core/presentation/components/primary_button.dart';
 
+import 'feedback_panel.dart';
+
 class ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback? onRetry;
@@ -17,53 +19,18 @@ class ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: constraints.hasBoundedHeight ? constraints.maxHeight : 0,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Semantics(
-              liveRegion: true,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 48,
-                    color: theme.colorScheme.error,
-                  ),
-                  const SizedBox(height: 16),
-                  if (title != null) ...[
-                    Semantics(
-                      header: true,
-                      child: Text(
-                        title!,
-                        style: theme.textTheme.titleLarge,
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  Text(
-                    message,
-                    style: theme.textTheme.titleMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  if (onRetry != null) ...[
-                    const SizedBox(height: 24),
-                    PrimaryButton(text: retryLabel, onPressed: onRetry),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
+    return FeedbackPanel(
+      announce: true,
+      visual: Icon(
+        Icons.error_outline,
+        size: 48,
+        color: Theme.of(context).colorScheme.error,
       ),
+      title: title,
+      message: message,
+      action: onRetry == null
+          ? null
+          : PrimaryButton(text: retryLabel, onPressed: onRetry),
     );
   }
 }

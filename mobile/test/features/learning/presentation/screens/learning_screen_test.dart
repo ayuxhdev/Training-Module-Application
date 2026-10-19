@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
@@ -99,7 +99,9 @@ void main() {
       await tester.pumpWidget(createTestWidget(container));
       await tester.pumpAndSettle();
 
-      expect(find.byType(CustomCard), findsNWidgets(2));
+      await tester.drag(find.byType(ListView), const Offset(0, -320));
+      await tester.pumpAndSettle();
+      expect(find.byType(LearningCard), findsNWidgets(2));
       expect(find.text('Safety Basics'), findsOneWidget);
       expect(find.text('Advanced Safety'), findsOneWidget);
       expect(find.byType(StatusBadge), findsNWidgets(2));

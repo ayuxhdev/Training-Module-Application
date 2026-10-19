@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
@@ -87,7 +87,27 @@ class LessonListScreen extends ConsumerWidget {
                 final lesson = lessons[index];
                 final isCompleted = lesson.progress.completed;
 
-                return GestureDetector(
+                return LearningCard(
+                  title: '${lesson.position}. ${lesson.title}',
+                  subtitle: lesson.type.toUpperCase(),
+                  status: isCompleted ? 'COMPLETED' : 'PENDING',
+                  badgeStatus: _getLessonStatusBadge(isCompleted),
+                  icon: isCompleted
+                      ? Icons.check_circle_outline
+                      : lesson.type.toUpperCase() == 'VIDEO'
+                      ? Icons.play_circle_outline
+                      : Icons.article_outlined,
+                  footer: lesson.isRequired
+                      ? Text(
+                          '• REQUIRED',
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                        )
+                      : null,
                   onTap: () {
                     if (lesson.type.toUpperCase() == 'TEXT') {
                       context.go(
@@ -107,62 +127,6 @@ class LessonListScreen extends ConsumerWidget {
                       );
                     }
                   },
-                  child: CustomCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '${lesson.position}. ${lesson.title}',
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            AppSpacing.gapSm,
-                            StatusBadge(
-                              text: isCompleted ? 'COMPLETED' : 'PENDING',
-                              status: _getLessonStatusBadge(isCompleted),
-                            ),
-                          ],
-                        ),
-                        AppSpacing.gapSm,
-                        Row(
-                          children: [
-                            Icon(
-                              lesson.type.toUpperCase() == 'VIDEO'
-                                  ? Icons.play_circle_outline
-                                  : Icons.article_outlined,
-                              size: 16,
-                              color: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.color,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              lesson.type.toUpperCase(),
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                            if (lesson.isRequired) ...[
-                              const SizedBox(width: 8),
-                              Text(
-                                '• REQUIRED',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .error,
-                                    ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
                 );
               },
             ),

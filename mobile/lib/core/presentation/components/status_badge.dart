@@ -30,7 +30,7 @@ class StatusBadge extends StatelessWidget {
     final isDark = brightness == Brightness.dark;
     switch (status) {
       case BadgeStatus.success:
-        return isDark ? Colors.green.shade200 : Colors.green.shade800;
+        return isDark ? Colors.green.shade200 : Colors.green.shade900;
       case BadgeStatus.warning:
         return isDark ? Colors.orange.shade200 : Colors.deepOrange.shade900;
       case BadgeStatus.info:
@@ -43,10 +43,10 @@ class StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: _getBackgroundColor(),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         text.toUpperCase(),

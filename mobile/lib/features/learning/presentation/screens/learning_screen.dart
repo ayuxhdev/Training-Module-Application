@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
@@ -44,10 +44,18 @@ class LearningScreen extends ConsumerWidget {
                 : ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: AppSpacing.pagePadding,
-                    itemCount: assignments.length,
+                    itemCount: assignments.length + 1,
                     separatorBuilder: (context, index) => AppSpacing.gapMd,
                     itemBuilder: (context, index) {
-                      final assignment = assignments[index];
+                      if (index == 0) {
+                        return const CinematicHero(
+                          eyebrow: 'Learning library',
+                          title: 'Your next chapter.',
+                          subtitle: 'Explore your assigned training and pick up where you left off.',
+                          icon: Icons.school_outlined,
+                        );
+                      }
+                      final assignment = assignments[index - 1];
                       return _AssignmentCard(assignment: assignment);
                     },
                   ),
@@ -85,64 +93,35 @@ class _AssignmentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dueDate = assignment.dueAt;
-    final formattedDate = dueDate != null 
-        ? '${dueDate.year}-${dueDate.month.toString().padLeft(2, '0')}-${dueDate.day.toString().padLeft(2, '0')}' 
+    final formattedDate = dueDate != null
+        ? '${dueDate.year}-${dueDate.month.toString().padLeft(2, '0')}-${dueDate.day.toString().padLeft(2, '0')}'
         : 'No due date';
 
-    return GestureDetector(
+    return LearningCard(
+      title: assignment.trainingTitle,
+      subtitle: 'Version: ${assignment.versionNumber}',
+      status: assignment.status,
+      badgeStatus: _getStatusBadge(assignment.status),
       onTap: () => context.go('/learning/assignments/${assignment.id}'),
-      child: CustomCard(
-        child: Column(
+      footer: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  assignment.trainingTitle,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-              ),
-              AppSpacing.gapSm,
-              StatusBadge(
-                text: assignment.status.replaceAll('_', ' '),
-                status: _getStatusBadge(assignment.status),
-              ),
-            ],
-          ),
-          AppSpacing.gapSm,
           Text(
-            'Version: ${assignment.versionNumber}',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          AppSpacing.gapSm,
-          SizedBox(
-            width: double.infinity,
-            child: Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8.0,
-              runSpacing: 4.0,
-              children: [
-                Text(
-                  'Due: $formattedDate',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: assignment.isOverdue ? Theme.of(context).colorScheme.error : null,
-                        fontWeight: assignment.isOverdue ? FontWeight.bold : null,
-                      ),
-                ),
-                Text(
-                  'Progress: ${assignment.progressSummary.requiredLessonsCompleted}/${assignment.progressSummary.requiredLessonsTotal}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
+            'Due: $formattedDate',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: assignment.isOverdue
+                  ? Theme.of(context).colorScheme.error
+                  : null,
             ),
           ),
+          const SizedBox(height: 16),
+          LearningProgress(
+            completed: assignment.progressSummary.requiredLessonsCompleted,
+            total: assignment.progressSummary.requiredLessonsTotal,
+            label:
+                'Progress: ${assignment.progressSummary.requiredLessonsCompleted}/${assignment.progressSummary.requiredLessonsTotal}',
+          ),
         ],
-      ),
       ),
     );
   }

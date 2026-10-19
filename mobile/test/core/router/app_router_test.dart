@@ -254,6 +254,11 @@ void main() {
       }
 
       // Tap the assignment card
+      await tester.scrollUntilVisible(
+        find.text('Test Assignment'), 250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.text('Test Assignment'), findsOneWidget);
       await tester.tap(find.text('Test Assignment'));
       await tester.pumpAndSettle();
@@ -369,6 +374,8 @@ void main() {
 
     // Verify detail and tap Start Training
     expect(find.byType(AssignmentDetailScreen), findsOneWidget);
+    await tester.ensureVisible(find.text('Start Training'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Start Training'));
     await tester.pumpAndSettle();
 

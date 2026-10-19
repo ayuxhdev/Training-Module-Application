@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/cinematic_components.dart';
+import 'package:training_app/core/presentation/components/cinematic_notice.dart';
+import 'package:training_app/core/presentation/components/status_badge.dart';
+import 'package:training_app/features/assessments/presentation/widgets/assessment_choice.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/features/assessments/domain/models/assessment.dart';
@@ -63,6 +67,13 @@ class _AssessmentAttemptScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        scrollable: true,
+        icon: Icon(
+          Icons.fact_check_outlined,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         title: const Text('Submit assessment?'),
         content: Text(
           unanswered == 0
@@ -131,6 +142,7 @@ class _AssessmentAttemptScreenState
           : attempt == null
           ? SingleChildScrollView(
               child: ErrorView(
+                title: 'Assessment unavailable',
                 message: state.error?.message ?? 'Assessment unavailable. Return to training to check eligibility.',
                 onRetry: state.phase == AssessmentPhase.unavailable
                     ? null
@@ -144,11 +156,13 @@ class _AssessmentAttemptScreenState
                 if (state.error != null) ...[
                   Semantics(
                     liveRegion: true,
-                    child: CustomCard(
+                    child: CinematicNotice(
+                      message: state.error!.message,
+                      isError: true,
+                      icon: Icons.error_outline_rounded,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text(state.error!.message),
                           if (state.phase == AssessmentPhase.uncertain)
                             const Text(
                               'Submission is not confirmed. Check its status before trying again.',
@@ -166,8 +180,8 @@ class _AssessmentAttemptScreenState
                 if (attempt.summary.isClosed)
                   _result(context, attempt)
                 else if (attempt.questions.isEmpty)
-                  const Text(
-                    'No questions are available. Return to training and reload the assessment.',
+                  const CinematicNotice(
+                    message: 'No questions are available. Return to training and reload the assessment.',
                   )
                 else
                   _questions(context, state),
@@ -209,7 +223,12 @@ class _AssessmentAttemptScreenState
         if (attempt.summary.deadlineAt != null)
           _Deadline(summary: attempt.summary),
         const SizedBox(height: 16),
-        Text('$answered of ${questions.length} answered'),
+        Text(
+          '$answered of ${questions.length} answered',
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: theme.colorScheme.primary,
+          ),
+        ),
         const SizedBox(height: 8),
         LinearProgressIndicator(
           value: answered / questions.length,
@@ -222,7 +241,10 @@ class _AssessmentAttemptScreenState
             children: [
               Text(
                 'Question ${index + 1} of ${questions.length}',
-                style: theme.textTheme.labelLarge,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.primary,
+                  letterSpacing: .5,
+                ),
               ),
               const SizedBox(height: 12),
               Semantics(
@@ -233,32 +255,12 @@ class _AssessmentAttemptScreenState
               for (final option in options)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Semantics(
+                  child: AssessmentChoice(
+                    text: option.text,
                     selected: state.selectedAnswers[question.id] == option.id,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        alignment: Alignment.centerLeft,
-                        minimumSize: const Size(0, 56),
-                        backgroundColor:
-                            state.selectedAnswers[question.id] == option.id
-                            ? theme.colorScheme.primaryContainer
-                            : null,
-                        foregroundColor:
-                            state.selectedAnswers[question.id] == option.id
-                            ? theme.colorScheme.onPrimaryContainer
-                            : null,
-                      ),
-                      onPressed: state.canSubmit && !_confirming
-                          ? () =>
-                                controller.selectAnswer(question.id, option.id)
-                          : null,
-                      icon: Icon(
-                        state.selectedAnswers[question.id] == option.id
-                            ? Icons.radio_button_checked
-                            : Icons.radio_button_unchecked,
-                      ),
-                      label: Text(option.text),
-                    ),
+                    onPressed: state.canSubmit && !_confirming
+                        ? () => controller.selectAnswer(question.id, option.id)
+                        : null,
                   ),
                 ),
               TextButton(
@@ -296,8 +298,9 @@ class _AssessmentAttemptScreenState
           ],
         ),
         const SizedBox(height: 16),
-        const Text(
-          'Answers are held on this screen only until submitted. Leaving may discard unsubmitted choices.',
+        const CinematicNotice(
+          message: 'Answers are held on this screen only until submitted. Leaving may discard unsubmitted choices.',
+          icon: Icons.edit_note_rounded,
         ),
         const SizedBox(height: 12),
         FilledButton.icon(
@@ -317,36 +320,61 @@ class _AssessmentAttemptScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        CustomCard(
+        CinematicHero(
+          eyebrow: 'Assessment result',
+          title: attemptLabel(summary),
+          subtitle: summary.passed == true
+              ? 'Your result is confirmed. Take a moment to celebrate your progress.'
+              : summary.status == AttemptStatus.submitted
+              ? 'Review your recorded answers and check whether another attempt is available.'
+              : 'Check eligibility and attempt history before continuing.',
+          icon: summary.passed == true
+              ? Icons.verified_outlined
+              : Icons.assignment_outlined,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(
-                summary.passed == true
-                    ? Icons.verified_outlined
-                    : Icons.assignment_outlined,
-                color: theme.colorScheme.primary,
-                size: 48,
-              ),
-              const SizedBox(height: 16),
               Semantics(
                 liveRegion: true,
-                header: true,
-                child: Text(
-                  attemptLabel(summary),
-                  style: theme.textTheme.headlineMedium,
-                  textAlign: TextAlign.center,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: StatusBadge(
+                      text: attemptLabel(summary),
+                      status: summary.passed == true
+                          ? BadgeStatus.success
+                          : summary.status == AttemptStatus.submitted
+                          ? BadgeStatus.error
+                          : BadgeStatus.warning,
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(height: 16),
-              Text('Attempt ${summary.attemptNumber}'),
+              const SizedBox(height: 20),
+              Text(
+                'Attempt ${summary.attemptNumber}',
+                style: theme.textTheme.titleMedium,
+              ),
               if (summary.scorePoints != null)
-                Text(
-                  'Score: ${summary.scorePoints} / ${summary.maximumPoints}',
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    'Score: ${summary.scorePoints} / ${summary.maximumPoints}',
+                    style: theme.textTheme.titleLarge,
+                  ),
                 ),
               Text('Passing score: ${summary.passPercentageSnapshot}%'),
               if (summary.submittedAt != null)
-                Text('Submitted: ${summary.submittedAt!.toLocal()}'),
+                Text(
+                  'Submitted: ${summary.submittedAt!.toLocal()}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
               const SizedBox(height: 16),
               OutlinedButton(
                 onPressed: () => context.go(
@@ -367,7 +395,10 @@ class _AssessmentAttemptScreenState
         ),
         if (attempt.answers.isNotEmpty) ...[
           const SizedBox(height: 24),
-          Text('Submitted answers', style: theme.textTheme.titleLarge),
+          const SectionHeading(
+            'Submitted answers',
+            subtitle: 'The responses recorded with this attempt.',
+          ),
           for (final answer in [
             ...attempt.answers,
           ]..sort((a, b) => a.presentedPosition.compareTo(b.presentedPosition)))
@@ -420,8 +451,9 @@ class _DeadlineState extends State<_Deadline> {
   @override
   Widget build(BuildContext context) {
     final seconds = widget.summary.remainingAt(DateTime.now())!.inSeconds;
-    return Text(
-      seconds == 0
+    return CinematicNotice(
+      icon: Icons.schedule_rounded,
+      message: seconds == 0
           ? 'Deadline reached. Submit to confirm the result with the server.'
           : 'Time remaining: ${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}',
     );

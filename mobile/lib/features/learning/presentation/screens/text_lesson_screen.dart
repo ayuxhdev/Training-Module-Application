@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show ProviderException;
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
+import 'package:training_app/core/presentation/components/cinematic_components.dart';
+import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/core/presentation/components/primary_button.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
@@ -40,7 +42,8 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
   @override
   void didUpdateWidget(TextLessonScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.assignmentId != widget.assignmentId || oldWidget.lessonId != widget.lessonId) {
+    if (oldWidget.assignmentId != widget.assignmentId ||
+        oldWidget.lessonId != widget.lessonId) {
       _generation++;
       _isSubmitting = false;
       _isCompletedLocally = false;
@@ -60,13 +63,18 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
     });
 
     try {
-      final result = await ref.read(textLessonCompletionProvider((
-        assignmentId: requestedAssignmentId, lessonId: requestedLessonId,
-      )).future);
-      
+      final result = await ref.read(
+        textLessonCompletionProvider((
+          assignmentId: requestedAssignmentId,
+          lessonId: requestedLessonId,
+        )).future,
+      );
+
       if (!mounted) return;
 
-      final bool isCurrentLesson = widget.assignmentId == requestedAssignmentId && widget.lessonId == requestedLessonId;
+      final bool isCurrentLesson =
+          widget.assignmentId == requestedAssignmentId &&
+          widget.lessonId == requestedLessonId;
       final bool isGenerationMatch = _generation == capturedGeneration;
 
       if (isCurrentLesson && isGenerationMatch) {
@@ -74,9 +82,13 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
           _isCompletedLocally = true;
         }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result.completed
-            ? 'Lesson completed successfully'
-            : 'Completion was not confirmed. Please try again.')),
+          SnackBar(
+            content: Text(
+              result.completed
+                  ? 'Lesson completed successfully'
+                  : 'Completion was not confirmed. Please try again.',
+            ),
+          ),
         );
         setState(() {
           _isSubmitting = false;
@@ -85,7 +97,9 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      final bool isCurrentLesson = widget.assignmentId == requestedAssignmentId && widget.lessonId == requestedLessonId;
+      final bool isCurrentLesson =
+          widget.assignmentId == requestedAssignmentId &&
+          widget.lessonId == requestedLessonId;
       final bool isGenerationMatch = _generation == capturedGeneration;
 
       if (isCurrentLesson && isGenerationMatch) {
@@ -93,7 +107,8 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
           _isSubmitting = false;
         });
 
-        String errorMessage = 'Unable to complete this lesson. Please try again.';
+        String errorMessage =
+            'Unable to complete this lesson. Please try again.';
         final error = e is ProviderException ? e.exception : e;
         if (error is ApiError) {
           errorMessage = error.message;
@@ -111,12 +126,12 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final detailAsync = ref.watch(assignmentDetailProvider(widget.assignmentId));
+    final detailAsync = ref.watch(
+      assignmentDetailProvider(widget.assignmentId),
+    );
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Lesson'),
-      ),
+      appBar: AppBar(title: const Text('Lesson')),
       body: detailAsync.when(
         skipLoadingOnRefresh: false,
         data: (detail) {
@@ -127,20 +142,29 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
             }
           }
 
-          final currentIndex = allLessons.indexWhere((loc) => loc.lesson.id == widget.lessonId);
+          final currentIndex = allLessons.indexWhere(
+            (loc) => loc.lesson.id == widget.lessonId,
+          );
           if (currentIndex == -1) {
             return ErrorView(
               message: 'Lesson not found',
-              onRetry: () => ref.refresh(assignmentDetailProvider(widget.assignmentId).future),
+              onRetry: () => ref.refresh(
+                assignmentDetailProvider(widget.assignmentId).future,
+              ),
             );
           }
 
           final currentLocation = allLessons[currentIndex];
           final targetLesson = currentLocation.lesson;
-          final prevLocation = currentIndex > 0 ? allLessons[currentIndex - 1] : null;
-          final nextLocation = currentIndex < allLessons.length - 1 ? allLessons[currentIndex + 1] : null;
+          final prevLocation = currentIndex > 0
+              ? allLessons[currentIndex - 1]
+              : null;
+          final nextLocation = currentIndex < allLessons.length - 1
+              ? allLessons[currentIndex + 1]
+              : null;
 
-          final isCompleted = _isCompletedLocally || targetLesson.progress.completed;
+          final isCompleted =
+              _isCompletedLocally || targetLesson.progress.completed;
           final isTextLesson = targetLesson.type.toUpperCase() == 'TEXT';
 
           return SingleChildScrollView(
@@ -148,44 +172,42 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        targetLesson.title,
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                    ),
-                    AppSpacing.gapSm,
-                    StatusBadge(
-                      text: isCompleted ? 'COMPLETED' : 'INCOMPLETE',
-                      status: isCompleted ? BadgeStatus.success : BadgeStatus.info,
-                    ),
-                  ],
+                CinematicHero(
+                  eyebrow: 'Learning notes',
+                  title: targetLesson.title,
+                  subtitle: targetLesson.isRequired
+                      ? 'Required Lesson'
+                      : 'Lesson content',
+                  icon: Icons.article_outlined,
                 ),
                 AppSpacing.gapMd,
-                if (targetLesson.isRequired)
-                  Text(
-                    'Required Lesson',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: StatusBadge(
+                    text: isCompleted ? 'COMPLETED' : 'INCOMPLETE',
+                    status: isCompleted
+                        ? BadgeStatus.success
+                        : BadgeStatus.info,
                   ),
+                ),
                 AppSpacing.gapLg,
                 if (isTextLesson)
-                  Text(
-                    targetLesson.body.isNotEmpty ? targetLesson.body : 'No content available.',
-                    style: Theme.of(context).textTheme.bodyLarge,
+                  CustomCard(
+                    child: Text(
+                      targetLesson.body.isNotEmpty
+                          ? targetLesson.body
+                          : 'No content available.',
+                      style: Theme.of(context).textTheme.bodyLarge
+                          ?.copyWith(height: 1.65),
+                    ),
                   )
                 else
                   Container(
                     padding: AppSpacing.pagePadding,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Center(
@@ -202,33 +224,48 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
                     text: _isSubmitting ? 'Submitting...' : 'Complete Lesson',
                     onPressed: _isSubmitting ? null : _completeLesson,
                   ),
-                if (isTextLesson && !isCompleted)
-                  AppSpacing.gapLg,
+                if (isTextLesson && !isCompleted) AppSpacing.gapLg,
                 Row(
                   children: [
                     if (prevLocation != null)
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: _isSubmitting ? null : () {
-                            final route = prevLocation.lesson.type.toUpperCase() == 'VIDEO' ? 'video' : 'text';
-                            context.pushReplacement('/learning/assignments/${widget.assignmentId}/modules/${prevLocation.moduleId}/lessons/${prevLocation.lesson.id}/$route');
-                          },
+                          onPressed: _isSubmitting
+                              ? null
+                              : () {
+                                  final route =
+                                      prevLocation.lesson.type.toUpperCase() ==
+                                          'VIDEO'
+                                      ? 'video'
+                                      : 'text';
+                                  context.pushReplacement(
+                                    '/learning/assignments/${widget.assignmentId}/modules/${prevLocation.moduleId}/lessons/${prevLocation.lesson.id}/$route',
+                                  );
+                                },
                           child: const Text('Previous'),
                         ),
                       )
                     else
                       const Spacer(),
-                    
-                    if (prevLocation != null && nextLocation != null) 
+
+                    if (prevLocation != null && nextLocation != null)
                       AppSpacing.gapMd,
-                      
+
                     if (nextLocation != null)
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: _isSubmitting ? null : () {
-                            final route = nextLocation.lesson.type.toUpperCase() == 'VIDEO' ? 'video' : 'text';
-                            context.pushReplacement('/learning/assignments/${widget.assignmentId}/modules/${nextLocation.moduleId}/lessons/${nextLocation.lesson.id}/$route');
-                          },
+                          onPressed: _isSubmitting
+                              ? null
+                              : () {
+                                  final route =
+                                      nextLocation.lesson.type.toUpperCase() ==
+                                          'VIDEO'
+                                      ? 'video'
+                                      : 'text';
+                                  context.pushReplacement(
+                                    '/learning/assignments/${widget.assignmentId}/modules/${nextLocation.moduleId}/lessons/${nextLocation.lesson.id}/$route',
+                                  );
+                                },
                           child: const Text('Next'),
                         ),
                       )
@@ -243,7 +280,8 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
         loading: () => const LoadingView(),
         error: (error, stackTrace) => ErrorView(
           message: error.toString(),
-          onRetry: () => ref.refresh(assignmentDetailProvider(widget.assignmentId).future),
+          onRetry: () =>
+              ref.refresh(assignmentDetailProvider(widget.assignmentId).future),
         ),
       ),
     );

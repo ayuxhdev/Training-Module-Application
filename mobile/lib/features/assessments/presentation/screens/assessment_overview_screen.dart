@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/cinematic_components.dart';
+import 'package:training_app/core/presentation/components/cinematic_notice.dart';
+import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
@@ -31,9 +34,11 @@ class AssessmentOverviewScreen extends ConsumerWidget {
           .when(
             skipLoadingOnReload: false,
             skipLoadingOnRefresh: false,
-            loading: () => const LoadingView(),
+            loading: () =>
+                const LoadingView(message: 'Loading your assessments...'),
             error: (error, _) => SingleChildScrollView(
               child: ErrorView(
+                title: 'Assessments unavailable',
                 message: error is ApiError
                     ? error.message
                     : 'Unable to load assessments.',
@@ -59,6 +64,13 @@ class AssessmentOverviewScreen extends ConsumerWidget {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(16),
                   children: [
+                    const CinematicHero(
+                      eyebrow: 'Assessment center',
+                      title: 'Put your learning into practice.',
+                      subtitle: 'Review your requirements and attempts before you begin.',
+                      icon: Icons.quiz_outlined,
+                    ),
+                    const SizedBox(height: 24),
                     if (assessments.isEmpty)
                       const EmptyView(
                         message: 'No assessments available here.',
@@ -91,16 +103,44 @@ class _AssessmentCard extends StatelessWidget {
     final theme = Theme.of(context);
     final item = assessment;
     final base = '/learning/assignments/$assignmentId/assessments/${item.id}';
+    final label = item.completed
+        ? 'Completed'
+        : item.eligibility.canResume
+        ? 'In progress'
+        : item.eligibility.canStart
+        ? 'Ready'
+        : item.attemptsRemaining == 0
+        ? 'No attempts left'
+        : 'Locked';
     return CustomCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(
-            item.completed ? Icons.task_alt : Icons.quiz_outlined,
-            color: theme.colorScheme.primary,
-            size: 32,
+          Row(
+            children: [
+              Icon(
+                item.completed ? Icons.task_alt : Icons.quiz_outlined,
+                color: theme.colorScheme.primary,
+                size: 32,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: StatusBadge(
+                    text: label,
+                    status: item.completed
+                        ? BadgeStatus.success
+                        : item.eligibility.canStart ||
+                              item.eligibility.canResume
+                        ? BadgeStatus.info
+                        : BadgeStatus.warning,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
           Text(item.title, style: theme.textTheme.titleLarge),
           Text(
             '${item.kind == AssessmentKind.quiz ? 'Module quiz' : 'Final assessment'} • ${item.isRequired ? 'Required' : 'Optional'}',
@@ -112,13 +152,14 @@ class _AssessmentCard extends StatelessWidget {
           ),
           if (item.timeLimitMinutes != null)
             Text('Time limit: ${item.timeLimitMinutes} minutes'),
-          if (item.completed) const Text('Completed'),
           if (item.eligibility.blockingReason != null)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                item.eligibility.blockingReason!,
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+              child: CinematicNotice(
+                message: item.eligibility.blockingReason!,
+                icon: item.eligibility.canResume
+                    ? Icons.pause_circle_outline
+                    : Icons.lock_outline,
               ),
             ),
           if (item.eligibility.canStart || item.eligibility.canResume)
@@ -139,10 +180,19 @@ class _AssessmentCard extends StatelessWidget {
             ),
           if (item.attempts.isNotEmpty) ...[
             const Divider(height: 32),
-            Text('Attempt history', style: theme.textTheme.titleMedium),
+            const SectionHeading(
+              'Attempt history',
+              subtitle: 'Your recorded attempts and results.',
+            ),
             for (final attempt in item.attempts)
               ListTile(
                 contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  attempt.passed == true
+                      ? Icons.check_circle_outline
+                      : Icons.history_rounded,
+                  color: theme.colorScheme.primary,
+                ),
                 title: Text('Attempt ${attempt.attemptNumber}'),
                 subtitle: Text(attemptLabel(attempt)),
                 trailing: const Icon(Icons.chevron_right),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'feedback_panel.dart';
+
 class EmptyView extends StatelessWidget {
   final String message;
   final IconData icon;
@@ -12,25 +14,13 @@ class EmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 48, color: theme.colorScheme.onSurfaceVariant),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
+    return FeedbackPanel(
+      visual: Icon(
+        icon,
+        size: 48,
+        color: Theme.of(context).colorScheme.primary,
       ),
+      message: message,
     );
   }
 }

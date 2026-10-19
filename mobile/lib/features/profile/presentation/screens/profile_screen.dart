@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/cinematic_components.dart';
+import 'package:training_app/features/profile/presentation/widgets/appearance_settings.dart';
 import 'package:training_app/core/presentation/components/secondary_button.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
@@ -17,6 +19,27 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  void _showAppearance() {
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      requestFocus: true,
+      constraints: BoxConstraints(
+        maxWidth: 560,
+        maxHeight: MediaQuery.sizeOf(context).height * .9,
+      ),
+      sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
+      builder: (_) => const SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
+        child: AppearanceSettings(),
+      ),
+    );
+  }
+
   Future<void> _refresh() async {
     final authState = ref.read(authControllerProvider);
     try {
@@ -41,39 +64,52 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final employee = authState.employee;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(
+        title: const Text('Profile'),
+        actions: [
+          IconButton(
+            tooltip: 'Appearance',
+            style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
+            onPressed: _showAppearance,
+            icon: const Icon(Icons.palette_outlined),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
-            Center(
-              child: CircleAvatar(
-                radius: 48,
-                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                child: Icon(
-                  Icons.person,
-                  size: 64,
-                  color: Theme.of(context).colorScheme.primary,
+            CinematicHero(
+              eyebrow: 'Employee profile',
+              title: employee.displayName,
+              subtitle: 'Your learning, your way.',
+              icon: Icons.person_outline_rounded,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: StatusBadge(
+                    text: employee.isActive ? 'Active' : 'Inactive',
+                    status: employee.isActive
+                        ? BadgeStatus.success
+                        : BadgeStatus.error,
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: AppSpacing.md),
-            Center(
-              child: StatusBadge(
-                text: employee.isActive ? 'Active' : 'Inactive',
-                status: employee.isActive
-                    ? BadgeStatus.success
-                    : BadgeStatus.error,
-              ),
-            ),
             const SizedBox(height: AppSpacing.lg),
+            const SectionHeading(
+              'Account details',
+              subtitle: 'Your organization profile.',
+            ),
             CustomCard(
               child: Column(
                 children: [
-                  _ProfileItem(label: 'Name', value: employee.displayName),
-                  const Divider(),
                   _ProfileItem(
                     label: 'Employee Code',
                     value: employee.employeeCode,
@@ -87,9 +123,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: AppSpacing.xl),
+            const SizedBox(height: AppSpacing.lg),
             Card(
               child: ListTile(
+                contentPadding: const EdgeInsets.all(16),
                 leading: const Icon(Icons.workspace_premium_outlined),
                 title: const Text('My Certificates'),
                 trailing: const Icon(Icons.chevron_right),
@@ -120,24 +157,20 @@ class _ProfileItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.bodyLarge
+                ?.copyWith(fontWeight: FontWeight.w600),
           ),
         ],
       ),
