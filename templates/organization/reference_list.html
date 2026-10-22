@@ -1,35 +1,40 @@
 {% extends "base.html" %}
 {% block content %}
-<header class="page-heading">
-	<h1>{{ title }}</h1>
-	{% if title == "Departments" %}
-		{% if perms.organization.add_department %}<a class="action-link" href="{% url create_url %}">Add department</a>{% endif %}
-	{% else %}
-		{% if perms.organization.add_jobrole %}<a class="action-link" href="{% url create_url %}">Add job role</a>{% endif %}
-	{% endif %}
-</header>
-<div class="table-scroll" role="region" aria-label="{{ title }}" tabindex="0">
-	<table>
-		<thead><tr><th>Code</th><th>Name</th><th>Description</th><th>Status</th><th>Actions</th></tr></thead>
-		<tbody>
-		{% for item in items %}
-			<tr>
-				<td>{{ item.code }}</td>
-				<td>{{ item.name }}</td>
-				<td>{{ item.description|default:"—" }}</td>
-				<td><span class="status-badge{% if not item.is_active %} status-inactive{% endif %}">{% if item.is_active %}Active{% else %}Inactive{% endif %}</span></td>
-				<td>
-					{% if title == "Departments" %}
-						{% if perms.organization.change_department %}<a href="{% url 'organization:department-update' item.pk %}">Edit</a>{% endif %}
-					{% else %}
-						{% if perms.organization.change_jobrole %}<a href="{% url 'organization:job-role-update' item.pk %}">Edit</a>{% endif %}
-					{% endif %}
-				</td>
-			</tr>
-		{% empty %}
-			<tr><td class="empty-state" colspan="5">No {{ title|lower }} available.</td></tr>
-		{% endfor %}
-		</tbody>
-	</table>
+<div class="org-workspace">
+  <header class="page-header">
+    <div class="page-header-main"><h1>{{ title }}</h1><p class="muted">Organization structure and employee classification</p></div>
+    {% if title == "Departments" %}
+      {% if perms.organization.add_department %}<a class="btn btn-primary" href="{% url create_url %}">Add department</a>{% endif %}
+    {% else %}
+      {% if perms.organization.add_jobrole %}<a class="btn btn-primary" href="{% url create_url %}">Add job role</a>{% endif %}
+    {% endif %}
+  </header>
+  <section class="org-panel" aria-labelledby="reference-list-heading">
+    <header class="org-panel-heading"><h2 id="reference-list-heading">{{ title }}</h2><p>Codes, descriptions and current status</p></header>
+    <div class="table-scroll org-table-scroll" role="region" aria-label="{{ title }}" tabindex="0">
+      <table class="org-table org-reference-table">
+        <thead><tr><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Description</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
+        <tbody>
+        {% for item in items %}
+          <tr>
+            <td class="org-code">{{ item.code }}</td>
+            <th scope="row">{{ item.name }}</th>
+            <td class="org-description">{{ item.description|default:"Not provided" }}</td>
+            <td>{% if item.is_active %}{% include "components/status_badge.html" with status="ACTIVE" label="Active" %}{% else %}{% include "components/status_badge.html" with status="INACTIVE" label="Inactive" %}{% endif %}</td>
+            <td class="org-table-actions">
+              {% if title == "Departments" %}
+                {% if perms.organization.change_department %}<a class="btn btn-secondary" href="{% url 'organization:department-update' item.pk %}" aria-label="Edit department: {{ item.name }}">Edit</a>{% endif %}
+              {% else %}
+                {% if perms.organization.change_jobrole %}<a class="btn btn-secondary" href="{% url 'organization:job-role-update' item.pk %}" aria-label="Edit job role: {{ item.name }}">Edit</a>{% endif %}
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td class="org-table-empty" colspan="5">No {{ title|lower }} available.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
 {% endblock %}

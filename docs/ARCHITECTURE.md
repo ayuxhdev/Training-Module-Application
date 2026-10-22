@@ -8,7 +8,7 @@ The application consists of:
 
 - a Django web application
 - a Django REST API under `/api/v1/`
-- a Flutter Android employee application
+- a role-aware Flutter Android application for Administrator, Manager and Employee workflows
 - MySQL as the authoritative relational database
 - protected training-media delivery
 - server-side business rules and audit controls
@@ -119,7 +119,88 @@ The web application uses Django's authentication, authorization, CSRF, ORM, temp
 
 ### 4.2 Flutter Android Application
 
-The Flutter application is the employee-facing mobile client.
+The Flutter application originally provided the employee-facing mobile client.
+The approved multi-role expansion now targets the existing custom Django portal's
+Administrator, Manager and Employee business workflows in one Android application.
+The current learner features remain available; management functionality is being
+added in bounded batches, not assumed to exist already.
+
+#### Multi-role identity foundation (Batch 1)
+
+`POST /api/v1/auth/login/` still authenticates Django username/password and returns
+the existing access/refresh pair. An active linked Employee remains eligible.
+An active account without an Employee is also eligible when it has effective
+permissions for portal management. Staff status or a named group alone is not
+an authorization decision. An inactive linked Employee is denied even when the
+User has management permissions.
+
+`GET /api/v1/auth/me/` adds:
+
+- `user`: ID, username and display name;
+- `employee`: the existing Employee representation, or `null`;
+- `capabilities`: a sorted, allowlisted set of current effective portal permission
+  codes and contextual navigation capabilities (`personal_learning`,
+  `management_workspace`, `team_workspace`, `company_dashboard`, `assignment_report`).
+
+For Employee-linked accounts, the original flat Employee fields remain for older
+clients. No framework User/Group/token administration permissions are exposed.
+Capabilities are recomputed on identity requests and account eligibility is checked
+again during refresh. They are not JWT authorization claims. Logout still verifies
+refresh-token ownership and can blacklist an owned refresh token after eligibility
+is lost; existing access tokens retain their existing lifetime.
+
+The existing learner APIs retain `IsActiveEmployee`, ownership and lifecycle checks.
+The identity permission is specific to `/auth/me/`; it does not grant team or global
+access to personal assignments, assessments, certificates, notifications or media.
+Management endpoints must check effective permissions and object/queryset
+scope on every request, independently of the mobile capability snapshot.
+
+Flutter authenticated state now contains an identity with optional Employee context.
+Existing Employee Dashboard/Learning/Profile navigation remains. Batch 1 adds the
+Team/Management account-access overview; Batch 2 connects it to read-only company/
+team dashboards, employee directory/detail and organization reference screens.
+No management mutation controls are implemented by these batches. Personal providers and routes
+require the active Employee context plus `personal_learning`. Account switching and
+loss of personal access invalidate/cancel scoped requests using existing guards.
+System/Light/Dark appearance storage and startup restoration are unchanged.
+
+Managers retain recursive reporting-team scope and their existing read-only
+management policy. Combined groups and direct permissions are supported; JobRole
+is an employment classification, not an authorization role. Coordinator, Trainer
+and Supervisor grants remain intact. Django framework `/admin/` account, password,
+group and token administration is excluded from the Android expansion.
+
+The nine implementation batches and outstanding scope are recorded in ROADMAP.md.
+This changes the future Android scope without rewriting historical milestone or
+QA evidence. Batches 1 and 2 are implemented locally, not a completed multi-role release.
+
+#### Read-only management integration (Batch 2)
+
+The JWT-authenticated `/api/v1/management/` routes are:
+
+- `GET dashboard/`: company/team metrics from the existing reporting helpers;
+- `GET employees/` and `GET employees/<id>/`: paginated directory and scoped detail;
+- `GET departments/` and `GET job-roles/`: paginated reference lists.
+
+Every route rechecks active mobile-account eligibility. Organization reads require
+the corresponding effective `organization.view_*` permission. Employee querysets
+reuse the portal's management-permission and recursive reporting-scope helpers;
+foreign scoped IDs return 404. Dashboard scope follows the existing company/team
+precedence and reporting calculations. Client filters cannot expand scope.
+These routes expose no management writes, account secrets or assessment answers.
+
+Flutter repositories use the existing authenticated Dio client and fixed API
+paths. Riverpod providers cancel obsolete requests and rebuild on account or
+capability changes; loading/recovery does not display a previous account's data.
+Dashboard, directory/detail and reference screens reuse the existing theme and
+explicit error recovery. Employee personal-learning routes remain unchanged.
+
+Separate local checkpoints passed **170/170 selected Django/MySQL tests**
+(**18/18 management API tests**) and **551/551 full Flutter tests**, with clean
+Flutter analysis. The test database and role bootstrap were retained. Android
+login/role runtime QA remains pending despite successful APK build/installation:
+emulator system responsiveness and host memory blocked verification. No CI or
+production-readiness claim is made for this uncommitted work.
 
 Current completed foundation includes:
 
@@ -138,8 +219,12 @@ Current completed foundation includes:
 - learning progress
 - previous/next navigation
 - learning-flow integration handling
+- protected tracked video playback and completed-assignment read-only replay
+- learner assessments, results and attempt history
+- personal certificates and in-app notifications
+- persisted System/Light/Dark appearance
 
-M16 extends this foundation with secure learning/video behavior.
+The historical M16 implementation extended this foundation with secure learning/video behavior.
 
 Android is the V1 mobile target. iOS is deferred until Android is stable and released.
 

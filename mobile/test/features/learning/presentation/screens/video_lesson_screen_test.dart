@@ -38,6 +38,8 @@ class Auth extends AuthController {
   @override
   AuthState build() => AuthAuthenticated(employee('A'));
   void change(AuthState auth) => state = auth;
+  @override
+  Future<void> logout() async => state = AuthUnauthenticated();
 }
 
 class Player extends VideoPlayerController {
@@ -111,6 +113,9 @@ void main() {
   String lessonType = 'VIDEO';
   String playbackMode = 'tracked';
   String assignmentStatus = 'IN_PROGRESS';
+  double minimumWatchPercent = 80;
+  ApiError? detailError;
+  int detailReads = 0;
   AssignmentDetail detail() => AssignmentDetail(
     id: 1,
     trainingId: 1,
@@ -131,7 +136,7 @@ void main() {
             position: 1,
             type: lessonType,
             isRequired: true,
-            minimumWatchPercent: 80,
+            minimumWatchPercent: minimumWatchPercent,
             videoDurationSeconds: 100,
             body: '',
             progress: lessonProgress,
@@ -154,6 +159,9 @@ void main() {
     lessonType = 'VIDEO';
     playbackMode = 'tracked';
     assignmentStatus = 'IN_PROGRESS';
+    minimumWatchPercent = 80;
+    detailError = null;
+    detailReads = 0;
     when(
       () => repository.startPlaybackSession(
         1,
@@ -200,7 +208,11 @@ void main() {
       overrides: [
         authControllerProvider.overrideWith(() => auth),
         learningRepositoryProvider.overrideWithValue(repository),
-        assignmentDetailProvider(1).overrideWith((_) async => detail()),
+        assignmentDetailProvider(1).overrideWith((_) async {
+          detailReads++;
+          if (detailError case final error?) throw error;
+          return detail();
+        }),
         assignmentDetailProvider(2).overrideWith(
           (_) async => AssignmentDetail(
             id: 2,
@@ -298,6 +310,126 @@ void main() {
     await tester.pump();
     debugDefaultTargetPlatformOverride = null;
   }
+
+  testWidgets(
+    'expired playback offers explicit sign-in and no further playback action',
+    (tester) async {
+      when(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(
+        ApiError(message: 'Your session has expired.', statusCode: 401),
+      );
+      await show(tester);
+      await play(tester);
+      expect(players, isEmpty);
+      expect(find.byKey(const ValueKey('video-playback-action')), findsNothing);
+      await tester.tap(find.text('Sign in again'));
+      await tester.pumpAndSettle();
+      expect(
+        container.read(authControllerProvider),
+        isA<AuthUnauthenticated>(),
+      );
+      verify(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      await remove(tester);
+    },
+  );
+
+  testWidgets(
+    'authorization loss on a lesson refresh stops media and exposes sign-in recovery',
+    (tester) async {
+      await show(tester);
+      await play(tester);
+      detailError = ApiError(
+        message: 'Your session has expired.',
+        statusCode: 401,
+      );
+      container.invalidate(assignmentDetailProvider(1));
+      await tester.pumpAndSettle();
+      expect(players.single.value.isPlaying, isFalse);
+      expect(find.byType(ProtectedVideoSurface), findsNothing);
+      expect(find.text('Sign in again'), findsOneWidget);
+      expect(detailReads, 2); // Cleanup does not retry the denied lesson read.
+      verify(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          0,
+          completedNormally: false,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      await remove(tester);
+    },
+  );
+
+  testWidgets(
+    'replay media authorization failure offers sign-in without opening a watch session',
+    (tester) async {
+      assignmentStatus = 'COMPLETED';
+      playbackMode = 'read_only_replay';
+      lessonProgress = progress(watched: 80, completed: true);
+      when(() => repository.protectedReplayMediaRequest(1, 2)).thenThrow(
+        ApiError(message: 'Sign in to play this lesson.', statusCode: 401),
+      );
+      await show(tester);
+      await play(tester);
+      expect(find.text('Sign in again'), findsOneWidget);
+      expect(players, isEmpty);
+      verifyNever(
+        () => repository.startPlaybackSession(
+          any(),
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+      await remove(tester);
+    },
+  );
+
+  for (final percent in [79.6, 79.99, 80.0]) {
+    testWidgets(
+      'confirmed $percent percent never rounds up or invents completion',
+      (tester) async {
+        lessonProgress = progress(watched: percent);
+        await show(tester);
+        expect(
+          find.text('Watched coverage: ${percent.floor()}%'),
+          findsOneWidget,
+        );
+        expect(find.text('${percent.floor()}% watched'), findsOneWidget);
+        expect(find.text('Lesson completed'), findsNothing);
+        final indicator = tester.widget<LinearProgressIndicator>(
+          find.byType(LinearProgressIndicator),
+        );
+        expect(indicator.value, percent / 100);
+        await remove(tester);
+      },
+    );
+  }
+
+  testWidgets(
+    'fractional watch requirement is not rounded down to a met threshold',
+    (tester) async {
+      minimumWatchPercent = 80.5;
+      lessonProgress = progress(watched: 80.49);
+      await show(tester);
+      expect(find.text('Watched coverage: 80%'), findsOneWidget);
+      expect(find.text('Watch 80.5% to complete this lesson.'), findsOneWidget);
+      expect(find.text('Lesson completed'), findsNothing);
+      await remove(tester);
+    },
+  );
 
   for (final type in ['video', 'ViDeO']) {
     testWidgets('plays video lesson with $type type', (tester) async {

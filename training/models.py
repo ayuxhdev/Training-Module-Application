@@ -7,6 +7,7 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 from config.model_utils import TimestampedModel, protect_delete, require
+from .video_uploads import MAX_VIDEO_BYTES, VIDEO_EXTENSIONS, has_video_signature
 
 
 VIDEO_HEARTBEAT_TOLERANCE = Decimal("2.0")
@@ -168,26 +169,28 @@ class Lesson(VersionContent):
                 except Exception:
                     size = None
                 require(size is not None, "Video file size could not be determined.")
-                require(size <= 2 * 1024 * 1024 * 1024, "Video files cannot exceed 2GB.")
+                require(size <= MAX_VIDEO_BYTES, "Video files cannot exceed 2GB.")
 
                 try:
-                    self.video_file.open(mode='rb')
-                    header = self.video_file.read(12)
+                    video = self.video_file
+                    if video.closed:
+                        with video.open(mode='rb'):
+                            header = video.read(12)
+                    else:
+                        # Borrow request-owned uploads without closing/deleting them.
+                        position = video.tell()
+                        try:
+                            video.seek(0)
+                            header = video.read(12)
+                        finally:
+                            video.seek(position)
                 except Exception:
                     header = b''
-                finally:
-                    self.video_file.close()
 
-                is_valid_magic = False
-                if header.startswith(b'\x1a\x45\xdf\xa3'):
-                    is_valid_magic = True
-                elif len(header) >= 8 and header[4:8] in (b'ftyp', b'moov', b'mdat', b'free', b'skip', b'wide'):
-                    is_valid_magic = True
-
-                require(is_valid_magic, "Uploaded file must be a valid video format.")
+                require(has_video_signature(header), "Uploaded file must be a valid video format.")
 
                 ext = self.video_file.name.split(".")[-1].lower()
-                require(ext in ["mp4", "webm", "mov"], "Supported video formats are MP4, WebM, and MOV.")
+                require(ext in VIDEO_EXTENSIONS, "Supported video formats are MP4, WebM, and MOV.")
 
 
 class RoleTrainingRequirement(TimestampedModel):

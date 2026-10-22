@@ -118,8 +118,13 @@ class MobileAuthTests(TestCase):
 
     def test_superuser_without_employee(self):
         response = self.client.post(self.login_url, {"username": "admin", "password": "password"})
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        self.assertEqual(response.data["error"]["code"], "inactive_employee")
+        # Django grants this active account effective portal permissions.
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.client.credentials(HTTP_AUTHORIZATION="Bearer " + response.data["access"])
+        identity = self.client.get(self.me_url).data
+        self.assertIsNone(identity["employee"])
+        self.assertIn("management_workspace", identity["capabilities"])
+        self.assertNotIn("personal_learning", identity["capabilities"])
 
     def test_ineligible_user_login_does_not_create_outstanding_token(self):
         before_count = OutstandingToken.objects.filter(user=self.staff_user).count()

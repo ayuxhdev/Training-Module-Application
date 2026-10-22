@@ -1,156 +1,72 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="dashboard-workspace">
 {% if role == "unavailable" %}
   {% include "components/page_header.html" with title="Dashboard" supporting_text="Your training workspace" %}
   {% include "components/empty_state.html" with title="Dashboard unavailable" message="No dashboard is available for this account." %}
-{% elif role == "company" %}
-  {% include "components/page_header.html" with title="Company dashboard" supporting_text="Training operations at a glance" %}
-  <nav class="dashboard-quick-actions" aria-label="Company management">
-    {% if perms.organization.view_employee %}<a class="btn btn-secondary" href="{% url 'organization:employee-list' %}">Employees</a>{% endif %}
-    {% if perms.organization.view_department %}<a class="btn btn-secondary" href="{% url 'organization:department-list' %}">Departments</a>{% endif %}
-    {% if perms.organization.view_jobrole %}<a class="btn btn-secondary" href="{% url 'organization:job-role-list' %}">Job roles</a>{% endif %}
-    {% if perms.training.view_training %}<a class="btn btn-secondary" href="{% url 'training:training-list' %}">Trainings</a>{% endif %}
-    {% if perms.training.add_trainingassignment %}<a class="btn btn-primary" href="{% url 'training:assignment-list' %}">Assignments</a>{% endif %}
-    {% if perms.certifications.view_certificate %}<a class="btn btn-secondary" href="{% url 'certifications:certificate-list' %}">Certificates</a>{% endif %}
-    {% if perms.assessments.view_question %}<a class="btn btn-secondary" href="{% url 'assessments:question-list' %}">Question bank</a>{% endif %}
-    {% if perms.audit.view_auditlog %}<a class="btn btn-secondary" href="{% url 'audit:audit-log-list' %}">Audit history</a>{% endif %}
-    <a class="btn btn-secondary" href="{% url 'reports:assignment-report' %}">Assignment report</a>
-  </nav>
-
-  <section class="dashboard-section" aria-labelledby="dashboard-overview-heading">
-    <h2 class="dashboard-section-heading" id="dashboard-overview-heading">Overview</h2>
-    <div class="dashboard-kpis">
-      {% include "components/kpi_card.html" with label="Active employees" value=active_employee_count %}
-      {% include "components/kpi_card.html" with label="Departments" value=department_count %}
-      {% include "components/kpi_card.html" with label="Published trainings" value=published_training_count %}
-      {% include "components/kpi_card.html" with label="Total assignments" value=metrics.total %}
-      {% include "components/kpi_card.html" with label="Assigned" value=metrics.assigned %}
-      {% include "components/kpi_card.html" with label="In progress" value=metrics.in_progress %}
-      {% include "components/kpi_card.html" with label="Completed" value=metrics.completed %}
-      {% include "components/kpi_card.html" with label="Overdue" value=metrics.overdue %}
-      {% include "components/kpi_card.html" with label="Completion (%)" value=metrics.completion_percent %}
-      {% include "components/kpi_card.html" with label="Certificates issued" value=certificates_issued %}
-    </div>
-  </section>
-
-  {% if recent_attempts %}
-    <section class="dashboard-section" aria-labelledby="recent-failures-heading">
-      <h2 class="dashboard-section-heading" id="recent-failures-heading">Recent assessment failures</h2>
-      <ul class="dashboard-record-list">
-        {% for attempt in recent_attempts %}
-          <li>
-            <article class="card dashboard-record-card">
-              <div class="card-body">
-                <div class="dashboard-record-heading">
-                  <h3>{{ attempt.assessment.title }}</h3>
-                  {% include "components/status_badge.html" with status="NOT_PASSED" label="Not passed" %}
-                </div>
-                <dl class="dashboard-record-details">
-                  <div><dt>Employee</dt><dd>{{ attempt.assignment.employee.display_name }}</dd></div>
-                  <div><dt>Score</dt><dd>{{ attempt.score_points }} / {{ attempt.maximum_points }}</dd></div>
-                  <div><dt>Submitted</dt><dd><time datetime="{{ attempt.submitted_at|date:'c' }}">{{ attempt.submitted_at|date:"M j, Y" }}</time></dd></div>
-                </dl>
-              </div>
-            </article>
-          </li>
-        {% endfor %}
-      </ul>
-    </section>
+{% elif role == "company" or role == "manager" %}
+  {% if role == "company" %}
+    {% include "components/page_header.html" with title="Company dashboard" supporting_text="Company-wide training activity and workforce indicators" %}
   {% else %}
-    {% include "components/empty_state.html" with title="Recent assessment failures" message="There are no recent assessment failures to review." %}
+    {% include "components/page_header.html" with title="Manager dashboard" supporting_text="Training activity and progress within your reporting scope" %}
   {% endif %}
-{% elif role == "manager" %}
-  {% include "components/page_header.html" with title="Manager dashboard" supporting_text="Training progress across your reporting team" %}
-  <nav class="dashboard-quick-actions" aria-label="Reporting scope">
-    {% if perms.organization.view_employee %}<a class="btn btn-secondary" href="{% url 'organization:employee-list' %}">My reporting team</a>{% endif %}
-    {% if shell_role %}<a class="btn btn-primary" href="{% url 'training:assignment-list' %}">Team assignments</a>{% endif %}
-    <a class="btn btn-secondary" href="{% url 'reports:assignment-report' %}">Assignment report</a>
-  </nav>
+
+  <p class="catalog-notice">
+    {% if role == "company" %}<strong>Reporting scope:</strong> company-wide.
+    {% else %}<strong>Reporting scope:</strong> employees in your authorized reporting team.{% endif %}
+  </p>
 
   <section class="dashboard-section" aria-labelledby="dashboard-overview-heading">
-    <h2 class="dashboard-section-heading" id="dashboard-overview-heading">Overview</h2>
-    <div class="dashboard-kpis">
-      {% include "components/kpi_card.html" with label="Active employees in scope" value=employees_in_scope %}
-      {% include "components/kpi_card.html" with label="Total assignments" value=metrics.total %}
-      {% include "components/kpi_card.html" with label="Assigned" value=metrics.assigned %}
-      {% include "components/kpi_card.html" with label="In progress" value=metrics.in_progress %}
-      {% include "components/kpi_card.html" with label="Completed" value=metrics.completed %}
-      {% include "components/kpi_card.html" with label="Overdue" value=metrics.overdue %}
-      {% include "components/kpi_card.html" with label="Completion (%)" value=metrics.completion_percent %}
+    <h2 class="dashboard-section-heading" id="dashboard-overview-heading">{% if role == "company" %}Workforce overview{% else %}Team overview{% endif %}</h2>
+    <p class="muted">
+      {% if role == "company" %}Current employee, department, published training and certificate counts.
+      {% else %}Active employees and certificates associated with assignments in your reporting scope.{% endif %}
+    </p>
+    <div class="dashboard-summary{% if role == 'manager' %} dashboard-summary--team{% endif %}">
+      {% if role == "company" %}
+        {% include "components/kpi_card.html" with label="Active employees" value=active_employee_count %}
+        {% include "components/kpi_card.html" with label="Departments" value=department_count %}
+        {% include "components/kpi_card.html" with label="Published trainings" value=published_training_count %}
+      {% else %}
+        {% include "components/kpi_card.html" with label="Active employees in scope" value=employees_in_scope %}
+      {% endif %}
       {% include "components/kpi_card.html" with label="Certificates issued" value=certificates_issued %}
     </div>
   </section>
 
-  {% if incomplete_employees %}
-    <section class="dashboard-section" aria-labelledby="incomplete-employees-heading">
-      <h2 class="dashboard-section-heading" id="incomplete-employees-heading">Employees with incomplete training</h2>
-      <ul class="dashboard-record-list">
-        {% for employee in incomplete_employees %}
-          <li>
-            <article class="card dashboard-record-card">
-              <div class="card-body">
-                <div class="dashboard-record-heading">
-                  <h3>{{ employee.display_name }}</h3>
-                  <a class="btn btn-secondary" href="{% url 'organization:employee-detail' employee.pk %}">View employee</a>
-                </div>
-                <dl class="dashboard-record-details">
+  <div class="dashboard-panels">
+    {% include "reports/components/assignment_summary.html" %}
+    {% include "reports/components/recent_failures.html" %}
+  </div>
+
+  {% if role == "manager" %}
+    <section class="dashboard-panel dashboard-section" aria-labelledby="incomplete-employees-heading">
+      <header class="dashboard-panel-heading">
+        <h2 id="incomplete-employees-heading">Employees with incomplete training</h2>
+      </header>
+      {% if incomplete_employees %}
+        <ul class="dashboard-follow-up">
+          {% for employee in incomplete_employees %}
+            <li>
+              <div class="dashboard-follow-up-copy">
+                <h3>{{ employee.display_name }}</h3>
+                <dl class="dashboard-follow-up-counts">
                   <div><dt>Incomplete assignments</dt><dd>{{ employee.incomplete_assignment_count }}</dd></div>
                   <div><dt>Overdue assignments</dt><dd>{{ employee.overdue_assignment_count }}</dd></div>
                 </dl>
               </div>
-            </article>
-          </li>
-        {% endfor %}
-      </ul>
+              <a class="btn btn-secondary" href="{% url 'organization:employee-detail' employee.pk %}" aria-label="View employee: {{ employee.display_name }}">View employee</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="dashboard-panel-empty">No employees in your reporting scope currently have incomplete training.</p>
+      {% endif %}
     </section>
-  {% else %}
-    {% include "components/empty_state.html" with title="Team follow-up" message="No employees in your reporting scope currently have incomplete training." %}
-  {% endif %}
-
-  {% if recent_attempts %}
-    <section class="dashboard-section" aria-labelledby="recent-failures-heading">
-      <h2 class="dashboard-section-heading" id="recent-failures-heading">Recent assessment failures</h2>
-      <ul class="dashboard-record-list">
-        {% for attempt in recent_attempts %}
-          <li>
-            <article class="card dashboard-record-card">
-              <div class="card-body">
-                <div class="dashboard-record-heading">
-                  <h3>{{ attempt.assignment.employee.display_name }} · {{ attempt.assessment.title }}</h3>
-                  {% include "components/status_badge.html" with status="NOT_PASSED" label="Not passed" %}
-                </div>
-                <dl class="dashboard-record-details">
-                  <div><dt>Score</dt><dd>{{ attempt.score_points }} / {{ attempt.maximum_points }}</dd></div>
-                  <div><dt>Submitted</dt><dd><time datetime="{{ attempt.submitted_at|date:'c' }}">{{ attempt.submitted_at|date:"M j, Y" }}</time></dd></div>
-                </dl>
-              </div>
-            </article>
-          </li>
-        {% endfor %}
-      </ul>
-    </section>
-  {% else %}
-    {% include "components/empty_state.html" with title="Recent assessment failures" message="There are no recent assessment failures to review." %}
   {% endif %}
 {% else %}
   {% include "components/page_header.html" with title="My training" supporting_text="Your assigned training and learning progress" %}
-  <nav class="dashboard-quick-actions" aria-label="My training">
-    {% if shell_role %}<a class="btn btn-secondary" href="{% url 'training:assignment-list' %}">My assignments</a>{% endif %}
-    {% if shell_can_view_certificates %}<a class="btn btn-secondary" href="{% url 'certifications:certificate-list' %}">My certificates</a>{% endif %}
-  </nav>
-
-  <section class="dashboard-section" aria-labelledby="dashboard-overview-heading">
-    <h2 class="dashboard-section-heading" id="dashboard-overview-heading">Overview</h2>
-    <div class="dashboard-kpis">
-      {% include "components/kpi_card.html" with label="Total assignments" value=metrics.total %}
-      {% include "components/kpi_card.html" with label="Assigned" value=metrics.assigned %}
-      {% include "components/kpi_card.html" with label="In progress" value=metrics.in_progress %}
-      {% include "components/kpi_card.html" with label="Completed" value=metrics.completed %}
-      {% include "components/kpi_card.html" with label="Overdue" value=metrics.overdue %}
-      {% include "components/kpi_card.html" with label="Completion (%)" value=metrics.completion_percent %}
-      {% include "components/kpi_card.html" with label="Recent certificates" value=certificates|length supporting_text="Up to 10 latest certificates are listed below." %}
-    </div>
-  </section>
+  {% include "reports/components/assignment_summary.html" %}
 
   {% if assigned_training or in_progress_training %}
     <section class="dashboard-section" aria-labelledby="action-required-heading">
@@ -210,7 +126,10 @@
 
   {% if certificates %}
     <section class="dashboard-section" aria-labelledby="recent-certificates-heading">
-      <h2 class="dashboard-section-heading" id="recent-certificates-heading">Recent Certificates</h2>
+      <div class="dashboard-section-title">
+        <h2 class="dashboard-section-heading" id="recent-certificates-heading">Recent Certificates</h2>
+        <p>Recent certificates: {{ certificates|length }} <span class="muted">(up to 10 latest)</span></p>
+      </div>
       <ul class="dashboard-record-list">
         {% for certificate in certificates %}
           <li>
@@ -237,7 +156,10 @@
       </ul>
     </section>
   {% else %}
-    {% include "components/empty_state.html" with title="Recent Certificates" message="Certificates you earn will be available here." %}
+    <section class="dashboard-section" aria-label="Recent certificates">
+      <p class="muted">Recent certificates: {{ certificates|length }} (up to 10 latest)</p>
+      {% include "components/empty_state.html" with title="Recent Certificates" message="Certificates you earn will be available here." %}
+    </section>
   {% endif %}
 
   {% if recent_attempts %}
@@ -270,4 +192,5 @@
     {% include "components/empty_state.html" with title="Recent assessment results" message="Your submitted assessment results will appear here." %}
   {% endif %}
 {% endif %}
+</div>
 {% endblock %}

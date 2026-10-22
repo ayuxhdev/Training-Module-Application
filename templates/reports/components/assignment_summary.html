@@ -1,0 +1,18 @@
+<section class="dashboard-panel dashboard-assignment-summary" aria-labelledby="assignment-summary-heading">
+  <header class="dashboard-panel-heading">
+    <h2 id="assignment-summary-heading">Training status</h2>
+  </header>
+  <div class="dashboard-panel-body">
+    <dl class="dashboard-primary-metrics">
+      <div><dt>Total assignments</dt><dd>{{ metrics.total }}</dd></div>
+      <div class="dashboard-completion"><dt>Completion (%)</dt><dd>{{ metrics.completion_percent }}<span aria-hidden="true">%</span></dd></div>
+    </dl>
+    <p class="dashboard-metric-note">Completion is based on eligible assignments; cancelled assignments are excluded. Overdue assignments are also counted in Assigned or In progress.</p>
+    <dl class="dashboard-assignment-states">
+      <div><dt><span class="dashboard-state-dot" aria-hidden="true"></span>Assigned</dt><dd>{{ metrics.assigned }}</dd></div>
+      <div><dt><span class="dashboard-state-dot dashboard-state-dot--info" aria-hidden="true"></span>In progress</dt><dd>{{ metrics.in_progress }}</dd></div>
+      <div><dt><span class="dashboard-state-dot dashboard-state-dot--success" aria-hidden="true"></span>Completed</dt><dd>{{ metrics.completed }}</dd></div>
+      <div><dt><span class="dashboard-state-dot dashboard-state-dot--warning" aria-hidden="true"></span>Overdue</dt><dd>{{ metrics.overdue }}</dd></div>
+    </dl>
+  </div>
+</section>

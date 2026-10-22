@@ -5,6 +5,11 @@ import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:training_app/core/presentation/screens/app_shell.dart';
+import 'package:training_app/core/presentation/screens/workspace_screen.dart';
+import 'package:training_app/features/management/presentation/screens/management_dashboard_screen.dart';
+import 'package:training_app/features/management/presentation/screens/organization_screens.dart';
+import 'package:training_app/features/management/domain/models/management_models.dart';
+import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/learning_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/assignment_detail_screen.dart';
@@ -50,8 +55,35 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (authState is AuthAuthenticated) {
+        final identity = authState.identity;
         if (isLoggingIn || state.matchedLocation == '/') {
-          return '/dashboard';
+          return identity.homePath;
+        }
+        final path = state.uri.path;
+        final personal =
+            path == '/dashboard' ||
+            path == '/learning' ||
+            path.startsWith('/learning/') ||
+            path == '/notifications' ||
+            path == '/profile/certificates' ||
+            path.startsWith('/profile/certificates/');
+        if (personal && !identity.canLearn) return identity.homePath;
+        if (path.startsWith('/workspace/')) {
+          final allowed = path == '/workspace/dashboard'
+              ? canViewManagementDashboard(identity)
+              : path == '/workspace/employees' ||
+                    path.startsWith('/workspace/employees/')
+              ? identity.capabilities.contains('organization.view_employee')
+              : path == '/workspace/departments'
+              ? identity.capabilities.contains('organization.view_department')
+              : path == '/workspace/job-roles' &&
+                    identity.capabilities.contains('organization.view_jobrole');
+          if (!allowed) return identity.homePath;
+        }
+        if (path == '/workspace' &&
+            !identity.canManage &&
+            !identity.canViewTeam) {
+          return identity.homePath;
         }
         return null;
       }
@@ -95,6 +127,42 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state, child) =>
             AppShell(location: state.uri.path, child: child),
         routes: [
+          GoRoute(
+            path: '/workspace',
+            builder: (context, state) => const WorkspaceScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/dashboard',
+            builder: (_, _) => const ManagementDashboardScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/employees',
+            builder: (_, _) => const OrganizationListScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/employees/:employeeId',
+            builder: (_, state) {
+              final id = int.tryParse(state.pathParameters['employeeId'] ?? '');
+              if (id == null || id <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid employee ID'),
+                );
+              }
+              return DirectoryEmployeeScreen(employeeId: id);
+            },
+          ),
+          GoRoute(
+            path: '/workspace/departments',
+            builder: (_, _) => const OrganizationListScreen(
+              referenceKind: ReferenceKind.departments,
+            ),
+          ),
+          GoRoute(
+            path: '/workspace/job-roles',
+            builder: (_, _) => const OrganizationListScreen(
+              referenceKind: ReferenceKind.jobRoles,
+            ),
+          ),
           GoRoute(
             path: '/dashboard',
             builder: (context, state) => const DashboardScreen(),

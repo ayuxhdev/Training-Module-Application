@@ -5,12 +5,22 @@
   const backdrop = document.getElementById("sidebar-backdrop");
   const mainContent = document.querySelector(".app-main");
   const skipLink = document.querySelector(".skip-link");
+  const topbar = document.querySelector(".app-topbar");
+  const appearance = document.querySelector(".appearance-control");
 
   if (!sidebar || !toggle || !backdrop) {
     return;
   }
 
   const mobileNavigation = window.matchMedia("(max-width: 56rem)");
+  // Keep the drawer below a header that can grow with zoom or long account names.
+  if (topbar && window.ResizeObserver) {
+    new window.ResizeObserver(() => {
+      document.documentElement.style.setProperty(
+        "--shell-topbar-height", `${Math.ceil(topbar.getBoundingClientRect().height)}px`,
+      );
+    }).observe(topbar);
+  }
 
   function setDrawerOpen(open, restoreFocus = false) {
     const shouldOpen = open && mobileNavigation.matches;
@@ -26,6 +36,7 @@
     }
 
     if (shouldOpen) {
+      if (appearance) appearance.open = false;
       const firstLink = sidebar.querySelector(".nav-link");
       if (firstLink) {
         firstLink.focus();

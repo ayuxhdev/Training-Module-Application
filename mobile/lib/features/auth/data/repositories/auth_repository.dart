@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:training_app/core/network/dio_client.dart';
 import 'package:training_app/core/providers/core_providers.dart';
 import 'package:training_app/core/storage/secure_token_storage.dart';
-import 'package:training_app/features/auth/domain/models/employee.dart';
+import 'package:training_app/features/auth/domain/models/authenticated_identity.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   final apiClient = ref.watch(apiClientProvider);
@@ -14,19 +14,13 @@ class AuthRepository {
   final ApiClient apiClient;
   final SecureTokenStorage tokenStorage;
 
-  AuthRepository({
-    required this.apiClient,
-    required this.tokenStorage,
-  });
+  AuthRepository({required this.apiClient, required this.tokenStorage});
 
-  Future<Employee> login(String employeeCode, String password) async {
+  Future<AuthenticatedIdentity> login(String username, String password) async {
     try {
       final response = await apiClient.dio.post(
         '/auth/login/',
-        data: {
-          'username': employeeCode, // The backend expects 'username' according to test_auth.py
-          'password': password,
-        },
+        data: {'username': username, 'password': password},
       );
 
       final data = response.data as Map<String, dynamic>;
@@ -36,16 +30,18 @@ class AuthRepository {
       await tokenStorage.saveAccessToken(accessToken);
       await tokenStorage.saveRefreshToken(refreshToken);
 
-      return await getCurrentEmployee();
+      return await getCurrentIdentity();
     } catch (e) {
       throw apiClient.mapExceptionToApiError(e);
     }
   }
 
-  Future<Employee> getCurrentEmployee() async {
+  Future<AuthenticatedIdentity> getCurrentIdentity() async {
     try {
       final response = await apiClient.dio.get('/auth/me/');
-      return Employee.fromJson(response.data as Map<String, dynamic>);
+      return AuthenticatedIdentity.fromJson(
+        response.data as Map<String, dynamic>,
+      );
     } catch (e) {
       throw apiClient.mapExceptionToApiError(e);
     }

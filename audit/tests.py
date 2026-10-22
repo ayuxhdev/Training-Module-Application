@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -296,11 +298,51 @@ class AuditWorkflowTests(CurriculumTestCase):
             entity_type="training.trainingversion", entity_id=str(self.version.pk),
             after_data={"status": "PUBLISHED"},
         )
-        filtered = self.client_for(self.user).get("/audit/?action=test.event")
+        known_event = AuditLog.objects.create(
+            actor=self.user,
+            actor_label_snapshot=self.user.get_username(),
+            action="training.trainingversion.published",
+            entity_type="training.trainingversion",
+            entity_id=str(self.version.pk),
+            before_data={"status": "DRAFT"},
+            after_data={"status": "PUBLISHED", "changed_fields": ["status"]},
+            reason="<b>Approved & verified</b>",
+            request_id=uuid4(),
+        )
+        client = self.client_for(self.user)
+        filtered = client.get(
+            "/audit/?action=test.event&target_type=training.trainingversion"
+        )
         self.assertEqual(filtered.status_code, 200)
-        self.assertContains(filtered, '<form method="get" class="form-stack">', html=False)
+        self.assertContains(filtered, '<form method="get" class="form-stack audit-filter-form">', html=False)
         self.assertContains(filtered, 'aria-label="Audit history results"')
         self.assertContains(filtered, "Clear filters")
+        self.assertEqual(list(filtered.context["audit_logs"]), [event])
+        self.assertContains(filtered, "Performed by")
+        self.assertContains(filtered, "From date")
+        self.assertContains(filtered, "Through date")
+        self.assertContains(filtered, "Record type")
+        self.assertContains(filtered, "System events are not included.")
+
+        presentation = client.get("/audit/")
+        self.assertEqual(presentation.status_code, 200)
+        rendered = presentation.content.decode()
+        self.assertContains(presentation, "Training version published")
+        self.assertContains(presentation, "Training version")
+        self.assertContains(presentation, "Draft")
+        self.assertContains(presentation, "Published")
+        self.assertContains(presentation, "Status")
+        self.assertContains(presentation, "View complete event details")
+        self.assertGreater(
+            rendered.index("training.trainingversion.published"),
+            rendered.index("View complete event details"),
+        )
+        self.assertContains(presentation, "&quot;status&quot;: &quot;PUBLISHED&quot;")
+        self.assertNotContains(presentation, "{'status': 'DRAFT'}")
+        self.assertContains(presentation, "&lt;b&gt;Approved &amp; verified&lt;/b&gt;")
+        self.assertNotContains(presentation, "<b>Approved & verified</b>")
+        self.assertContains(presentation, str(known_event.request_id))
+
         coordinator = get_user_model().objects.create_user(username="audit-coordinator")
         Group.objects.get(name="Training Coordinator").user_set.add(coordinator)
         self.assertEqual(self.client_for(coordinator).get("/audit/").status_code, 200)

@@ -11,6 +11,8 @@ from rest_framework_simplejwt.serializers import (
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from api.capabilities import can_use_mobile
+
 
 class InactiveEmployeeError(AuthenticationFailed):
     default_code = "inactive_employee"
@@ -21,12 +23,12 @@ class EmployeeTokenObtainPairSerializer(TokenObtainPairSerializer):
         # 1. Authenticate credentials and base Django user without issuing tokens
         TokenObtainSerializer.validate(self, attrs)
 
-        # 2. Verify linked active Employee status BEFORE creating OutstandingToken
+        # Check current account eligibility BEFORE creating OutstandingToken.
         user = self.user
-        if not hasattr(user, "employee") or not user.employee.is_active:
+        if not can_use_mobile(user):
             raise InactiveEmployeeError("Employee account is not active or missing.")
 
-        # 3. Issue tokens only for verified active employee
+        # Tokens carry identity, never authoritative cached management permissions.
         refresh = self.get_token(self.user)
         data = {
             "refresh": str(refresh),
@@ -76,13 +78,15 @@ class EmployeeTokenRefreshSerializer(TokenRefreshSerializer):
         except (User.DoesNotExist, ValueError, TypeError):
             raise AuthenticationFailed("User not found.", code="user_not_found")
 
-        # 4. Verify linked active Employee status
-        if not hasattr(user, "employee") or not user.employee.is_active:
+        # Preserve the existing inactive-Employee error contract (deactivation also
+        # disables the linked User), then reevaluate current portal eligibility.
+        employee = getattr(user, "employee", None)
+        if employee is not None and not employee.is_active:
             raise InactiveEmployeeError("Employee account is not active or missing.")
-
-        # 5. Verify user active status
         if api_settings.CHECK_USER_IS_ACTIVE and not user.is_active:
             raise AuthenticationFailed("User is inactive.", code="no_active_account")
+        if not can_use_mobile(user):
+            raise InactiveEmployeeError("This account no longer has mobile access.")
 
         # 6. Proceed with standard rotation and blacklisting
         return super().validate(attrs)

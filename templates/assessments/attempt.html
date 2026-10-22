@@ -1,8 +1,25 @@
 {% extends "base.html" %}
+{% load static tz %}
 {% block content %}
 <nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-detail' attempt.assignment_id %}">Assignment</a></li><li><a href="{% url 'assessments:learner-overview' attempt.assignment_id attempt.assessment_id %}">{{ attempt.assessment.title }}</a></li><li>Attempt {{ attempt.attempt_number }}</li></ol></nav>
 <header class="page-heading"><div><h1>{{ attempt.assessment.title }}</h1><p class="muted">Attempt {{ attempt.attempt_number }} of {{ attempt.assessment.max_attempts }} · {{ attempt.assessment.get_kind_display }}</p></div></header>
-{% if attempt.deadline_at %}<p>Submit by {{ attempt.deadline_at|date:"Y-m-d H:i:s" }}. Answers submitted after this time are recorded as expired.</p>{% endif %}
+{% if attempt.deadline_at %}
+  <link rel="stylesheet" href="{% static 'assessments/timer.css' %}">
+  <div class="assessment-timer-banner" id="assessment-timer-banner"
+       data-deadline="{{ attempt.deadline_at|date:'c' }}"
+       data-server-now="{% now 'c' %}"
+       role="region" aria-label="Assessment time remaining">
+    <div class="assessment-timer-content">
+      <span class="timer-label">Time remaining:</span>
+      <span id="assessment-timer" class="timer-countdown" role="timer">Calculating…</span>
+    </div>
+    <p class="timer-deadline-note muted">
+      Submit by <time id="assessment-deadline-time" datetime="{{ attempt.deadline_at|date:'c' }}">{{ attempt.deadline_at|localtime|date:"Y-m-d H:i T" }}</time>. Answers submitted after this time are recorded as expired.
+    </p>
+    <p id="assessment-timer-alert" class="timer-alert" role="alert" hidden></p>
+  </div>
+  <script src="{% static 'assessments/timer.js' %}" defer></script>
+{% endif %}
 <p>Pass threshold: {{ attempt.pass_percentage_snapshot }}%. Unanswered questions receive no points.</p>
 {% if form_error %}<p class="form-errors" role="alert">{{ form_error }}</p>{% endif %}
 {% if can_submit %}

@@ -58,8 +58,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 children: [
                   const CinematicHero(
                     eyebrow: "Garden's Need",
-                    title: 'Grow with every lesson.',
-                    subtitle: 'Sign in to continue your learning journey.',
+                    title: 'Welcome to your workspace.',
+                    subtitle: 'Sign in with your Garden’s Need account.',
                     icon: Icons.school_outlined,
                   ),
                   const SizedBox(height: 24),
@@ -72,12 +72,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           TextFormField(
                             controller: _employeeCodeController,
                             decoration: const InputDecoration(
-                              labelText: 'Employee Code',
+                              labelText: 'Username',
                             ),
                             enabled: !isLoading,
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
-                                return 'Please enter your employee code';
+                                return 'Please enter your username';
                               }
                               return null;
                             },

@@ -1,8 +1,12 @@
 from datetime import datetime, time
 
 from django import forms
+from django.core.exceptions import NON_FIELD_ERRORS
 from django.db import transaction
+from django.db.models import Max
 from django.utils import timezone
+
+from .video_uploads import video_upload_metadata
 
 from notifications.models import Notification
 from notifications.services import create_assignment_notification
@@ -47,17 +51,27 @@ class ModuleForm(forms.ModelForm):
 
 
 class LessonForm(forms.ModelForm):
-    position = forms.IntegerField(min_value=1, widget=forms.NumberInput(attrs={"step": "1"}))
+    position = forms.IntegerField(label="Lesson order", min_value=1, widget=forms.NumberInput(attrs={"step": "1"}))
 
     class Meta:
         model = Lesson
-        fields = [
-            "title", "position", "content_type", "body", "video_file",
-            "video_duration_seconds", "video_checksum", "is_required", "minimum_watch_percent",
-        ]
-        widgets = {
-            "video_file": forms.FileInput(),
+        fields = ["title", "content_type", "video_file", "body", "position", "is_required", "minimum_watch_percent"]
+        labels = {"content_type": "Lesson type", "video_file": "Video file", "body": "Written content", "minimum_watch_percent": "Minimum watched (%)"}
+        help_texts = {
+            "video_file": "Choose MP4, WebM or MOV, up to 2 GB. Video length and integrity information are calculated automatically.",
+            "body": "Required for written lessons.",
+            "minimum_watch_percent": "Percentage of the video a learner must watch, confirmed by the server.",
         }
+        widgets = {"video_file": forms.FileInput(attrs={"accept": ".mp4,.webm,.mov"})}
+        error_messages = {"video_file": {"empty": "The selected file is empty. Choose a video file.", "invalid": "Choose a readable MP4, WebM or MOV video file."}}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.instance.pk:
+            self.initial["content_type"] = Lesson.ContentType.VIDEO
+        if not self.instance.pk and self.instance.module_id:
+            last = Lesson.objects.filter(module_id=self.instance.module_id).aggregate(last=Max("position"))["last"]
+            self.initial["position"] = (last or 0) + 1
 
     def clean_position(self):
         position = self.cleaned_data["position"]
@@ -70,10 +84,48 @@ class LessonForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         if cleaned.get("content_type") == Lesson.ContentType.TEXT:
+            if not cleaned.get("body", "").strip():
+                self.add_error("body", "Enter the written lesson content.")
             cleaned["video_file"] = ""
-            cleaned["video_duration_seconds"] = None
-            cleaned["video_checksum"] = ""
+            self.instance.video_duration_seconds = None
+            self.instance.video_checksum = ""
+        elif cleaned.get("content_type") == Lesson.ContentType.VIDEO:
+            uploaded = cleaned.get("video_file") if "video_file" in self.files else None
+            if uploaded and "video_file" not in self.errors:
+                try:
+                    checksum, duration = video_upload_metadata(uploaded)
+                except forms.ValidationError as exc:
+                    self.add_error("video_file", exc)
+                else:
+                    self.instance.video_checksum = checksum
+                    self.instance.video_duration_seconds = duration
+            elif not self.instance.video_file and "video_file" not in self.errors:
+                self.add_error("video_file", "Choose a video file for this lesson.")
         return cleaned
+
+    def _update_errors(self, errors):
+        messages = {
+            "Video checksum must be a lowercase SHA-256 digest.": "The saved video's integrity information is unavailable. Upload a replacement video.",
+            "Video file size could not be determined.": "The saved video could not be read. Upload a replacement or contact your administrator.",
+            "Video files cannot exceed 2GB.": "Choose a video no larger than 2 GB.",
+            "Uploaded file must be a valid video format.": "The video could not be read as a supported format. Upload a new MP4, WebM or MOV video.",
+            "Supported video formats are MP4, WebM, and MOV.": "Choose an MP4, WebM or MOV video file.",
+        }
+        error_dict = errors.error_dict if hasattr(errors, "error_dict") else {NON_FIELD_ERRORS: errors.error_list}
+        remaining = {}
+        for field, field_errors in error_dict.items():
+            for error in field_errors:
+                if field == NON_FIELD_ERRORS and error.message in messages:
+                    self.add_error("video_file", messages[error.message])
+                else:
+                    remaining.setdefault(field, []).append(error)
+        if remaining:
+            super()._update_errors(forms.ValidationError(remaining))
+
+    def _post_clean(self):
+        # Invalid input already has field errors; don't add secondary constraint errors.
+        if not self._errors:
+            super()._post_clean()
 
 
 class TrainingAssignmentForm(forms.ModelForm):

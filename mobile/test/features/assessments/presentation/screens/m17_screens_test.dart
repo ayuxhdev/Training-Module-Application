@@ -42,6 +42,8 @@ class _Auth extends AuthController {
   @override
   AuthState build() => AuthAuthenticated(_employee('A'));
   void change(AuthState value) => state = value;
+  @override
+  Future<void> logout() async => state = AuthUnauthenticated();
 }
 
 Employee _employee(String name) => Employee(
@@ -224,6 +226,82 @@ void main() {
     await tap(tester, 'Submit assessment');
     await tap(tester, 'Confirm submission');
   }
+
+  for (final path in [
+    overviewPath,
+    attemptPath,
+    '/profile/certificates',
+    '/profile/certificates/8',
+  ]) {
+    testWidgets('$path recovers from expired authentication through Login', (
+      tester,
+    ) async {
+      final error = ApiError(message: 'Sign in to continue.', statusCode: 401);
+      when(
+        () => assessments.getAssessments(
+          1,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(error);
+      when(
+        () => assessments.startOrResume(
+          1,
+          2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(error);
+      when(
+        () => certificates.getCertificates(
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(error);
+      when(
+        () => certificates.getCertificateDetail(
+          8,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(error);
+      await open(tester, path);
+      expect(find.text('Sign in to continue.'), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+      await tap(tester, 'Sign in again');
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(find.text('Historical name'), findsNothing);
+    });
+  }
+
+  testWidgets(
+    'submission authorization failure offers sign-in without reposting answers',
+    (tester) async {
+      when(
+        () => assessments.submitAttempt(
+          7,
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(
+        ApiError(message: 'Your session has expired.', statusCode: 401),
+      );
+      await open(tester, attemptPath);
+      await confirm(tester);
+      expect(find.text('Submit assessment'), findsNothing);
+      await tap(tester, 'Sign in again');
+      expect(find.byType(LoginScreen), findsOneWidget);
+      verify(
+        () => assessments.submitAttempt(
+          7,
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      verifyNever(
+        () => assessments.getAttempt(
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+    },
+  );
 
   testWidgets(
     'overview renders server eligibility, limits and history; resume reads existing attempt',

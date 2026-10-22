@@ -1,0 +1,68 @@
+/* Timed assessment remaining time and expiration banner */
+.assessment-timer-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+  padding: 1rem 1.25rem;
+  margin: 1rem 0 1.5rem;
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #cbd8d2);
+  border-left: 4px solid var(--color-brand-primary, #006b56);
+  border-radius: 4px;
+}
+
+.assessment-timer-content {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.timer-label {
+  font-weight: 600;
+  color: var(--color-text, #172e2c);
+}
+
+.timer-countdown {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-brand-primary, #006b56);
+}
+
+.timer-deadline-note {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted, #4d6561);
+}
+
+.assessment-timer-banner.is-warning {
+  border-left-color: var(--color-warning-foreground, #77510b);
+  background: var(--color-warning-background, #fcf0d5);
+}
+
+.assessment-timer-banner.is-warning .timer-countdown {
+  color: var(--color-warning-foreground, #77510b);
+}
+
+.assessment-timer-banner.is-critical,
+.assessment-timer-banner.is-expired {
+  border-left-color: var(--color-danger-foreground, #9a2938);
+  background: var(--color-danger-background, #fce7ec);
+}
+
+.assessment-timer-banner.is-critical .timer-countdown,
+.assessment-timer-banner.is-expired .timer-countdown {
+  color: var(--color-danger-foreground, #9a2938);
+}
+
+.timer-alert {
+  margin: 0.25rem 0 0;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--color-danger-foreground, #9a2938);
+}
+
+.assessment-timer-banner.is-warning .timer-alert {
+  color: var(--color-warning-foreground, #77510b);
+}

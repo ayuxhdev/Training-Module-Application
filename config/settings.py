@@ -207,3 +207,6 @@ SIMPLE_JWT = {
     'UPDATE_LAST_LOGIN': False,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+# Server-managed media inspector. Never supplied by a request or an uploaded filename.
+VIDEO_FFPROBE_PATH = os.getenv("VIDEO_FFPROBE_PATH", "ffprobe")

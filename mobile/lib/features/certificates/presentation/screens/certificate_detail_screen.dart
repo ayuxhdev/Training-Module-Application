@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/cinematic_notice.dart';
-import 'package:training_app/core/presentation/components/error_view.dart';
+import 'package:training_app/core/presentation/components/api_error_view.dart';
+import 'package:training_app/core/presentation/formatters/date_labels.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/features/certificates/presentation/controllers/certificate_controller.dart';
-
-import 'certificate_list_screen.dart';
 
 class CertificateDetailScreen extends ConsumerWidget {
   final int certificateId;
@@ -27,14 +25,9 @@ class CertificateDetailScreen extends ConsumerWidget {
             skipLoadingOnReload: false,
             loading: () =>
                 const LoadingView(message: 'Loading certificate details...'),
-            error: (error, _) => SingleChildScrollView(
-              child: ErrorView(
-                title: 'Certificate unavailable',
-                message: error is ApiError
-                    ? error.message
-                    : 'Unable to load this certificate.',
-                onRetry: () => ref.invalidate(provider),
-              ),
+            error: (error, _) => ApiErrorView(
+              error: error,
+              onRetry: () => ref.invalidate(provider),
             ),
             data: (certificate) {
               if (certificate == null) return const LoadingView();
@@ -92,12 +85,12 @@ class CertificateDetailScreen extends ConsumerWidget {
                           ),
                           _Field(
                             label: 'Issued',
-                            value: certificateDate(certificate.issuedAt),
+                            value: localDateLabel(certificate.issuedAt),
                           ),
                           if (certificate.revokedAt != null)
                             _Field(
                               label: 'Revoked on',
-                              value: certificateDate(certificate.revokedAt!),
+                              value: localDateLabel(certificate.revokedAt!),
                             ),
                           const SizedBox(height: 12),
                           const CinematicNotice(

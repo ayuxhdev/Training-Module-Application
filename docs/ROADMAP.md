@@ -2,6 +2,60 @@
 
 ## Current Status
 
+### Approved Android scope expansion: three roles
+
+Android now targets Administrator, Manager and Employee business functionality
+already available in the custom Django portal. This supersedes the original
+employee-only client assumption, while preserving the historical milestones and
+QA evidence below. Framework `/admin/` User/Group/password/token administration is
+excluded. Managers keep their existing recursive team scope and permissions; the
+expansion does not grant new assignment, authoring or revocation authority.
+
+The current local Batch 1 implements identity/capability discovery, authorized
+management-only login, optional Employee context, personal-route/provider guards
+and Team/Management account-access overviews. Batch 2 implements read-only
+company/team dashboards, a permission-scoped employee directory/detail and
+Department/Job Role reference lists through authenticated APIs and native Flutter
+screens. Both batches are implemented locally and remain uncommitted; Android
+role-based runtime QA and CI verification remain pending. Existing web redesign
+and six mobile usability fixes are preserved as separate work.
+
+| Batch | Scope | Status |
+|---|---|---|
+| 1 | Identity, effective capabilities, role-aware navigation and account isolation | Implemented locally; automated validation passed; Android runtime QA pending |
+| 2 | Read-only company/team dashboards, scoped employee directory and reference lists | Implemented locally; automated validation passed; Android runtime QA pending |
+| 3 | Employee, Department and Job Role management | Planned |
+| 4 | Management assignments, manual creation, requirements and role-based batches | Planned |
+| 5 | Catalog, version lifecycle, Draft modules and TEXT authoring | Planned |
+| 6 | Validated Draft VIDEO upload/replacement and server metadata | Planned |
+| 7 | Question bank, frozen revisions and assessment authoring | Planned |
+| 8 | Management certificates/revocation, scoped reports and audit viewing | Planned |
+| 9 | Three-role cross-system, concurrency, accessibility and device acceptance | Planned |
+
+Each batch requires permission/IDOR negatives, account-switch coverage and relevant
+web/mobile regression checks. Existing learner APIs remain personal. New management
+APIs must reuse backend validation, audit/notification hooks and transaction rules.
+No management feature is authorized solely by a client role label or cached
+capability. Published immutability, pinned versions, scoring and protected playback
+remain unchanged. This is a functional expansion requiring new release acceptance;
+no completion percentage or delivery date is assigned here.
+
+Batch 1 local checkpoint: **234/234 Django/API and role-scoping tests on MySQL**,
+**72/72 focused Flutter tests**, **518/518 full Flutter tests**, analyzer clean,
+Django system check passed and no migration drift. The test schema was removed;
+these results do not claim a full Django regression, Android runtime PASS or CI.
+
+Subsequent Batch 1–2 checkpoints passed **170/170 selected Django/MySQL tests**
+(including **18/18 management API tests**) and **551/551 full Flutter tests**.
+Flutter analysis was clean. The dedicated test schema was retained with its role
+bootstrap verified. These were separate checkpoints, not a full Django-suite or
+device acceptance result. The APK was built and installed, but emulator system
+responsiveness and host memory prevented login-screen/role runtime verification.
+Batches 3–9 remain planned; no management mutations are included in Batch 2.
+
+The sections below retain historical milestone status and sequencing decisions;
+their employee-first descriptions are historical context for this approved expansion.
+
 M0-M18 are complete, committed and pushed. M18 checkpoint **88a4cda** has green
 CI per user confirmation; historical validation remains recorded below.
 

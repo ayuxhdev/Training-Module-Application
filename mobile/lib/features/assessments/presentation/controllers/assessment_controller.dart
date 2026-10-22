@@ -14,8 +14,8 @@ import 'package:training_app/features/dashboard/presentation/controllers/dashboa
 typedef AssessmentTarget = ({int assignmentId, int assessmentId});
 
 String? _account(AuthState auth) =>
-    auth is AuthAuthenticated && auth.employee.isActive
-    ? '${auth.employee.username}:${auth.employee.employeeCode}'
+    auth is AuthAuthenticated
+    ? auth.personalAccount
     : null;
 
 final assessmentOverviewProvider = AsyncNotifierProvider.autoDispose

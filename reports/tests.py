@@ -26,14 +26,17 @@ class EmptyDashboardTests(TestCase):
 		self.assertContains(dashboard, '<main id="main-content" class="page-content" tabindex="-1">', html=False)
 
 		report = client.get("/reports/assignments/")
-		self.assertContains(report, '<form method="get" class="form-stack">', html=False)
-		self.assertContains(report, "Clear filters")
-		self.assertContains(
-			report,
-			'<div class="table-scroll" role="region" aria-label="Assignment report results" tabindex="0">',
-			html=False,
+		self.assertRegex(
+			report.content.decode(),
+			r'<form(?=[^>]*\bmethod="get")(?=[^>]*\bclass="[^"]*\bform-stack\b)[^>]*>',
 		)
-		self.assertContains(report, "<table>", html=False)
+		self.assertContains(report, "Clear filters")
+		self.assertRegex(
+			report.content.decode(),
+			r'<div(?=[^>]*\bclass="[^"]*\btable-scroll\b)(?=[^>]*\brole="region")'
+			r'(?=[^>]*\baria-label="Assignment report results")(?=[^>]*\btabindex="0")[^>]*>',
+		)
+		self.assertRegex(report.content.decode(), r'<table\b[^>]*>')
 
 	def test_company_dashboard_and_report_with_no_assignments(self):
 		user = get_user_model().objects.create_user(username="empty-dashboard")
@@ -115,9 +118,9 @@ class ReportingTests(CurriculumTestCase):
 				self.assertContains(response, "Company dashboard")
 				self.assertContains(response, "Employees")
 				self.assertContains(response, "Departments")
-				self.assertContains(response, "Trainings")
+				self.assertContains(response, f'href="{reverse("training:training-list")}"')
 				self.assertContains(response, "Assignment report")
-				self.assertContains(response, "Audit history")
+				self.assertContains(response, "Audit log")
 				self.assertContains(response, "Total assignments")
 				self.assertContains(response, "Certificates issued")
 				self.assertEqual(response.context["active_employee_count"], 3)
@@ -138,6 +141,57 @@ class ReportingTests(CurriculumTestCase):
 			f"/certificates/{certificate.pk}/revoke/", {"reason": "Issued in error"},
 		).status_code, 302)
 		self.assertContains(coordinator_client.get("/reports/assignments/"), "Revoked")
+
+	def test_dashboard_shortcut_removal_preserves_role_navigation_and_selected_state(self):
+		for group_name, role in (("Administrator", "company"), ("Training Coordinator", "company"), ("Manager", "manager"), ("Employee", "employee")):
+			with self.subTest(role=group_name):
+				user = self.group_user(f"dashboard-navigation-{group_name}", group_name)
+				if role != "company":
+					self.make_employee(f"NAV-{role}", f"Navigation {role}", user=user)
+				response = self.client_for(user).get("/")
+				html = response.content.decode()
+				navigation = html.split('id="primary-navigation"', 1)[1].split("</nav>", 1)[0]
+				main = html.split('<main id="main-content"', 1)[1].split("</main>", 1)[0]
+				self.assertEqual(response.context["role"], role)
+				self.assertNotIn("dashboard-quick-actions", main)
+				self.assertEqual(navigation.count('aria-current="page"'), 1)
+				self.assertIn(f'href="{reverse("reports:dashboard")}" aria-current="page"', navigation)
+				for route in ("training:assignment-list", "certifications:certificate-list"):
+					self.assertEqual(navigation.count(f'href="{reverse(route)}"'), 1)
+					self.assertNotIn(f'href="{reverse(route)}"', main)
+				management_routes = {
+					"organization:employee-list": "organization.view_employee",
+					"organization:department-list": "organization.view_department",
+					"organization:job-role-list": "organization.view_jobrole",
+					"training:training-list": "training.view_training",
+					"assessments:question-list": "assessments.view_question",
+					"audit:audit-log-list": "audit.view_auditlog",
+				}
+				for route, permission in management_routes.items():
+					self.assertEqual(f'href="{reverse(route)}"' in navigation, user.has_perm(permission))
+				self.assertEqual(f'href="{reverse("reports:assignment-report")}"' in navigation, role != "employee")
+
+	def test_dashboard_groups_authoritative_metrics_and_compacts_failure_details(self):
+		self.finish_attempt(self.quiz, correct=False)
+		response = self.client_for(self.group_user("dashboard-panels", "Administrator")).get("/")
+		self.assertContains(response, 'class="dashboard-panels"', count=1)
+		self.assertContains(response, 'class="dashboard-summary"', count=1)
+		self.assertContains(response, 'class="dashboard-failures"', count=1)
+		self.assertNotContains(response, "dashboard-record-card")
+		metrics = response.context["metrics"]
+		dot_class = {"assigned": "", "in_progress": " dashboard-state-dot--info", "completed": " dashboard-state-dot--success", "overdue": " dashboard-state-dot--warning"}
+		for label, key in (("Total assignments", "total"), ("Assigned", "assigned"), ("In progress", "in_progress"), ("Completed", "completed"), ("Overdue", "overdue")):
+			dot = f'<span class="dashboard-state-dot{dot_class[key]}" aria-hidden="true"></span>' if key in dot_class else ""
+			self.assertContains(response, f'<dt>{dot}{label}</dt><dd>{metrics[key]}</dd>', html=True)
+		self.assertContains(response, f'{metrics["completion_percent"]}<span aria-hidden="true">%</span>')
+		self.assertContains(response, "cancelled assignments are excluded")
+		self.assertContains(response, "Overdue assignments are also counted")
+		for attempt in response.context["recent_attempts"]:
+			self.assertContains(response, attempt.assessment.title)
+			self.assertContains(response, attempt.assignment.employee.display_name)
+			self.assertContains(response, f'{attempt.score_points} / {attempt.maximum_points}')
+			self.assertContains(response, attempt.submitted_at.strftime("%Y-%m-%d"))
+		self.assertContains(response, "Not passed")
 
 	def test_manager_scope_is_recursive_and_filters_never_expand_it(self):
 		manager_user = self.group_user("report-manager", "Manager")
@@ -173,8 +227,8 @@ class ReportingTests(CurriculumTestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.context["role"], "manager")
 		self.assertContains(response, "Manager dashboard")
-		self.assertContains(response, "My reporting team")
-		self.assertContains(response, "Team assignments")
+		self.assertContains(response, f'href="{reverse("organization:employee-list")}"')
+		self.assertContains(response, 'href="/assignments/"')
 		self.assertContains(response, "Assignment report")
 		self.assertContains(response, "Active employees in scope")
 		self.assertContains(response, "Certificates issued")
@@ -241,8 +295,8 @@ class ReportingTests(CurriculumTestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.context["role"], "employee")
 		self.assertContains(response, "My training")
-		self.assertContains(response, "My assignments")
-		self.assertContains(response, "My certificates")
+		self.assertContains(response, 'href="/assignments/"')
+		self.assertContains(response, 'href="/certificates/"')
 		self.assertContains(response, "Action Required")
 		self.assertContains(response, "Recent Certificates")
 		self.assertContains(response, certificate.training_title_snapshot)

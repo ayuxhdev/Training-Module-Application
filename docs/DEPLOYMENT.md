@@ -1188,3 +1188,17 @@ Production V1 release: pending
 The application is not yet production-ready.
 
 Deployment-specific infrastructure should be finalized during M20 rather than invented prematurely.
+
+
+## Administrator video-upload metadata
+
+New/replacement videos uploaded through the Django lesson form require **ffprobe** from a maintained FFmpeg distribution on the Django server. Install/provision this system dependency through the deployment process; it is not a Python package. Existing stored videos and protected playback do not depend on it.
+
+- Make `ffprobe` available on the Django process PATH, or set `VIDEO_FFPROBE_PATH` to its trusted absolute executable path. This is server configuration, never a user-supplied command. The running service must receive the configuration through its normal deployment/reload procedure.
+- Confirm `ffprobe -version` using the service account. Smoke-test a new draft VIDEO lesson using a known-good MP4, then replacement and no-replacement editing. No checksum or duration input should be needed. Installation and live smoke tests have **not** been performed by this implementation task.
+- Inspection allows local files only and limits demuxers to MOV/MP4 and Matroska/WebM. MOV external references and absolute-path references are explicitly disabled. The process has a 15-second timeout, a 64 MiB per-allocation limit and bounded analysis/probe settings. These are not a complete OS sandbox or a total-memory quota; run it without elevated privileges and keep FFmpeg security updates current.
+- Provide a private OS temporary directory with sufficient disk capacity for one additional copy per concurrent upload, up to the existing 2 GiB limit. The request stream is read once in bounded chunks while hashing and staging. Temporary copies are removed after success or failure; normal request cleanup retains ownership of uploaded files.
+- Duration is read server-side and rounded **up** to the existing whole-second model field. Unknown, non-positive or unreadable duration, absent video streams, rejected media and timeouts fail with a form error; client-supplied checksum/duration values are ignored. No fallback invents a duration.
+- Missing ffprobe fails closed with a processing-unavailable message. ffprobe inspects the container/stream metadata; it does not transcode or guarantee that every encoded frame is playable. Existing extension, signature, size and lifecycle validation remains enforced.
+
+Upstream option references: [ffprobe](https://ffmpeg.org/ffprobe.html), [protocol restrictions](https://ffmpeg.org/ffmpeg-protocols.html), [demuxer options](https://ffmpeg.org/ffmpeg-formats.html).

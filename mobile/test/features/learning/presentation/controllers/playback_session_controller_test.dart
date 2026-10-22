@@ -10,8 +10,10 @@ import 'package:training_app/features/auth/domain/models/employee.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/learning/data/repositories/learning_repository.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
+import 'package:training_app/features/learning/domain/models/assignment.dart';
 import 'package:training_app/features/learning/domain/models/protected_media_request.dart';
 import 'package:training_app/features/learning/presentation/controllers/playback_session_controller.dart';
+import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 
 class MockRepository extends Mock implements LearningRepository {}
 
@@ -94,6 +96,78 @@ void main() {
     container.listen(provider, (_, _) {});
     controller = container.read(provider.notifier);
   });
+
+  test('accepted session closure refreshes a retained assignment list from the server', () async {
+    var reads = 0;
+    var serverCompleted = false;
+    when(
+      () => repository.getAssignments(cancelToken: any(named: 'cancelToken')),
+    ).thenAnswer((_) async {
+      reads++;
+      return [
+        Assignment.fromJson({
+          'id': 1,
+          'status': 'IN_PROGRESS',
+          'progress_summary': {
+            'required_lessons_completed': serverCompleted ? 1 : 0,
+            'required_lessons_total': 1,
+          },
+        }),
+      ];
+    });
+    container.listen(assignmentListProvider, (_, _) {});
+    await container.read(assignmentListProvider.future);
+    expect(reads, 1);
+    await controller.start();
+    when(
+      () => repository.endPlaybackSession(
+        1,
+        2,
+        7,
+        80,
+        completedNormally: true,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) async {
+      serverCompleted = true;
+      return progress(watched: 80, completed: true);
+    });
+    await controller.close(position: 80, completedNormally: true);
+    final assignments = await container.read(assignmentListProvider.future);
+    expect(reads, 2);
+    expect(assignments.single.progressSummary.requiredLessonsCompleted, 1);
+    expect(container.read(provider).progress!.completed, isTrue);
+  });
+
+  test(
+    'failed closure does not claim refreshed or completed assignment progress',
+    () async {
+      var reads = 0;
+      when(
+        () => repository.getAssignments(cancelToken: any(named: 'cancelToken')),
+      ).thenAnswer((_) async {
+        reads++;
+        return [];
+      });
+      container.listen(assignmentListProvider, (_, _) {});
+      await container.read(assignmentListProvider.future);
+      await controller.start();
+      when(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          80,
+          completedNormally: true,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(ApiError.timeout());
+      await controller.close(position: 80, completedNormally: true);
+      await container.read(assignmentListProvider.future);
+      expect(reads, 1);
+      expect(container.read(provider).progress!.completed, isFalse);
+    },
+  );
 
   test(
     'loads server state and deduplicates concurrent start and close requests',

@@ -91,12 +91,17 @@ class AssignmentDetailScreen extends ConsumerWidget {
                                     'Progress: ${detail.requiredLessonsCompleted}/${detail.requiredLessonsTotal} lessons',
                               ),
                               AppSpacing.gapLg,
-                              PrimaryButton(
-                                text: 'Start Training',
-                                onPressed: () => context.go(
-                                  '/learning/assignments/$assignmentId/modules',
+                              if (detail.status.toUpperCase() == 'CANCELLED')
+                                const Text(
+                                  'This assignment was cancelled. Its learning content is unavailable.',
+                                )
+                              else
+                                PrimaryButton(
+                                  text: 'Start Training',
+                                  onPressed: () => context.go(
+                                    '/learning/assignments/$assignmentId/modules',
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         ),

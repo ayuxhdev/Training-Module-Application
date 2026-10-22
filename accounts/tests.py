@@ -183,7 +183,7 @@ class ApplicationShellTests(TestCase):
 		response = client.get(reverse("reports:dashboard"))
 		navigation = self.navigation(response)
 
-		self.assertIn(f'href="{reverse("reports:dashboard")}" aria-current="page">Dashboard</a>', navigation)
+		self.assertIn(f'href="{reverse("reports:dashboard")}" aria-current="page">', navigation)
 		self.assertContains(response, 'id="app-sidebar"')
 		self.assertContains(response, 'id="sidebar-toggle"')
 		self.assertContains(response, 'aria-controls="app-sidebar"')
@@ -201,7 +201,7 @@ class ApplicationShellTests(TestCase):
 		navigation = self.navigation(response)
 
 		self.assertEqual(response.status_code, 200)
-		self.assertIn(f'href="{reverse("training:training-list")}" aria-current="page">Training</a>', navigation)
+		self.assertIn(f'href="{reverse("training:training-list")}" aria-current="page">', navigation)
 
 	def test_employee_and_manager_navigation_respects_role_boundaries(self):
 		for role, expected_report in (("Employee", False), ("Manager", True)):
@@ -231,6 +231,46 @@ class ApplicationShellTests(TestCase):
 		messages.success(request, "Assignment batch finished")
 		html = render_to_string("training/assignment_list.html", {"assignments": []}, request=request)
 		self.assertEqual(html.count("Assignment batch finished"), 1)
+		self.assertIn('role="status"', html)
+
+	def test_appearance_bootstraps_before_css_on_login_and_authenticated_pages(self):
+		client = Client()
+		for authenticated in (False, True):
+			if authenticated:
+				client.force_login(self.user_with_role("appearance-user", "Administrator"))
+			response = client.get(reverse("reports:dashboard" if authenticated else "accounts:login"))
+			html = response.content.decode()
+			script = f'<script src="{static("accounts/appearance.js")}"></script>'
+			self.assertIn(script, html)
+			self.assertLess(html.index(script), html.index(f'href="{static("accounts/shell.css")}"'))
+			self.assertEqual(html.count('class="appearance-control"'), 1)
+			self.assertIn('name="appearance" value="system" checked', html)
+			for choice in ("System Default", "Light Mode", "Dark Mode"):
+				self.assertIn(choice, html)
+			self.assertNotIn("DESIGN PREVIEW", html)
+			self.assertNotIn("Role preview", html)
+		self.assertIsNotNone(finders.find("accounts/appearance.js"))
+
+	def test_appearance_controls_do_not_add_fields_to_login_or_logout_forms(self):
+		client = Client()
+		for authenticated in (False, True):
+			if authenticated:
+				client.force_login(self.user_with_role("appearance-forms", "Administrator"))
+			html = client.get(reverse("reports:dashboard" if authenticated else "accounts:login")).content.decode()
+			for fragment in html.split("<form")[1:]:
+				self.assertNotIn('name="appearance"', fragment.split("</form>", 1)[0])
+
+
+class SharedPresentationTests(SimpleTestCase):
+	def test_components_keep_textual_states_and_escape_content(self):
+		for status, modifier in (("COMPLETED", "success"), ("DRAFT", "warning"), ("REVOKED", "danger"), ("IN_PROGRESS", "info")):
+			html = render_to_string("components/status_badge.html", {"status": status, "label": "<script>unsafe</script>"})
+			self.assertIn(f"status-badge--{modifier}", html)
+			self.assertIn("&lt;script&gt;unsafe&lt;/script&gt;", html)
+		for component in ("page_header", "empty_state"):
+			html = render_to_string(f"components/{component}.html", {"title": "<script>unsafe</script>"})
+			self.assertIn("&lt;script&gt;unsafe&lt;/script&gt;", html)
+			self.assertNotIn("<script>", html)
 
 
 class RoleBootstrapTests(TestCase):

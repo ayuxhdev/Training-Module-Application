@@ -1,15 +1,126 @@
 {% extends "base.html" %}
+{% block title %}{{ question.code }} | Question bank | Garden's Need Training{% endblock %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'assessments:question-list' %}">Question bank</a></li><li>{{ question.code }}</li></ol></nav>
-<header class="page-heading">
-  <div><h1>{{ question.code }}</h1><p class="muted">{{ question.topic|default:"No topic" }} · <span class="status-badge{% if not question.is_active %} status-inactive{% endif %}">{% if question.is_active %}Active{% else %}Inactive{% endif %}</span></p></div>
-  <div class="action-list">
-    {% if perms.assessments.change_question %}<a class="action-link" href="{% url 'assessments:question-update' question.pk %}">Edit metadata</a>{% endif %}
-    {% if perms.assessments.add_questionrevision %}<a class="action-link" href="{% url 'assessments:revision-create' question.pk %}">New revision</a>{% endif %}
-  </div>
-</header>
-<h2>Revisions</h2>
-<ol>{% for revision in question.revisions.all %}
-  <li>{% if perms.assessments.view_questionrevision %}<a href="{% url 'assessments:revision-detail' revision.pk %}">Revision {{ revision.revision_number }}: {{ revision.prompt }}</a>{% else %}Revision {{ revision.revision_number }}: {{ revision.prompt }}{% endif %} <span class="status-badge status-{{ revision.status|lower }}">{{ revision.get_status_display }}</span></li>
-{% empty %}<li class="empty-state">No revisions.</li>{% endfor %}</ol>
+<style>
+  .question-workspace { display: grid; gap: var(--space-4); min-width: 0; }
+  .question-header { margin-bottom: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-hero); box-shadow: var(--shadow-sm); }
+  .question-header p { margin: var(--space-2) 0 0; color: var(--color-text-muted); }
+  .question-header-content { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); }
+  .question-header-main { flex: 1 1 18rem; min-width: 0; }
+  .question-panel { min-width: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+  .question-panel-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); }
+  .question-panel-header h2 { margin: 0; font-size: var(--font-size-lg); }
+  .question-revisions-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+  .question-revision-card { padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); }
+  .question-revision-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+  .question-revision-prompt { font-size: var(--font-size-base); font-weight: 600; color: var(--color-text); margin: 0 0 var(--space-2); }
+  .question-revision-meta { font-size: var(--font-size-xs); color: var(--color-text-muted); display: flex; gap: var(--space-3); flex-wrap: wrap; }
+  .question-meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+  .question-meta-card { padding: var(--space-3); border: var(--border-subtle); border-radius: var(--radius-sm); background: var(--color-surface-subtle); }
+  .question-meta-card dt { font-size: var(--font-size-xs); font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: var(--space-1); }
+  .question-meta-card dd { margin: 0; font-size: var(--font-size-base); font-weight: 600; color: var(--color-text); }
+  .question-notice { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-subtle); color: var(--color-text-muted); font-size: var(--font-size-sm); margin-bottom: var(--space-3); }
+  .question-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+</style>
+
+<div class="question-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li><a href="{% url 'assessments:question-list' %}">Question bank</a></li>
+      <li aria-current="page">{{ question.code }}</li>
+    </ol>
+  </nav>
+
+  <header class="page-heading question-header">
+    <div class="question-header-content">
+      <div class="question-header-main">
+        <h1>{{ question.code }}</h1>
+        <p class="muted">{{ question.topic|default:"No topic" }} · <span class="status-badge{% if not question.is_active %} status-inactive{% else %} status-active{% endif %}">{% if question.is_active %}Active{% else %}Inactive{% endif %}</span></p>
+      </div>
+      <div class="action-list question-actions">
+        {% if perms.assessments.change_question %}
+          <a class="action-link btn btn-secondary" href="{% url 'assessments:question-update' question.pk %}">Edit metadata</a>
+        {% endif %}
+        {% if perms.assessments.add_questionrevision %}
+          <a class="action-link btn btn-primary" href="{% url 'assessments:revision-create' question.pk %}">New revision</a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <section class="question-panel" aria-labelledby="question-overview-heading">
+    <h2 id="question-overview-heading" style="margin-top: 0; font-size: var(--font-size-lg);">Question overview</h2>
+    <dl class="detail-list question-meta-grid">
+      <div class="question-meta-card">
+        <dt>Question code</dt>
+        <dd>{{ question.code }}</dd>
+      </div>
+      <div class="question-meta-card">
+        <dt>Topic</dt>
+        <dd>{{ question.topic|default:"None specified" }}</dd>
+      </div>
+      <div class="question-meta-card">
+        <dt>Active status</dt>
+        <dd>{% if question.is_active %}Active (Available for use){% else %}Inactive (Archived){% endif %}</dd>
+      </div>
+      <div class="question-meta-card">
+        <dt>Revision history</dt>
+        <dd>{{ question.revisions.count }} revision{{ question.revisions.count|pluralize }}</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="question-panel" aria-labelledby="revisions-heading">
+    <div class="question-panel-header">
+      <h2 id="revisions-heading">Revisions</h2>
+      {% if perms.assessments.add_questionrevision %}
+        <a class="action-link btn btn-secondary" href="{% url 'assessments:revision-create' question.pk %}">New revision</a>
+      {% endif %}
+    </div>
+
+    <aside class="question-notice" aria-label="Revision lifecycle guidance">
+      <p>
+        <strong>Revision lifecycle:</strong>
+        Draft revisions can be edited. Freezing a revision locks it permanently, guaranteeing curriculum immutability. Only frozen revisions may be added to assessments. Answer keys are confidential.
+      </p>
+    </aside>
+
+    <ol class="question-revisions-list">
+      {% for revision in question.revisions.all %}
+        <li class="question-revision-card">
+          <div class="question-revision-header">
+            <h3 style="margin: 0; font-size: var(--font-size-base);">
+              {% if perms.assessments.view_questionrevision %}
+                <a href="{% url 'assessments:revision-detail' revision.pk %}">Revision {{ revision.revision_number }}: {{ revision.prompt }}</a>
+              {% else %}
+                Revision {{ revision.revision_number }}: {{ revision.prompt }}
+              {% endif %}
+            </h3>
+            <span class="status-badge status-{{ revision.status|lower }}">{{ revision.get_status_display }}</span>
+          </div>
+          <div class="question-revision-meta">
+            <span><strong>Type:</strong> {{ revision.get_question_type_display }}</span>
+            <span><strong>Created:</strong> {{ revision.created_at|date:"Y-m-d H:i" }}</span>
+            {% if revision.frozen_at %}
+              <span><strong>Frozen:</strong> {{ revision.frozen_at|date:"Y-m-d H:i" }}</span>
+            {% endif %}
+            {% if perms.assessments.view_questionrevision %}
+              <span><a href="{% url 'assessments:revision-detail' revision.pk %}">View full revision details & options →</a></span>
+            {% endif %}
+          </div>
+        </li>
+      {% empty %}
+        <li class="empty-state" style="padding: var(--space-6) var(--space-4); text-align: center;">
+          <h2>No revisions.</h2>
+          <p class="muted">This question has no revisions yet. Create a draft revision to configure prompt wording and answer choices.</p>
+          {% if perms.assessments.add_questionrevision %}
+            <p style="margin-top: var(--space-3);">
+              <a class="action-link btn btn-primary" href="{% url 'assessments:revision-create' question.pk %}">New revision</a>
+            </p>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+</div>
 {% endblock %}

@@ -1,37 +1,103 @@
 {% extends "base.html" %}
 {% load static %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-list' %}">Assignments</a></li><li>Assignment detail</li></ol></nav>
-<header class="page-heading">
-  <div>
-    <h1>{{ assignment.training_version.training.catalog_title }}</h1>
-    <p class="muted">{{ assignment.training_version.title }} · Version {{ assignment.training_version.version_number }}</p>
-  </div>
-  <div><span class="status-badge status-{{ assignment.status|lower }}">{{ assignment.get_status_display }}</span>{% if assignment.is_overdue %} <span class="status-badge status-overdue">Overdue</span>{% endif %}</div>
-</header>
-<dl class="detail-list">
-  <div><dt>Employee</dt><dd>{{ assignment.employee }}</dd></div>
-  <div><dt>Assigned</dt><dd>{{ assignment.assigned_at|date:"Y-m-d H:i" }}</dd></div>
-  <div><dt>Due</dt><dd{% if assignment.is_overdue %} class="due-overdue"{% endif %}>{{ assignment.due_at|date:"Y-m-d H:i"|default:"Not set" }}</dd></div>
-  <div><dt>Status</dt><dd>{{ assignment.get_status_display }}</dd></div>
-  {% if assignment.started_at %}<div><dt>Started</dt><dd>{{ assignment.started_at|date:"Y-m-d H:i" }}</dd></div>{% endif %}
-  {% if assignment.completed_at %}<div><dt>Completed</dt><dd>{{ assignment.completed_at|date:"Y-m-d H:i" }}</dd></div>{% endif %}
-  {% if assignment.cancelled_at %}<div><dt>Cancelled</dt><dd>{{ assignment.cancelled_at|date:"Y-m-d H:i" }}</dd></div>{% endif %}
-  <div><dt>Assignment source</dt><dd>{{ assignment.get_source_display }}</dd></div>
-  <div><dt>Department at assignment</dt><dd>{{ assignment.department_at_assignment.name }}</dd></div>
-  <div><dt>Job role at assignment</dt><dd>{{ assignment.job_role_at_assignment.name }}</dd></div>
-</dl>
-{% if assignment.certificate %}
-  {% if perms.certifications.view_certificate %}
-    <p><a class="action-link" href="{% url 'certifications:certificate-detail' assignment.certificate.pk %}">View {% if assignment.certificate.revoked_at %}revoked {% endif %}certificate</a></p>
-  {% elif assignment.employee.user == user and assignment.employee.is_active %}
-    <p><a class="action-link" href="{% url 'certifications:certificate-detail' assignment.certificate.pk %}">View {% if assignment.certificate.revoked_at %}revoked {% endif %}certificate</a></p>
+<div class="catalog-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li><a href="{% url 'training:assignment-list' %}">Assignments</a></li>
+      <li aria-current="page">Assignment details</li>
+    </ol>
+  </nav>
+  <header class="page-header">
+    <div class="page-header-main">
+      <h1>{{ assignment.training_version.training.catalog_title }}</h1>
+      <p class="muted">{{ assignment.training_version.title }} · Version {{ assignment.training_version.version_number }}</p>
+    </div>
+    <div aria-label="Assignment status">
+      <span class="status-badge status-{{ assignment.status|lower }}">{{ assignment.get_status_display }}</span>
+      {% if assignment.is_overdue %}<span class="status-badge status-overdue">Overdue</span>{% endif %}
+    </div>
+  </header>
+
+  <section class="catalog-panel" aria-labelledby="assignment-overview-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="assignment-overview-heading">Assignment overview</h2>
+      <p>Training, employee and key dates for this assignment.</p>
+    </header>
+    <div class="catalog-panel-body">
+      <div class="catalog-version-information">
+        <section aria-labelledby="assignment-status-heading">
+          <h3 id="assignment-status-heading">Status</h3>
+          <p><span class="status-badge status-{{ assignment.status|lower }}">{{ assignment.get_status_display }}</span>{% if assignment.is_overdue %} <span class="status-badge status-overdue">Overdue</span>{% endif %}</p>
+          {% if assignment.status == 'ASSIGNED' %}
+            <p class="catalog-notice">This training has been assigned and has not been started.</p>
+          {% elif assignment.status == 'IN_PROGRESS' %}
+            <p class="catalog-notice">The learner has started this training.</p>
+          {% elif assignment.status == 'COMPLETED' %}
+            <p class="catalog-notice">This assignment is complete.</p>
+          {% elif assignment.status == 'CANCELLED' %}
+            <p class="catalog-notice">This assignment is cancelled and no longer accepts learning progress.</p>
+          {% endif %}
+        </section>
+        <section aria-labelledby="assignment-training-heading">
+          <h3 id="assignment-training-heading">Assigned training</h3>
+          <p><strong>{{ assignment.training_version.training.catalog_title }}</strong></p>
+          <p>{{ assignment.training_version.title }} · Version {{ assignment.training_version.version_number }}</p>
+          {% if perms.training.view_trainingversion %}
+            <p><a class="btn btn-secondary" href="{% url 'training:version-detail' assignment.training_version_id %}">View training version</a></p>
+          {% endif %}
+        </section>
+        <section aria-labelledby="assignment-employee-heading">
+          <h3 id="assignment-employee-heading">Employee</h3>
+          <p><strong>{{ assignment.employee.display_name }}</strong></p>
+          <dl class="detail-list">
+            <div><dt>Department at assignment</dt><dd>{{ assignment.department_at_assignment.name }}</dd></div>
+            <div><dt>Job role at assignment</dt><dd>{{ assignment.job_role_at_assignment.name }}</dd></div>
+          </dl>
+        </section>
+        <section aria-labelledby="assignment-dates-heading">
+          <h3 id="assignment-dates-heading">Dates and assignment source</h3>
+          <dl class="detail-list">
+            <div><dt>Assigned</dt><dd><time datetime="{{ assignment.assigned_at|date:'c' }}">{{ assignment.assigned_at|date:"M j, Y, g:i A T" }}</time></dd></div>
+            <div><dt>Deadline</dt><dd{% if assignment.is_overdue %} class="due-overdue"{% endif %}>{% if assignment.due_at %}<time datetime="{{ assignment.due_at|date:'c' }}">{{ assignment.due_at|date:"M j, Y, g:i A T" }}</time>{% else %}No deadline{% endif %}</dd></div>
+            {% if assignment.started_at %}<div><dt>Started</dt><dd><time datetime="{{ assignment.started_at|date:'c' }}">{{ assignment.started_at|date:"M j, Y, g:i A T" }}</time></dd></div>{% endif %}
+            {% if assignment.completed_at %}<div><dt>Completed</dt><dd><time datetime="{{ assignment.completed_at|date:'c' }}">{{ assignment.completed_at|date:"M j, Y, g:i A T" }}</time></dd></div>{% endif %}
+            {% if assignment.cancelled_at %}<div><dt>Cancelled</dt><dd><time datetime="{{ assignment.cancelled_at|date:'c' }}">{{ assignment.cancelled_at|date:"M j, Y, g:i A T" }}</time></dd></div>{% endif %}
+            <div><dt>Assigned through</dt><dd>{{ assignment.get_source_display }}</dd></div>
+            {% if assignment.assigned_by %}<div><dt>Assigned by</dt><dd>{{ assignment.assigned_by }}</dd></div>{% endif %}
+          </dl>
+          {% if assignment.role_requirement %}
+            <p class="catalog-notice">This assignment was created using a job-role requirement for {{ assignment.role_requirement.job_role.name }}.</p>
+          {% endif %}
+        </section>
+      </div>
+    </div>
+  </section>
+  {% if assignment.certificate %}
+    {% if perms.certifications.view_certificate %}
+      <section class="catalog-panel" aria-labelledby="assignment-certificate-heading">
+        <header class="catalog-panel-heading"><h2 id="assignment-certificate-heading">Certificate</h2></header>
+        <div class="catalog-panel-body">
+          <a class="btn btn-secondary" href="{% url 'certifications:certificate-detail' assignment.certificate.pk %}">View {% if assignment.certificate.revoked_at %}revoked {% endif %}certificate</a>
+        </div>
+      </section>
+    {% elif assignment.employee.user == user and assignment.employee.is_active %}
+      <section class="catalog-panel" aria-labelledby="assignment-certificate-heading">
+        <header class="catalog-panel-heading"><h2 id="assignment-certificate-heading">Certificate</h2></header>
+        <div class="catalog-panel-body">
+          <a class="btn btn-secondary" href="{% url 'certifications:certificate-detail' assignment.certificate.pk %}">View {% if assignment.certificate.revoked_at %}revoked {% endif %}certificate</a>
+        </div>
+      </section>
+    {% endif %}
   {% endif %}
-{% endif %}
-{% if assignment.role_requirement %}<p>Job-role requirement: {{ assignment.role_requirement.job_role.name }} → {{ assignment.training_version.training.catalog_title }} / {{ assignment.training_version.title }}</p>{% endif %}
-{% if perms.training.view_trainingversion %}<p><a href="{% url 'training:version-detail' assignment.training_version_id %}">View training version</a></p>{% endif %}
 {% if can_learn %}
-<section class="learning-section" aria-label="Assigned lessons">
+<section class="catalog-panel catalog-curriculum learning-section" aria-labelledby="assignment-learning-heading">
+  <header class="catalog-panel-heading">
+    <h2 id="assignment-learning-heading">Learning progress</h2>
+    <p>Review lessons and continue the assigned training.</p>
+  </header>
+  <div class="catalog-panel-body">
+  <section aria-label="Assigned lessons">
   <h2>Lessons</h2>
   {% if module_items %}
   <div class="learning-layout">
@@ -150,11 +216,16 @@
     <p class="empty-state">No lessons are available for this assignment.</p>
   {% endif %}
 </section>
+  </div>
+</section>
 {% endif %}
 {% if assignment.employee.user == user and assignment.employee.is_active and assignment.training_version.status != 'DRAFT' %}
-  <section class="form-section">
-    <h2>Assessments</h2>
-    <p>Review prerequisites, results, and available attempts for each assessment.</p>
+  <section class="catalog-panel" aria-labelledby="assignment-assessments-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="assignment-assessments-heading">Assessments</h2>
+      <p>Review prerequisites, results and available attempts.</p>
+    </header>
+    <div class="catalog-panel-body">
     {% for assessment in assignment.training_version.assessments.all %}
       <div class="assignment-assessment">
         <strong>{{ assessment.title }}</strong> ({{ assessment.get_kind_display }})
@@ -163,7 +234,9 @@
     {% empty %}
       <p class="empty-state">No assessments are available for this training version.</p>
     {% endfor %}
+    </div>
   </section>
 {% endif %}
 <p><a href="{% url 'training:assignment-list' %}">Back to assignments</a></p>
+</div>
 {% endblock %}

@@ -333,7 +333,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(button);
     await tester.pumpAndSettle();
-    expect(find.text('Please enter your employee code'), findsOneWidget);
+    expect(find.text('Please enter your username'), findsOneWidget);
     expect(find.text('Please enter your password'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

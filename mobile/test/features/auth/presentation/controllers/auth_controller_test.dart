@@ -6,6 +6,7 @@ import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/features/auth/data/repositories/auth_repository.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/domain/models/employee.dart';
+import 'package:training_app/features/auth/domain/models/authenticated_identity.dart';
 import 'package:training_app/core/storage/secure_token_storage.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 
@@ -59,7 +60,7 @@ void main() {
 
     test('initializes as authenticated when tokens exist and /me succeeds', () async {
       when(() => mockRepository.hasStoredCredentials()).thenAnswer((_) async => true);
-      when(() => mockRepository.getCurrentEmployee()).thenAnswer((_) async => tEmployee);
+      when(() => mockRepository.getCurrentIdentity()).thenAnswer((_) async => AuthenticatedIdentity.fromEmployee(tEmployee));
 
       final container = makeContainer();
       final sub = container.listen(authControllerProvider, (_, _) {});
@@ -71,7 +72,7 @@ void main() {
 
     test('sets error and preserves tokens when /me has transient network failure', () async {
       when(() => mockRepository.hasStoredCredentials()).thenAnswer((_) async => true);
-      when(() => mockRepository.getCurrentEmployee()).thenThrow(ApiError.networkFailure());
+      when(() => mockRepository.getCurrentIdentity()).thenThrow(ApiError.networkFailure());
 
       final container = makeContainer();
       final sub = container.listen(authControllerProvider, (_, _) {});
@@ -88,7 +89,7 @@ void main() {
       when(() => mockTokenStorage.clearAuthenticationState()).thenAnswer((_) async {});
 
       when(() => mockRepository.hasStoredCredentials()).thenAnswer((_) async => true);
-      when(() => mockRepository.getCurrentEmployee()).thenThrow(
+      when(() => mockRepository.getCurrentIdentity()).thenThrow(
         ApiError(message: 'Unauthorized', statusCode: 401),
       );
       // Simulate logout throwing an exception
@@ -111,8 +112,8 @@ void main() {
     Future<ProviderContainer> authenticatedContainer() async {
       when(() => mockRepository.hasStoredCredentials())
           .thenAnswer((_) async => true);
-      when(() => mockRepository.getCurrentEmployee())
-          .thenAnswer((_) async => tEmployee);
+      when(() => mockRepository.getCurrentIdentity())
+          .thenAnswer((_) async => AuthenticatedIdentity.fromEmployee(tEmployee));
       final container = makeContainer();
       container.read(authControllerProvider);
       await Future<void>.delayed(Duration.zero);
@@ -130,8 +131,8 @@ void main() {
 
     test('refresh preserves displayed profile while pending and updates on success', () async {
       final container = await authenticatedContainer();
-      final response = Completer<Employee>();
-      when(() => mockRepository.getCurrentEmployee())
+      final response = Completer<AuthenticatedIdentity>();
+      when(() => mockRepository.getCurrentIdentity())
           .thenAnswer((_) => response.future);
       final refresh = container
           .read(authControllerProvider.notifier)
@@ -140,7 +141,7 @@ void main() {
         (container.read(authControllerProvider) as AuthAuthenticated).employee,
         tEmployee,
       );
-      response.complete(otherEmployee);
+      response.complete(AuthenticatedIdentity.fromEmployee(otherEmployee));
       await refresh;
       expect(
         (container.read(authControllerProvider) as AuthAuthenticated).employee,
@@ -152,7 +153,7 @@ void main() {
       'recoverable refresh failure preserves profile and credentials',
       () async {
         final container = await authenticatedContainer();
-        when(() => mockRepository.getCurrentEmployee())
+        when(() => mockRepository.getCurrentIdentity())
             .thenThrow(ApiError.networkFailure());
         await expectLater(
           container.read(authControllerProvider.notifier).refreshProfile(),
@@ -171,7 +172,7 @@ void main() {
     test('401 and 403 refresh failures remove authenticated state', () async {
       for (final status in [401, 403]) {
         final container = await authenticatedContainer();
-        when(() => mockRepository.getCurrentEmployee())
+        when(() => mockRepository.getCurrentIdentity())
             .thenThrow(ApiError(message: 'Access denied.', statusCode: status));
         await expectLater(
           container.read(authControllerProvider.notifier).refreshProfile(),
@@ -190,20 +191,20 @@ void main() {
         for (final fail in [false, true]) {
           final container = await authenticatedContainer();
           final controller = container.read(authControllerProvider.notifier);
-          final response = Completer<Employee>();
-          when(() => mockRepository.getCurrentEmployee())
+          final response = Completer<AuthenticatedIdentity>();
+          when(() => mockRepository.getCurrentIdentity())
               .thenAnswer((_) => response.future);
           final refresh = controller.refreshProfile();
           await controller.logout();
           when(() => mockRepository.login('EMP002', 'password'))
-              .thenAnswer((_) async => otherEmployee);
+              .thenAnswer((_) async => AuthenticatedIdentity.fromEmployee(otherEmployee));
           await controller.login('EMP002', 'password');
           if (fail) {
             response.completeError(
               ApiError(message: 'Old session denied.', statusCode: 401),
             );
           } else {
-            response.complete(tEmployee);
+            response.complete(AuthenticatedIdentity.fromEmployee(tEmployee));
           }
           await refresh;
           expect(
@@ -224,7 +225,7 @@ void main() {
         final container = makeContainer();
         final controller = container.read(authControllerProvider.notifier);
         await Future<void>.delayed(Duration.zero);
-        final response = Completer<Employee>();
+        final response = Completer<AuthenticatedIdentity>();
         when(() => mockRepository.login('EMP001', 'password'))
             .thenAnswer((_) => response.future);
         final login = controller.login('EMP001', 'password');
@@ -232,7 +233,7 @@ void main() {
         final logout = controller.logout();
         expect(container.read(authControllerProvider), isA<AuthLoading>());
         verifyNever(() => mockRepository.logout());
-        response.complete(tEmployee);
+        response.complete(AuthenticatedIdentity.fromEmployee(tEmployee));
         await Future.wait([login, logout]);
         expect(
           container.read(authControllerProvider),
@@ -255,7 +256,7 @@ void main() {
             .thenThrow(ApiError.networkFailure());
         await controller.login('EMP001', 'bad');
         when(() => mockRepository.login('EMP002', 'password'))
-            .thenAnswer((_) async => otherEmployee);
+            .thenAnswer((_) async => AuthenticatedIdentity.fromEmployee(otherEmployee));
         await controller.login('EMP002', 'password');
         await Future<void>.delayed(const Duration(milliseconds: 150));
         expect(
@@ -272,8 +273,8 @@ void main() {
     Future<ProviderContainer> authenticatedContainer() async {
       when(() => mockRepository.hasStoredCredentials())
           .thenAnswer((_) async => true);
-      when(() => mockRepository.getCurrentEmployee())
-          .thenAnswer((_) async => tEmployee);
+      when(() => mockRepository.getCurrentIdentity())
+          .thenAnswer((_) async => AuthenticatedIdentity.fromEmployee(tEmployee));
       final container = makeContainer();
       container.read(authControllerProvider);
       await Future<void>.delayed(Duration.zero);
@@ -292,12 +293,12 @@ void main() {
       await controller.retryAuthentication();
       expect(container.read(authControllerProvider), isA<AuthUnauthenticated>());
       verify(() => mockRepository.hasStoredCredentials()).called(1);
-      verify(() => mockRepository.getCurrentEmployee()).called(1);
+      verify(() => mockRepository.getCurrentIdentity()).called(1);
       verify(() => mockRepository.logout()).called(1);
       verify(() => storage.clearAuthenticationState()).called(1);
 
       when(() => mockRepository.login('EMP001', 'new-password'))
-          .thenAnswer((_) async => tEmployee);
+          .thenAnswer((_) async => AuthenticatedIdentity.fromEmployee(tEmployee));
       await controller.login('EMP001', 'new-password');
       expect(container.read(authControllerProvider), isA<AuthAuthenticated>());
     });
@@ -305,7 +306,7 @@ void main() {
     test('startup 401 with failed cleanup does not loop or restore credentials', () async {
       when(() => mockRepository.hasStoredCredentials())
           .thenAnswer((_) async => true);
-      when(() => mockRepository.getCurrentEmployee())
+      when(() => mockRepository.getCurrentIdentity())
           .thenThrow(ApiError(message: 'Expired', statusCode: 401));
       when(() => mockRepository.logout())
           .thenThrow(StateError('Repository cleanup failed'));
@@ -320,14 +321,14 @@ void main() {
       await controller.retryAuthentication();
       expect(container.read(authControllerProvider), isA<AuthUnauthenticated>());
       verify(() => mockRepository.logout()).called(1);
-      verify(() => mockRepository.getCurrentEmployee()).called(1);
+      verify(() => mockRepository.getCurrentIdentity()).called(1);
       verify(() => storage.clearAuthenticationState()).called(1);
     });
 
     test('profile 401 preserves the rejection and surfaces cleanup failure', () async {
       final container = await authenticatedContainer();
       final error = ApiError(message: 'Expired', statusCode: 401);
-      when(() => mockRepository.getCurrentEmployee()).thenThrow(error);
+      when(() => mockRepository.getCurrentIdentity()).thenThrow(error);
       await expectLater(
         container.read(authControllerProvider.notifier).refreshProfile(),
         throwsA(same(error)),
@@ -349,7 +350,7 @@ void main() {
             throw StateError('Storage unavailable');
           });
       when(() => mockRepository.login('EMP001', 'new-password'))
-          .thenAnswer((_) async => tEmployee);
+          .thenAnswer((_) async => AuthenticatedIdentity.fromEmployee(tEmployee));
       final logout = controller.logout();
       await cleanupStarted.future;
       final login = controller.login('EMP001', 'new-password');
@@ -359,10 +360,75 @@ void main() {
     });
   });
 
+  group('Role-aware identity', () {
+    final management = AuthenticatedIdentity(
+      userId: 20, username: 'management', displayName: 'Management account',
+      capabilities: {'management_workspace'},
+    );
+
+    test('restores management-only identity without requiring an Employee', () async {
+      when(() => mockRepository.hasStoredCredentials()).thenAnswer((_) async => true);
+      when(() => mockRepository.getCurrentIdentity()).thenAnswer((_) async => management);
+      final container = makeContainer();
+      container.read(authControllerProvider);
+      await Future<void>.delayed(Duration.zero);
+      final auth = container.read(authControllerProvider) as AuthAuthenticated;
+      expect(auth.identity, same(management));
+      expect(auth.employee, isNull);
+      expect(auth.canLearn, isFalse);
+    });
+
+    test('startup capability rejection clears credentials rather than retaining protected state', () async {
+      when(() => mockRepository.hasStoredCredentials()).thenAnswer((_) async => true);
+      when(() => mockRepository.getCurrentIdentity()).thenThrow(
+        ApiError(message: 'Access removed', statusCode: 403),
+      );
+      final container = makeContainer();
+      container.read(authControllerProvider);
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(authControllerProvider), isA<AuthUnauthenticated>());
+      verify(() => storage.clearAuthenticationState()).called(1);
+    });
+
+    test('refresh replaces capabilities and a later rejection logs out management identity', () async {
+      when(() => mockRepository.hasStoredCredentials()).thenAnswer((_) async => true);
+      when(() => mockRepository.getCurrentIdentity()).thenAnswer((_) async => management);
+      final container = makeContainer();
+      final controller = container.read(authControllerProvider.notifier);
+      await Future<void>.delayed(Duration.zero);
+      when(() => mockRepository.getCurrentIdentity()).thenAnswer((_) async =>
+        AuthenticatedIdentity.fromEmployee(tEmployee));
+      await controller.refreshProfile();
+      final auth = container.read(authControllerProvider) as AuthAuthenticated;
+      expect(auth.identity.canManage, isFalse);
+      expect(auth.canLearn, isTrue);
+      when(() => mockRepository.getCurrentIdentity()).thenThrow(ApiError(message: 'Access removed', statusCode: 403));
+      await expectLater(controller.refreshProfile(), throwsA(isA<ApiError>()));
+      expect(container.read(authControllerProvider), isA<AuthUnauthenticated>());
+    });
+
+    test('a stale Employee refresh cannot overwrite a newly logged-in management account', () async {
+      when(() => mockRepository.hasStoredCredentials()).thenAnswer((_) async => true);
+      when(() => mockRepository.getCurrentIdentity()).thenAnswer((_) async => AuthenticatedIdentity.fromEmployee(tEmployee));
+      final container = makeContainer();
+      final controller = container.read(authControllerProvider.notifier);
+      await Future<void>.delayed(Duration.zero);
+      final response = Completer<AuthenticatedIdentity>();
+      when(() => mockRepository.getCurrentIdentity()).thenAnswer((_) => response.future);
+      final refresh = controller.refreshProfile();
+      await controller.logout();
+      when(() => mockRepository.login('management', 'password')).thenAnswer((_) async => management);
+      await controller.login('management', 'password');
+      response.complete(AuthenticatedIdentity.fromEmployee(tEmployee));
+      await refresh;
+      expect((container.read(authControllerProvider) as AuthAuthenticated).identity, same(management));
+    });
+  });
+
   group('AuthController login/logout', () {
     test('login success sets authenticated state', () async {
       when(() => mockRepository.hasStoredCredentials()).thenAnswer((_) async => false);
-      when(() => mockRepository.login('EMP001', 'password')).thenAnswer((_) async => tEmployee);
+      when(() => mockRepository.login('EMP001', 'password')).thenAnswer((_) async => AuthenticatedIdentity.fromEmployee(tEmployee));
 
       final container = makeContainer();
       final controller = container.read(authControllerProvider.notifier);

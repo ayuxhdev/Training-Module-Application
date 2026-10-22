@@ -1,11 +1,49 @@
 {% extends "base.html" %}
+{% block title %}{% if form.instance.pk %}Edit assessment | {{ form.instance.title }}{% else %}Add assessment{% endif %} | Garden's Need Training{% endblock %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li>{% if perms.training.view_trainingversion %}<a href="{% url 'training:version-detail' form.instance.training_version_id %}">{{ form.instance.training_version.title }}</a>{% else %}{{ form.instance.training_version.title }}{% endif %}</li><li>{% if perms.assessments.view_assessment %}<a href="{% url 'assessments:assessment-list' form.instance.training_version_id %}">Assessments</a>{% else %}Assessments{% endif %}</li>{% if form.instance.pk %}<li>Edit assessment</li>{% else %}<li>Add assessment</li>{% endif %}</ol></nav>
-<header class="page-heading"><h1>{% if form.instance.pk %}Edit draft assessment{% else %}Add draft assessment{% endif %}</h1></header>
-<form method="post" class="form-stack">
-  {% csrf_token %}
-  {{ form.non_field_errors }}
-  {{ form.as_p }}
-  <div class="action-list"><button type="submit">Save draft</button><a href="{% if perms.assessments.view_assessment %}{% url 'assessments:assessment-list' form.instance.training_version_id %}{% else %}{% url 'reports:dashboard' %}{% endif %}">Cancel</a></div>
-</form>
+<style>
+  .assessment-workspace { display: grid; gap: var(--space-4); min-width: 0; }
+  .assessment-header { margin-bottom: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-hero); box-shadow: var(--shadow-sm); }
+  .assessment-header p { margin: var(--space-2) 0 0; color: var(--color-text-muted); }
+  .assessment-panel { min-width: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+  .assessment-form-fieldset { border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--space-4); margin-bottom: var(--space-4); background: var(--color-surface); }
+  .assessment-form-fieldset legend { font-weight: 700; font-size: var(--font-size-base); color: var(--color-brand-primary); padding: 0 var(--space-2); }
+  .assessment-field-help { font-size: var(--font-size-xs); color: var(--color-text-muted); margin-top: 0.1rem; }
+  .assessment-form-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-4); }
+  .assessment-validation-errors { padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-danger-foreground); background: var(--color-danger-background); color: var(--color-danger-foreground); margin-bottom: var(--space-3); }
+</style>
+
+<div class="assessment-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li>{% if perms.training.view_trainingversion %}<a href="{% url 'training:version-detail' form.instance.training_version_id %}">{{ form.instance.training_version.title }}</a>{% else %}{{ form.instance.training_version.title }}{% endif %}</li>
+      <li>{% if perms.assessments.view_assessment %}<a href="{% url 'assessments:assessment-list' form.instance.training_version_id %}">Assessments</a>{% else %}Assessments{% endif %}</li>
+      <li aria-current="page">{% if form.instance.pk %}Edit assessment{% else %}Add assessment{% endif %}</li>
+    </ol>
+  </nav>
+
+  <header class="page-heading assessment-header">
+    <div>
+      <h1>{% if form.instance.pk %}Edit draft assessment{% else %}Add draft assessment{% endif %}</h1>
+      <p>Configure assessment classification, sequence, passing threshold, and time limits for {{ form.instance.training_version.title }}.</p>
+    </div>
+  </header>
+
+  <section class="assessment-panel" aria-labelledby="assessment-form-heading">
+    <h2 id="assessment-form-heading" style="margin-top: 0; font-size: var(--font-size-lg);">Assessment configuration</h2>
+
+    <form method="post" class="form-stack">
+      {% csrf_token %}
+
+      <div class="form-fields">
+        {{ form.as_p }}
+      </div>
+
+      <div class="action-list assessment-form-actions">
+        <button type="submit" class="btn btn-primary">Save draft</button>
+        <a class="btn btn-secondary" href="{% if perms.assessments.view_assessment %}{% url 'assessments:assessment-list' form.instance.training_version_id %}{% else %}{% url 'reports:dashboard' %}{% endif %}">Cancel</a>
+      </div>
+    </form>
+  </section>
+</div>
 {% endblock %}

@@ -1,38 +1,209 @@
 {% extends "base.html" %}
 {% block content %}
-<header class="page-heading"><h1>Assignment report</h1></header>
-<form method="get" class="form-stack">
-  {{ filter_form.non_field_errors }}
-  <p>{{ filter_form.status.label_tag }} {{ filter_form.status }} {{ filter_form.status.errors }}</p>
-  <p>{{ filter_form.department.label_tag }} {{ filter_form.department }} {{ filter_form.department.errors }}</p>
-  <p>{{ filter_form.job_role.label_tag }} {{ filter_form.job_role }} {{ filter_form.job_role.errors }}</p>
-  <p>{{ filter_form.training.label_tag }} {{ filter_form.training }} {{ filter_form.training.errors }}</p>
-  <p>{{ filter_form.training_version.label_tag }} {{ filter_form.training_version }} {{ filter_form.training_version.errors }}</p>
-  <p>{{ filter_form.overdue_only }} {{ filter_form.overdue_only.label_tag }} {{ filter_form.overdue_only.errors }}</p>
-  <div class="action-list"><button type="submit">Filter</button><a href="{% url 'reports:assignment-report' %}">Clear filters</a></div>
-</form>
-<div class="table-scroll" role="region" aria-label="Assignment report results" tabindex="0">
-<table>
-  <thead><tr><th>Employee</th><th>Department</th><th>Job role</th><th>Training</th><th>Version</th><th>Assigned</th><th>Due</th><th>Status</th><th>Overdue</th><th>Completed</th><th>Certificate</th></tr></thead>
-  <tbody>
-  {% for assignment in assignments %}
-    <tr>
-      <td>{{ assignment.employee.display_name }}</td>
-      <td>{{ assignment.department_at_assignment.name }}</td>
-      <td>{{ assignment.job_role_at_assignment.name }}</td>
-      <td>{{ assignment.training_version.training.catalog_title }}</td>
-      <td>{{ assignment.training_version.title }} v{{ assignment.training_version.version_number }}</td>
-      <td>{{ assignment.assigned_at|date:"Y-m-d" }}</td>
-      <td>{{ assignment.due_at|date:"Y-m-d"|default:"Not set" }}</td>
-      <td>{{ assignment.get_status_display }}</td>
-      <td>{% if assignment.is_overdue %}Yes{% else %}No{% endif %}</td>
-      <td>{{ assignment.completed_at|date:"Y-m-d"|default:"-" }}</td>
-      <td>{% if assignment.certificate %}{% if assignment.certificate.revoked_at %}Revoked{% else %}Issued{% endif %}{% else %}Not issued{% endif %}</td>
-    </tr>
-  {% empty %}
-    <tr><td colspan="11">No assignments match these filters.</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+<style>
+  .assignment-report-table {
+    table-layout: auto !important;
+    min-width: 72rem;
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .assignment-report-table th,
+  .assignment-report-table td {
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    vertical-align: middle;
+  }
+  .assignment-report-table thead th {
+    width: auto !important;
+    white-space: nowrap;
+  }
+  .assignment-report-table .col-employee {
+    min-width: 9.5rem;
+  }
+  .assignment-report-table .col-department {
+    min-width: 8rem;
+  }
+  .assignment-report-table .col-job-role {
+    min-width: 8rem;
+  }
+  .assignment-report-table .col-training {
+    min-width: 11rem;
+  }
+  .assignment-report-table .col-version {
+    min-width: 10.5rem;
+  }
+  .assignment-report-table .col-date {
+    min-width: 7.5rem;
+    white-space: nowrap;
+  }
+  .assignment-report-table .col-status {
+    min-width: 7rem;
+    white-space: nowrap;
+  }
+  .assignment-report-table .col-overdue {
+    min-width: 5.5rem;
+    white-space: nowrap;
+  }
+  .assignment-report-table .col-certificate {
+    min-width: 7rem;
+    white-space: nowrap;
+  }
+  .assignment-report-table time {
+    white-space: nowrap;
+  }
+  .assignment-report-table .status-badge {
+    white-space: nowrap;
+  }
+  .table-scroll-hint {
+    display: none;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    margin: 0 0 var(--space-2);
+  }
+  @media (max-width: 80rem) {
+    .table-scroll-hint {
+      display: flex;
+    }
+  }
+</style>
+<div class="catalog-workspace">
+  <header class="page-header">
+    <div class="page-header-main">
+      <h1>Assignment report</h1>
+      {% if role == "company" %}
+        <p class="muted">Review training assignments across the company.</p>
+      {% else %}
+        <p class="muted">Review training assignments within your authorized reporting team.</p>
+      {% endif %}
+    </div>
+  </header>
+
+  <p class="catalog-notice">
+    {% if role == "company" %}<strong>Reporting scope:</strong> company-wide.
+    {% else %}<strong>Reporting scope:</strong> assignments for employees in your reporting team.{% endif %}
+  </p>
+
+  <section class="catalog-panel catalog-editor" aria-labelledby="assignment-report-filters-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="assignment-report-filters-heading">Filter assignments</h2>
+      <p>Choose from the report’s existing filters to narrow the results.</p>
+    </header>
+    <form method="get" class="form-stack catalog-form">
+      {% if filter_form.errors %}<p class="catalog-validation" role="alert">Please review the filters below and correct any errors.</p>{% endif %}
+      {{ filter_form.non_field_errors }}
+      <div class="catalog-fields">
+        <div>
+          {{ filter_form.status.label_tag }}
+          {{ filter_form.status }}
+          {{ filter_form.status.errors }}
+        </div>
+        <div>
+          {{ filter_form.department.label_tag }}
+          {{ filter_form.department }}
+          {{ filter_form.department.errors }}
+        </div>
+        <div>
+          {{ filter_form.job_role.label_tag }}
+          {{ filter_form.job_role }}
+          {{ filter_form.job_role.errors }}
+        </div>
+        <div>
+          {{ filter_form.training.label_tag }}
+          {{ filter_form.training }}
+          {{ filter_form.training.errors }}
+        </div>
+        <div>
+          {{ filter_form.training_version.label_tag }}
+          {{ filter_form.training_version }}
+          {{ filter_form.training_version.errors }}
+        </div>
+        <div>
+          {{ filter_form.overdue_only }}
+          {{ filter_form.overdue_only.label_tag }}
+          {{ filter_form.overdue_only.errors }}
+        </div>
+      </div>
+      <div class="catalog-form-actions">
+        <button class="btn btn-primary" type="submit">Apply filters</button>
+        <a class="btn btn-secondary" href="{% url 'reports:assignment-report' %}">Clear filters</a>
+      </div>
+    </form>
+  </section>
+
+  <section class="catalog-panel" aria-labelledby="assignment-report-results-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="assignment-report-results-heading">Assignment results</h2>
+      <p>Employee, training, timeline and completion information for assignments in scope.</p>
+    </header>
+    <p class="table-scroll-hint" aria-hidden="true">&larr;&rarr; Scroll horizontally to view all columns</p>
+    <div class="table-scroll catalog-table-scroll" role="region" aria-label="Assignment report results" tabindex="0">
+      <table class="catalog-table assignment-report-table">
+        <thead>
+          <tr>
+            <th scope="col" class="col-employee">Employee</th>
+            <th scope="col" class="col-department">Department</th>
+            <th scope="col" class="col-job-role">Job role</th>
+            <th scope="col" class="col-training">Training</th>
+            <th scope="col" class="col-version">Version</th>
+            <th scope="col" class="col-date">Assigned</th>
+            <th scope="col" class="col-date">Deadline</th>
+            <th scope="col" class="col-status">Status</th>
+            <th scope="col" class="col-overdue">Overdue</th>
+            <th scope="col" class="col-date">Completed</th>
+            <th scope="col" class="col-certificate">Certificate</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for assignment in assignments %}
+          <tr>
+            <th scope="row" class="col-employee">{{ assignment.employee.display_name }}</th>
+            <td class="col-department">{{ assignment.department_at_assignment.name }}</td>
+            <td class="col-job-role">{{ assignment.job_role_at_assignment.name }}</td>
+            <td class="col-training">{{ assignment.training_version.training.catalog_title }}</td>
+            <td class="col-version">{{ assignment.training_version.title }} · Version {{ assignment.training_version.version_number }}</td>
+            <td class="col-date"><time datetime="{{ assignment.assigned_at|date:'c' }}">{{ assignment.assigned_at|date:"M j, Y" }}</time></td>
+            <td class="col-date">
+              {% if assignment.due_at %}
+                <time datetime="{{ assignment.due_at|date:'c' }}">{{ assignment.due_at|date:"M j, Y" }}</time>
+              {% else %}
+                <span class="muted">No deadline</span>
+              {% endif %}
+            </td>
+            <td class="col-status"><span class="status-badge status-{{ assignment.status|lower }}">{{ assignment.get_status_display }}</span></td>
+            <td class="col-overdue">
+              {% if assignment.is_overdue %}
+                <span class="status-badge status-overdue">Overdue</span>
+              {% else %}
+                <span class="muted">No</span>
+              {% endif %}
+            </td>
+            <td class="col-date">
+              {% if assignment.completed_at %}
+                <time datetime="{{ assignment.completed_at|date:'c' }}">{{ assignment.completed_at|date:"M j, Y" }}</time>
+              {% else %}
+                <span class="muted">Not completed</span>
+              {% endif %}
+            </td>
+            <td class="col-certificate">
+              {% if assignment.certificate %}
+                {% if assignment.certificate.revoked_at %}
+                  <span class="status-badge status-inactive">Revoked</span>
+                {% else %}
+                  <span class="status-badge status-completed">Issued</span>
+                {% endif %}
+              {% else %}
+                <span class="muted">Not issued</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td class="catalog-empty" colspan="11">No assignments match the selected filters within your reporting scope.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
 {% endblock %}

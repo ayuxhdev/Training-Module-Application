@@ -1,13 +1,49 @@
 {% extends "base.html" %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-list' %}">Assignments</a></li><li>Assign by job role</li></ol></nav>
-<header class="page-heading"><h1>Assign training by job role</h1></header>
-<p>Choose an active job-role requirement. The existing assignment workflow creates assignments for active employees in that role and skips employees already assigned to that version. Due dates use the requirement's day period.</p>
-{% if not has_role_requirements %}<p class="empty-state">No active job-role requirements are available. <a href="{% url 'training:role-requirement-list' %}">Manage requirements</a>.</p>{% endif %}
-<form method="post" class="form-stack">
-  {% csrf_token %}
-  {{ form.non_field_errors }}
-  <p>{{ form.role_requirement.label_tag }} {{ form.role_requirement }} {{ form.role_requirement.errors }}</p>
-  <div class="action-list">{% if has_role_requirements %}<button type="submit">Create missing assignments</button>{% endif %}<a href="{% url 'training:assignment-list' %}">Cancel</a></div>
-</form>
+<div class="catalog-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li><a href="{% url 'training:assignment-list' %}">Assignments</a></li>
+      <li aria-current="page">Assign by job role</li>
+    </ol>
+  </nav>
+  <header class="page-header">
+    <div class="page-header-main">
+      <h1>Assign training by job role</h1>
+      <p class="muted">Choose a saved job-role requirement to create the matching employee assignments.</p>
+    </div>
+    <a class="btn btn-secondary" href="{% url 'training:role-requirement-list' %}">View job-role requirements</a>
+  </header>
+
+  <section class="catalog-panel catalog-editor" aria-labelledby="role-assignment-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="role-assignment-heading">Select a requirement</h2>
+      <p>The requirement specifies a job role, published training version and due period.</p>
+    </header>
+    {% if not has_role_requirements %}
+      <div class="catalog-panel-body">
+        <p class="empty-state">There are no active requirements for published training versions to select.</p>
+        <p><a class="btn btn-secondary" href="{% url 'training:role-requirement-list' %}">Review job-role requirements</a></p>
+      </div>
+    {% endif %}
+    <form method="post" class="form-stack catalog-form">
+      {% csrf_token %}
+      {% if form.errors %}<p class="catalog-validation" role="alert">Please review the information below and correct the highlighted errors.</p>{% endif %}
+      {{ form.non_field_errors }}
+      <div class="catalog-fields">
+        <div>
+          {{ form.role_requirement.label_tag }}
+          {{ form.role_requirement }}
+          {% if form.role_requirement.help_text %}<span class="helptext">{{ form.role_requirement.help_text }}</span>{% endif %}
+          {{ form.role_requirement.errors }}
+        </div>
+      </div>
+      <p class="catalog-notice">When you submit, the system creates assignments for active employees in the selected role who do not already have that training version. Employees who are inactive or already assigned are skipped. The due date is calculated from the requirement’s day period.</p>
+      <div class="catalog-form-actions">
+        {% if has_role_requirements %}<button class="btn btn-primary" type="submit">Create missing assignments</button>{% endif %}
+        <a class="btn btn-secondary" href="{% url 'training:assignment-list' %}">Cancel</a>
+      </div>
+    </form>
+  </section>
+</div>
 {% endblock %}

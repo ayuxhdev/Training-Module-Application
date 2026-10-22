@@ -1,39 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li><li>{{ training.catalog_title }}</li></ol></nav>
-<header class="page-heading">
-	<div>
-		<h1>{{ training.catalog_title }}</h1>
-		<p class="muted">{{ training.code }} · {% if training.is_active %}Active{% else %}Inactive{% endif %}</p>
-	</div>
-	{% if perms.training.change_training %}<a class="action-link" href="{% url 'training:training-update' training.pk %}">Edit training</a>{% endif %}
-</header>
-{% if training.description %}<p>{{ training.description }}</p>{% endif %}
-{% if perms.training.view_trainingversion %}
-	<header class="page-heading">
-		<h2>Versions</h2>
-		<div class="action-list">
-			{% if perms.training.view_trainingversion %}<a href="{% url 'training:version-list' training.pk %}">Version history</a>{% endif %}
-			{% if perms.training.add_trainingversion %}<a class="action-link" href="{% url 'training:version-create' training.pk %}">Add version</a>{% endif %}
-		</div>
-	</header>
-	<div class="table-scroll" role="region" aria-label="Training versions" tabindex="0">
-		<table>
-			<thead><tr><th>Version</th><th>Title</th><th>Status</th><th>Published</th><th>Actions</th></tr></thead>
-			<tbody>
-			{% for version in training.versions.all %}
-				<tr>
-					<td>{{ version.version_number }}</td>
-					<td><a href="{% url 'training:version-detail' version.pk %}">{{ version.title }}</a></td>
-					<td><span class="status-badge status-{{ version.status|lower }}">{{ version.get_status_display }}</span></td>
-					<td>{{ version.published_at|date:"Y-m-d"|default:"-" }}</td>
-					<td>{% if version.status == 'DRAFT' and perms.training.change_trainingversion %}<a href="{% url 'training:version-update' version.pk %}">Edit draft</a>{% endif %}</td>
-				</tr>
-			{% empty %}
-				<tr><td class="empty-state" colspan="5">No versions have been created yet.</td></tr>
-			{% endfor %}
-			</tbody>
-		</table>
-	</div>
-{% endif %}
+<div class="catalog-workspace">
+  <nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li><li>{{ training.catalog_title }}</li></ol></nav>
+  <header class="page-header">
+    <div class="page-header-main"><h1>{{ training.catalog_title }}</h1><p class="muted">{{ training.code }}</p></div>
+    {% if perms.training.change_training %}<a class="btn btn-secondary" href="{% url 'training:training-update' training.pk %}">Edit training</a>{% endif %}
+  </header>
+  <section class="catalog-panel" aria-labelledby="training-information-heading">
+    <header class="catalog-panel-heading"><h2 id="training-information-heading">Training information</h2>{% if training.is_active %}{% include "components/status_badge.html" with status="ACTIVE" label="Active" %}{% else %}{% include "components/status_badge.html" with status="INACTIVE" label="Inactive" %}{% endif %}</header>
+    <div class="catalog-panel-body"><p class="catalog-prose">{{ training.description|default:"No description provided." }}</p></div>
+  </section>
+  {% if perms.training.view_trainingversion %}
+    <section class="catalog-panel" aria-labelledby="training-versions-heading">
+      <header class="catalog-panel-heading">
+        <h2 id="training-versions-heading">Versions</h2>
+        <div class="catalog-actions"><a class="btn btn-secondary" href="{% url 'training:version-list' training.pk %}">Version history</a>{% if perms.training.add_trainingversion %}<a class="btn btn-primary" href="{% url 'training:version-create' training.pk %}">Add version</a>{% endif %}</div>
+      </header>
+      {% include "training/components/version_table.html" with versions=training.versions.all empty_message="No versions have been created yet." %}
+    </section>
+  {% endif %}
+</div>
 {% endblock %}

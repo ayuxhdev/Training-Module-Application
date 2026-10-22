@@ -121,7 +121,7 @@ class _ProtectedVideoSurfaceState extends State<ProtectedVideoSurface> {
           Text(
             widget.completed
                 ? 'Completed'
-                : '${widget.coveragePercent.toStringAsFixed(0)}% watched',
+                : '${widget.coveragePercent.floor()}% watched',
             style: const TextStyle(
               color: _emerald,
               fontSize: 11,

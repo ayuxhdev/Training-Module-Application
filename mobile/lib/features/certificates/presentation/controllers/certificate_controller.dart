@@ -8,8 +8,8 @@ import 'package:training_app/features/certificates/domain/models/certificate.dar
 import 'package:training_app/features/certificates/domain/models/certificate_detail.dart';
 
 String? _account(AuthState auth) =>
-    auth is AuthAuthenticated && auth.employee.isActive
-    ? '${auth.employee.username}:${auth.employee.employeeCode}'
+    auth is AuthAuthenticated
+    ? auth.personalAccount
     : null;
 
 void _guardAccount(Ref ref, void Function() clear) {

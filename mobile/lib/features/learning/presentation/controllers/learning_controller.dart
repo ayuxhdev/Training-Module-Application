@@ -10,8 +10,8 @@ import 'package:training_app/features/learning/domain/models/assignment_detail.d
 CancelToken _employeeRequest(Ref ref) {
   final account = ref.watch(
     authControllerProvider.select(
-      (auth) => auth is AuthAuthenticated && auth.employee.isActive
-          ? (auth.employee.username, auth.employee.employeeCode)
+      (auth) => auth is AuthAuthenticated
+          ? auth.personalAccount
           : null,
     ),
   );

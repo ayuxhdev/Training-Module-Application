@@ -14,7 +14,11 @@ import 'package:training_app/features/auth/domain/models/employee.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/learning/data/repositories/learning_repository.dart';
 import 'package:training_app/features/learning/domain/models/assignment.dart';
+import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
 import 'package:training_app/features/learning/presentation/screens/learning_screen.dart';
+import 'package:training_app/features/learning/presentation/screens/module_list_screen.dart';
+import 'package:training_app/features/learning/presentation/screens/lesson_list_screen.dart';
+import 'package:training_app/features/learning/presentation/screens/text_lesson_screen.dart';
 
 class _Repository extends Mock implements LearningRepository {}
 
@@ -92,6 +96,95 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  for (final screen in [
+    const ModuleListScreen(assignmentId: 1),
+    const LessonListScreen(assignmentId: 1, moduleId: 2),
+    const TextLessonScreen(assignmentId: 1, lessonId: 3),
+  ]) {
+    testWidgets(
+      '${screen.runtimeType} offers sign-in instead of retrying an expired session',
+      (tester) async {
+        when(
+          () => repository.getAssignmentDetail(
+            1,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenThrow(
+          ApiError(message: 'Your session has expired.', statusCode: 401),
+        );
+        await show(tester, screen);
+        expect(find.text('Your session has expired.'), findsOneWidget);
+        expect(find.text('Retry'), findsNothing);
+        expect(auth.logouts, 0);
+        await tester.tap(find.text('Sign in again'));
+        await tester.pumpAndSettle();
+        expect(auth.logouts, 1);
+        expect(
+          container.read(authControllerProvider),
+          isA<AuthUnauthenticated>(),
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'denied TEXT completion hides the action and offers sign-in without retrying the POST',
+    (tester) async {
+      when(
+        () => repository.getAssignmentDetail(
+          1,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => AssignmentDetail(
+          id: 1,
+          trainingId: 1,
+          trainingTitle: 'Training',
+          versionNumber: 1,
+          status: 'IN_PROGRESS',
+          isOverdue: false,
+          modules: [
+            ModuleLearning(
+              id: 2,
+              title: 'Module',
+              description: '',
+              position: 1,
+              lessons: [
+                LessonLearning(
+                  id: 3,
+                  title: 'Reading',
+                  position: 1,
+                  type: 'TEXT',
+                  isRequired: true,
+                  body: 'Read this.',
+                  progress: LessonProgress(
+                    resumePosition: 0,
+                    watchedSeconds: 0,
+                    progressPercent: 0,
+                    completed: false,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+      when(() => repository.completeTextLesson(1, 3)).thenThrow(
+        ApiError(message: 'Access is no longer available.', statusCode: 403),
+      );
+      await show(tester, const TextLessonScreen(assignmentId: 1, lessonId: 3));
+      await tester.ensureVisible(find.text('Complete Lesson'));
+      await tester.tap(find.text('Complete Lesson'));
+      await tester.pumpAndSettle();
+      expect(find.text('Complete Lesson'), findsNothing);
+      await tester.tap(find.text('Sign in again'));
+      await tester.pumpAndSettle();
+      expect(auth.logouts, 1);
+      verify(() => repository.completeTextLesson(1, 3)).called(1);
+    },
+  );
 
   testWidgets(
     'network failure shows an explicit retry and recovers to server data',

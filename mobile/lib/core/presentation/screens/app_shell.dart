@@ -30,59 +30,70 @@ class AppShell extends ConsumerWidget {
       );
     }
 
-    int currentIndex = 0;
-    if (location.startsWith('/learning')) {
-      currentIndex = 1;
-    } else if (location.startsWith('/profile')) {
-      currentIndex = 2;
-    }
+    if (authState is! AuthAuthenticated) return const SizedBox.shrink();
+    final identity = authState.identity;
+    final paths = [
+      if (identity.canLearn) '/dashboard',
+      if (identity.canLearn) '/learning',
+      if (identity.canManage || identity.canViewTeam) '/workspace',
+      '/profile',
+    ];
+    final destinations = [
+      if (identity.canLearn)
+        const NavigationDestination(
+          icon: Icon(Icons.dashboard_outlined),
+          selectedIcon: Icon(Icons.dashboard_rounded),
+          label: 'Dashboard',
+        ),
+      if (identity.canLearn)
+        const NavigationDestination(
+          icon: Icon(Icons.school_outlined),
+          selectedIcon: Icon(Icons.school_rounded),
+          label: 'Learning',
+        ),
+      if (identity.canManage || identity.canViewTeam)
+        NavigationDestination(
+          icon: const Icon(Icons.workspaces_outline),
+          selectedIcon: const Icon(Icons.workspaces),
+          label: identity.canManage ? 'Management' : 'Team',
+        ),
+      const NavigationDestination(
+        icon: Icon(Icons.person_outline_rounded),
+        selectedIcon: Icon(Icons.person_rounded),
+        label: 'Profile',
+      ),
+    ];
+    final matched = paths.indexWhere(
+      (path) => location == path || location.startsWith('$path/'),
+    );
+    final currentIndex = matched < 0
+        ? location.startsWith('/workspace/')
+              ? paths.indexOf('/profile')
+              : 0
+        : matched;
 
     return Scaffold(
       body: child,
-      bottomNavigationBar: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-        ),
-        child: NavigationBar(
-          selectedIndex: currentIndex,
-          onDestinationSelected: (index) {
-            switch (index) {
-              case 0:
-                context.go('/dashboard');
-                break;
-              case 1:
-                context.go('/learning');
-                break;
-              case 2:
-                context.go('/profile');
-                break;
-            }
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.dashboard_outlined),
-              selectedIcon: Icon(Icons.dashboard_rounded),
-              label: 'Dashboard',
+      bottomNavigationBar: destinations.length < 2
+          ? null
+          : Container(
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+              child: NavigationBar(
+                selectedIndex: currentIndex,
+                onDestinationSelected: (index) {
+                  context.go(paths[index]);
+                },
+                destinations: destinations,
+              ),
             ),
-            NavigationDestination(
-              icon: Icon(Icons.school_outlined),
-              selectedIcon: Icon(Icons.school_rounded),
-              label: 'Learning',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_outline_rounded),
-              selectedIcon: Icon(Icons.person_rounded),
-              label: 'Profile',
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

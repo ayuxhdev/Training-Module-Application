@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:training_app/core/network/dio_client.dart';
+import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/storage/secure_token_storage.dart';
 
 class MockSecureTokenStorage extends Mock implements SecureTokenStorage {}
@@ -14,6 +15,16 @@ void main() {
     setUp(() {
       mockTokenStorage = MockSecureTokenStorage();
       apiClient = ApiClient(tokenStorage: mockTokenStorage);
+    });
+
+    test('preserves an already mapped structured API failure', () {
+      final failure = ApiError(
+        message: 'Sign in again.',
+        statusCode: 401,
+        code: 'token_not_valid',
+        details: {'detail': 'Expired'},
+      );
+      expect(apiClient.mapExceptionToApiError(failure), same(failure));
     });
 
     test('API requests do not follow redirects to another origin', () {
@@ -37,7 +48,10 @@ void main() {
       );
 
       final result = apiClient.mapExceptionToApiError(exception);
-      expect(result.message, 'Network connection failed. Please check your internet connection.');
+      expect(
+        result.message,
+        'Network connection failed. Please check your internet connection.',
+      );
     });
 
     test('maps badResponse to ApiError.fromBackend if map data present', () {
@@ -59,7 +73,10 @@ void main() {
     test('maps unknown exception to ApiError.unexpected', () {
       final exception = Exception('Unknown error');
       final result = apiClient.mapExceptionToApiError(exception);
-      expect(result.message, 'An unexpected error occurred. Please try again later.');
+      expect(
+        result.message,
+        'An unexpected error occurred. Please try again later.',
+      );
     });
   });
 }

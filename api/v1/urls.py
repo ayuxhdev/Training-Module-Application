@@ -3,6 +3,10 @@ from django.urls import path, re_path
 from .views import APINotFoundView, APIStatusView
 from .auth_views import EmployeeLoginView, EmployeeRefreshView, EmployeeLogoutView, EmployeeMeView
 from .dashboard_views import EmployeeDashboardView
+from .management_views import (
+    DepartmentReferenceView, EmployeeDirectoryDetailView, EmployeeDirectoryView,
+    JobRoleReferenceView, ManagementDashboardView,
+)
 from .certificate_views import CertificateDetailView, CertificateListView
 from .notification_views import (
     NotificationListView,
@@ -37,6 +41,11 @@ urlpatterns = [
     path("auth/logout/", EmployeeLogoutView.as_view(), name="auth-logout"),
     path("auth/me/", EmployeeMeView.as_view(), name="auth-me"),
     path("dashboard/", EmployeeDashboardView.as_view(), name="dashboard"),
+    path("management/dashboard/", ManagementDashboardView.as_view(), name="management-dashboard"),
+    path("management/employees/", EmployeeDirectoryView.as_view(), name="management-employees"),
+    path("management/employees/<int:pk>/", EmployeeDirectoryDetailView.as_view(), name="management-employee-detail"),
+    path("management/departments/", DepartmentReferenceView.as_view(), name="management-departments"),
+    path("management/job-roles/", JobRoleReferenceView.as_view(), name="management-job-roles"),
     path("notifications/", NotificationListView.as_view(), name="notification-list"),
     path("notifications/unread-count/", NotificationUnreadCountView.as_view(), name="notification-unread-count"),
     path("notifications/read-all/", NotificationReadAllView.as_view(), name="notification-read-all"),

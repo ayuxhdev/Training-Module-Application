@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Count, OuterRef, Subquery
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -45,6 +46,19 @@ class QuestionListView(AssessmentPermissionMixin, ListView):
 	model = Question
 	template_name = "assessments/question_list.html"
 	context_object_name = "questions"
+
+	def get_queryset(self):
+		latest_revision = QuestionRevision.objects.filter(
+			question=OuterRef("pk")
+		).order_by("-revision_number", "-id")
+		return (
+			super()
+			.get_queryset()
+			.annotate(
+				revision_count=Count("revisions"),
+				latest_prompt=Subquery(latest_revision.values("prompt")[:1]),
+			)
+		)
 
 
 class QuestionDetailView(AssessmentPermissionMixin, DetailView):

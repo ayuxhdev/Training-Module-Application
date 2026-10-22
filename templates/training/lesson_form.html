@@ -1,11 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="catalog-workspace">
 <nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li><li><a href="{% url 'training:training-detail' form.instance.module.training_version.training_id %}">{{ form.instance.module.training_version.training.catalog_title }}</a></li><li><a href="{% url 'training:version-detail' form.instance.module.training_version_id %}">Version {{ form.instance.module.training_version.version_number }}</a></li><li>{{ form.instance.module.title }}</li>{% if form.instance.pk %}<li>Edit lesson</li>{% else %}<li>Add lesson</li>{% endif %}</ol></nav>
-<header class="page-heading"><h1>{% if form.instance.pk %}Edit lesson{% else %}Add lesson{% endif %}</h1></header>
-<form method="post" enctype="multipart/form-data" class="form-stack">
-	{% csrf_token %}
-	{{ form.non_field_errors }}
-	{{ form.as_p }}
-	<div class="action-list"><button type="submit">Save lesson</button><a href="{% url 'training:version-detail' form.instance.module.training_version_id %}">Cancel</a></div>
+<header class="page-header"><h1>{% if form.instance.pk %}Edit lesson{% else %}Add lesson{% endif %}</h1></header>
+<section class="catalog-panel catalog-editor" aria-labelledby="lesson-editor-heading">
+  <header class="catalog-panel-heading"><h2 id="lesson-editor-heading">Lesson information</h2><p>Choose the lesson type, enter a title and select your video. Length and integrity checks are automatic.</p></header>
+{% if form.instance.pk and form.instance.content_type == 'VIDEO' and form.instance.video_file %}<p class="catalog-notice">A video is already saved ({{ form.instance.video_duration_seconds }} seconds). Leave the file picker empty to keep it, or choose a replacement.</p>{% endif %}
+<form method="post" enctype="multipart/form-data" class="form-stack catalog-form">
+	{% include "training/components/editor_fields.html" %}
+	<div class="catalog-form-actions"><button class="btn btn-primary" type="submit">Save lesson</button><a href="{% url 'training:version-detail' form.instance.module.training_version_id %}" class="btn btn-secondary">Cancel</a></div>
 </form>
+</section>
+</div>
 {% endblock %}

@@ -1,0 +1,18 @@
+<div class="table-scroll catalog-table-scroll" role="region" aria-label="Training versions" tabindex="0">
+  <table class="catalog-table catalog-version-table">
+    <thead><tr><th scope="col">Version</th><th scope="col">Title</th><th scope="col">Status</th><th scope="col">Published</th><th scope="col">Actions</th></tr></thead>
+    <tbody>
+    {% for version in versions %}
+      <tr>
+        <td class="catalog-code">{{ version.version_number }}</td>
+        <th scope="row"><a class="catalog-record-link" href="{% url 'training:version-detail' version.pk %}">{{ version.title }}</a></th>
+        <td>{% include "components/status_badge.html" with status=version.status label=version.get_status_display %}</td>
+        <td>{% if version.published_at %}<time datetime="{{ version.published_at|date:'Y-m-d' }}">{{ version.published_at|date:"Y-m-d" }}</time>{% else %}<span class="muted">Not published</span>{% endif %}</td>
+        <td class="catalog-table-actions">{% if version.status == 'DRAFT' and perms.training.change_trainingversion %}<a class="btn btn-secondary" href="{% url 'training:version-update' version.pk %}" aria-label="Edit draft: {{ version.title }}">Edit draft</a>{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td class="catalog-empty" colspan="5">{{ empty_message }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

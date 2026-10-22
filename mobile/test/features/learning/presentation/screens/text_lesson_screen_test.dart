@@ -66,6 +66,63 @@ void main() {
     );
   }
 
+  testWidgets(
+    'unfinished optional text in a completed assignment remains read-only',
+    (tester) async {
+      final repository = MockLearningRepository();
+      final detail = AssignmentDetail(
+        id: 1,
+        trainingId: 1,
+        trainingTitle: 'Training',
+        versionNumber: 1,
+        status: 'COMPLETED',
+        isOverdue: false,
+        modules: [
+          ModuleLearning(
+            id: 5,
+            title: 'Module',
+            description: '',
+            position: 1,
+            lessons: [
+              LessonLearning(
+                id: 10,
+                title: 'Optional reading',
+                position: 1,
+                type: 'TEXT',
+                isRequired: false,
+                body: 'Still available to read.',
+                progress: LessonProgress(
+                  resumePosition: 0,
+                  watchedSeconds: 0,
+                  progressPercent: 0,
+                  completed: false,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          assignmentDetailProvider(1).overrideWith((_) async => detail),
+          learningRepositoryProvider.overrideWithValue(repository),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(createTestWidget(container));
+      await tester.pumpAndSettle();
+      expect(find.text('Still available to read.'), findsOneWidget);
+      expect(find.text('Complete Lesson'), findsNothing);
+      expect(
+        find.text(
+          'This assignment is complete. You can review this lesson without changing its recorded progress.',
+        ),
+        findsOneWidget,
+      );
+      expect(repository.completeCalled, isFalse);
+    },
+  );
+
   testWidgets('shows LoadingView while fetching detail', (tester) async {
     final completer = Completer<AssignmentDetail>();
     final container = ProviderContainer(

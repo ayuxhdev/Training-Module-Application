@@ -1,12 +1,43 @@
 {% extends "base.html" %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-list' %}">Assignments</a></li><li><a href="{% url 'training:role-requirement-list' %}">Job-role requirements</a></li><li>{% if form.instance.pk %}Edit requirement{% else %}Add requirement{% endif %}</li></ol></nav>
-<header class="page-heading"><h1>{% if form.instance.pk %}Edit job-role requirement{% else %}Add job-role requirement{% endif %}</h1></header>
-{% if form.instance.pk %}<p>Job role: {{ form.instance.job_role.name }} · Training: {{ form.instance.training_version.training.catalog_title }} / {{ form.instance.training_version.title }}. These relationships are fixed after creation.</p>{% elif not can_create_requirement %}<p class="empty-state">An active job role and a published training version are needed before a requirement can be created.</p>{% endif %}
-<form method="post" class="form-stack">
-  {% csrf_token %}
-  {{ form.non_field_errors }}
-  {{ form.as_p }}
-  <div class="action-list">{% if form.instance.pk or can_create_requirement %}<button type="submit">Save requirement</button>{% endif %}<a href="{% url 'training:role-requirement-list' %}">Cancel</a></div>
-</form>
+<div class="catalog-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li><a href="{% url 'training:assignment-list' %}">Assignments</a></li>
+      <li><a href="{% url 'training:role-requirement-list' %}">Job-role requirements</a></li>
+      <li aria-current="page">{% if form.instance.pk %}Edit requirement{% else %}Add requirement{% endif %}</li>
+    </ol>
+  </nav>
+  <header class="page-header">
+    <div class="page-header-main">
+      <h1>{% if form.instance.pk %}Edit job-role requirement{% else %}Add job-role requirement{% endif %}</h1>
+      <p class="muted">Set the training and due-period details used by the role-based assignment workflow.</p>
+    </div>
+    <a class="btn btn-secondary" href="{% url 'training:role-requirement-list' %}">Back to requirements</a>
+  </header>
+
+  <section class="catalog-panel catalog-editor" aria-labelledby="requirement-form-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="requirement-form-heading">{% if form.instance.pk %}Requirement details{% else %}New requirement{% endif %}</h2>
+      <p>A requirement links one job role with one published training version and its due period.</p>
+    </header>
+    <form method="post" class="form-stack catalog-form">
+      {% csrf_token %}
+      {% if form.errors %}<p class="catalog-validation" role="alert">Please review the information below and correct the highlighted errors.</p>{% endif %}
+      {% if form.instance.pk %}
+        <p class="catalog-notice">Job role: <strong>{{ form.instance.job_role.name }}</strong>. Training version: <strong>{{ form.instance.training_version.training.catalog_title }} · {{ form.instance.training_version.title }} (version {{ form.instance.training_version.version_number }})</strong>. These relationships are fixed after the requirement is created.</p>
+      {% else %}
+        <p class="catalog-notice">The available choices are active job roles and published training versions. Saving this requirement records the relationship; it does not itself create employee assignments.</p>
+        {% if not can_create_requirement %}
+          <p class="empty-state">An active job role and a published training version are needed before a requirement can be created.</p>
+        {% endif %}
+      {% endif %}
+      <div class="catalog-fields">{{ form.as_div }}</div>
+      <div class="catalog-form-actions">
+        {% if form.instance.pk or can_create_requirement %}<button class="btn btn-primary" type="submit">Save requirement</button>{% endif %}
+        <a class="btn btn-secondary" href="{% url 'training:role-requirement-list' %}">Cancel</a>
+      </div>
+    </form>
+  </section>
+</div>
 {% endblock %}

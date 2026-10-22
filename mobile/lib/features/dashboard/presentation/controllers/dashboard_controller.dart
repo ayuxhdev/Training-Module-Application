@@ -11,8 +11,8 @@ final dashboardDataProvider = FutureProvider.autoDispose<DashboardData>((
 ) async {
   final account = ref.watch(
     authControllerProvider.select(
-      (state) => state is AuthAuthenticated && state.employee.isActive
-          ? (state.employee.username, state.employee.employeeCode)
+      (state) => state is AuthAuthenticated
+          ? state.personalAccount
           : null,
     ),
   );

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load tz %}
 {% block content %}
 <nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-list' %}">Assignments</a></li><li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.training.catalog_title }}</a></li><li>{{ assessment.title }}</li></ol></nav>
 <header class="page-heading"><div><h1>{{ assessment.title }}</h1><p class="muted">{{ assessment.get_kind_display }}{% if assessment.module %} · {{ assessment.module.title }}{% endif %}</p></div></header>
@@ -9,7 +10,7 @@
   <div><dt>Result</dt><dd>{% if passed %}Passed{% elif ongoing %}In progress{% elif attempts %}Not passed{% else %}Not started{% endif %}</dd></div>
 </dl>
 {% if can_resume %}
-  <p>An attempt is in progress. <a class="action-link" href="{% url 'assessments:attempt-detail' ongoing.pk %}">Resume attempt {{ ongoing.attempt_number }}</a></p>
+  <p>An attempt is in progress. <a class="action-link" href="{% url 'assessments:attempt-detail' ongoing.pk %}">Resume attempt {{ ongoing.attempt_number }}</a>{% if ongoing.deadline_at %} (Submit by: <time datetime="{{ ongoing.deadline_at|date:'c' }}">{{ ongoing.deadline_at|localtime|date:"Y-m-d H:i T" }}</time>){% endif %}</p>
 {% elif unavailable_reason %}
   <p role="status">{{ unavailable_reason }}</p>
 {% else %}

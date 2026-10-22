@@ -15,6 +15,8 @@ import 'package:training_app/features/learning/domain/models/protected_media_req
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 import 'package:training_app/features/learning/presentation/controllers/playback_session_controller.dart';
 import 'package:training_app/features/learning/presentation/widgets/protected_video_surface.dart';
+import 'package:training_app/core/errors/api_error.dart';
+import 'package:training_app/core/presentation/components/api_error_view.dart';
 
 final protectedVideoControllerProvider =
     Provider<VideoPlayerController Function(ProtectedMediaRequest)>(
@@ -59,6 +61,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   bool _readOnlyReplay = false;
   bool _recoveringFromBuffering = false;
   String? _message;
+  ApiError? _mediaAccessError;
 
   PlaybackLesson get _lesson =>
       (assignmentId: widget.assignmentId, lessonId: widget.lessonId);
@@ -145,6 +148,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     _origin = 0;
     _readOnlyReplay = false;
     _message = null;
+    _mediaAccessError = null;
     _warningExpiry?.cancel();
   }
 
@@ -296,7 +300,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   Future<void> _play() async {
     if (_busy || !_foreground || _leaving || _accountChanged) return;
     final auth = ref.read(authControllerProvider);
-    if (auth is! AuthAuthenticated || !auth.employee.isActive) return;
+    if (auth is! AuthAuthenticated || !auth.canLearn) return;
     final lesson = _currentLesson();
     if (lesson == null ||
         !['tracked', 'read_only_replay'].contains(lesson.playbackMode)) {
@@ -395,10 +399,13 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
       if (!_current(generation) || !_foreground) return;
       video.addListener(_onVideo);
       await video.play();
-    } catch (_) {
+    } catch (error) {
       if (_current(generation)) {
         if (!_readOnlyReplay) {
           await session.close(); // Close at the last approved point.
+        }
+        if (error is ApiError && [401, 403].contains(error.statusCode)) {
+          _mediaAccessError = error;
         }
         _message = _readOnlyReplay
             ? 'Replay is unavailable. Reload the lesson or contact your training coordinator.'
@@ -436,7 +443,11 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
         _busy = false;
         _controls = true;
       });
-      if (!_readOnlyReplay) {
+      final readError = ref.read(assignmentDetailProvider(assignmentId)).error;
+      // Cleanup must not retry a denied read or briefly restore protected content.
+      if (!_readOnlyReplay &&
+          !(readError is ApiError &&
+              [401, 403].contains(readError.statusCode))) {
         ref.invalidate(assignmentDetailProvider(assignmentId));
       }
     }
@@ -576,10 +587,10 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     final auth = ref.watch(authControllerProvider);
     ref.listen(authControllerProvider, (previous, next) {
       final oldOwner = previous is AuthAuthenticated
-          ? previous.employee.username
+          ? previous.personalAccount
           : null;
-      final owner = next is AuthAuthenticated && next.employee.isActive
-          ? next.employee.username
+      final owner = next is AuthAuthenticated
+          ? next.personalAccount
           : null;
       if (owner != oldOwner) {
         _accountChanged = true;
@@ -611,11 +622,25 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
       }
     });
     final detail = ref.watch(assignmentDetailProvider(widget.assignmentId));
+    ref.listen(assignmentDetailProvider(widget.assignmentId), (_, next) {
+      final error = next.error;
+      if (error is ApiError &&
+          [401, 403].contains(error.statusCode) &&
+          (_busy || _video?.value.isPlaying == true)) {
+        unawaited(_pause(approvedOnly: true));
+      }
+    });
+    final readError = detail.error;
+    final authorizationError =
+        [session.error, _mediaAccessError, if (readError is ApiError) readError]
+            .whereType<ApiError>()
+            .where((error) => [401, 403].contains(error.statusCode))
+            .firstOrNull;
     LessonLearning? lesson;
     String? moduleTitle;
     if (!_accountChanged &&
         auth is AuthAuthenticated &&
-        auth.employee.isActive) {
+        auth.canLearn) {
       for (final module in detail.asData?.value.modules ?? <ModuleLearning>[]) {
         if (module.id != widget.moduleId) continue;
         for (final entry in module.lessons) {
@@ -716,151 +741,184 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
         if (!didPop) unawaited(_exit());
       },
       child: Scaffold(
+        appBar: authorizationError == null
+            ? null
+            : AppBar(
+                title: const Text('Video lesson'),
+                leading: IconButton(
+                  tooltip: 'Back to lessons',
+                  onPressed: _exit,
+                  icon: const Icon(Icons.arrow_back),
+                ),
+              ),
         backgroundColor: _fullscreen
             ? playerTheme.scaffoldBackgroundColor
             : theme.scaffoldBackgroundColor,
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final minimumHeight =
-                  260.0 +
-                  math.max(0, MediaQuery.textScalerOf(context).scale(12) - 12) *
-                      4;
-              final aspect = _video?.value.isInitialized == true
-                  ? _video!.value.aspectRatio
-                  : 16 / 9;
-              final stageHeight = _fullscreen
-                  ? constraints.maxHeight
-                  : math.max(
-                      minimumHeight,
-                      math.min(
-                        (constraints.maxWidth - 24) / aspect,
-                        math.max(minimumHeight, constraints.maxHeight - 220),
-                      ),
-                    );
-              return SingleChildScrollView(
-                physics: _fullscreen
-                    ? const NeverScrollableScrollPhysics()
-                    : null,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (!_fullscreen)
-                      ListTile(
-                        leading: IconButton(
-                          tooltip: 'Back to lessons',
-                          onPressed: _exit,
-                          icon: const Icon(Icons.arrow_back),
-                        ),
-                        title: const Text(
-                          'Video lesson',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: moduleTitle == null
-                            ? null
-                            : Text(
-                                moduleTitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                      ),
-                    SizedBox(
-                      key: const ValueKey('video-stage-layout'),
-                      height: stageHeight,
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: _fullscreen ? 0 : 12,
-                        ),
-                        child: Theme(data: playerTheme, child: player),
-                      ),
-                    ),
-                    if (!_fullscreen)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (lesson?.playbackMode == 'read_only_replay') ...[
-                              const Text(
-                                'Read-only replay. Recorded completion and watched coverage will not change.',
-                              ),
-                              const SizedBox(height: 12),
-                            ],
-                            Text(
-                              lesson?.title ?? 'Protected video',
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
+        body: authorizationError != null
+            ? ApiErrorView(error: authorizationError)
+            : SafeArea(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final minimumHeight =
+                        260.0 +
+                        math.max(
+                              0,
+                              MediaQuery.textScalerOf(context).scale(12) - 12,
+                            ) *
+                            4;
+                    final aspect = _video?.value.isInitialized == true
+                        ? _video!.value.aspectRatio
+                        : 16 / 9;
+                    final stageHeight = _fullscreen
+                        ? constraints.maxHeight
+                        : math.max(
+                            minimumHeight,
+                            math.min(
+                              (constraints.maxWidth - 24) / aspect,
+                              math.max(
+                                minimumHeight,
+                                constraints.maxHeight - 220,
                               ),
                             ),
-                            if (lesson != null) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                detail.asData!.value.trainingTitle,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: colors.onSurfaceVariant,
-                                ),
+                          );
+                    return SingleChildScrollView(
+                      physics: _fullscreen
+                          ? const NeverScrollableScrollPhysics()
+                          : null,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (!_fullscreen)
+                            ListTile(
+                              leading: IconButton(
+                                tooltip: 'Back to lessons',
+                                onPressed: _exit,
+                                icon: const Icon(Icons.arrow_back),
                               ),
-                            ],
-                            const SizedBox(height: 16),
-                            Container(
-                              key: const ValueKey('video-coverage-panel'),
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: colors.surfaceContainerLow,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: colors.outlineVariant,
-                                ),
+                              title: const Text(
+                                'Video lesson',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              subtitle: moduleTitle == null
+                                  ? null
+                                  : Text(
+                                      moduleTitle,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                            ),
+                          SizedBox(
+                            key: const ValueKey('video-stage-layout'),
+                            height: stageHeight,
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: _fullscreen ? 0 : 12,
+                              ),
+                              child: Theme(data: playerTheme, child: player),
+                            ),
+                          ),
+                          if (!_fullscreen)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                20,
+                                20,
+                                24,
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
+                                  if (lesson?.playbackMode ==
+                                      'read_only_replay') ...[
+                                    const Text(
+                                      'Read-only replay. Recorded completion and watched coverage will not change.',
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
                                   Text(
-                                    progress?.completed == true
-                                        ? 'Lesson completed'
-                                        : 'Watched coverage: ${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
+                                    lesson?.title ?? 'Protected video',
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                  const SizedBox(height: 10),
-                                  LinearProgressIndicator(
-                                    value:
-                                        (progress?.progressPercent ?? 0) / 100,
-                                    borderRadius: BorderRadius.circular(4),
-                                    minHeight: 5,
-                                    semanticsLabel:
-                                        'Confirmed watched coverage',
-                                    semanticsValue:
-                                        '${(progress?.progressPercent ?? 0).toStringAsFixed(0)}%',
+                                  if (lesson != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      detail.asData!.value.trainingTitle,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: colors.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 16),
+                                  Container(
+                                    key: const ValueKey('video-coverage-panel'),
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: colors.surfaceContainerLow,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: colors.outlineVariant,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        Text(
+                                          progress?.completed == true
+                                              ? 'Lesson completed'
+                                              : 'Watched coverage: ${(progress?.progressPercent ?? 0).floor()}%',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        LinearProgressIndicator(
+                                          value:
+                                              (progress?.progressPercent ?? 0) /
+                                              100,
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                          minHeight: 5,
+                                          semanticsLabel:
+                                              'Confirmed watched coverage',
+                                          semanticsValue:
+                                              '${(progress?.progressPercent ?? 0).floor()}%',
+                                        ),
+                                        if (progress?.completed != true &&
+                                            lesson?.minimumWatchPercent !=
+                                                null) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Watch ${lesson!.minimumWatchPercent!.toString().replaceFirst(RegExp(r'\.0$'), '')}% to complete this lesson.',
+                                          ),
+                                        ],
+                                        if (session.phase ==
+                                                PlaybackPhase.ended &&
+                                            session.error == null) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Progress saved',
+                                            style: TextStyle(
+                                              color: colors.primary,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
-                                  if (progress?.completed != true &&
-                                      lesson?.minimumWatchPercent != null) ...[
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Watch ${lesson!.minimumWatchPercent!.toStringAsFixed(0)}% to complete this lesson.',
-                                    ),
-                                  ],
-                                  if (session.phase == PlaybackPhase.ended &&
-                                      session.error == null) ...[
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Progress saved',
-                                      style: TextStyle(color: colors.primary),
-                                    ),
-                                  ],
                                 ],
                               ),
                             ),
-                          ],
-                        ),
+                        ],
                       ),
-                  ],
+                    );
+                  },
                 ),
-              );
-            },
-          ),
-        ),
+              ),
       ),
     );
   }

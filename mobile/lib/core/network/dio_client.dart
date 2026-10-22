@@ -35,6 +35,7 @@ class ApiClient {
   Dio get dio => _dio;
 
   ApiError mapExceptionToApiError(dynamic exception) {
+    if (exception is ApiError) return exception;
     if (exception is DioException) {
       switch (exception.type) {
         case DioExceptionType.connectionTimeout:

@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/cinematic_notice.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
-import 'package:training_app/core/presentation/components/error_view.dart';
+import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/features/assessments/domain/models/assessment.dart';
 import 'package:training_app/features/assessments/presentation/controllers/assessment_controller.dart';
@@ -36,14 +35,9 @@ class AssessmentOverviewScreen extends ConsumerWidget {
             skipLoadingOnRefresh: false,
             loading: () =>
                 const LoadingView(message: 'Loading your assessments...'),
-            error: (error, _) => SingleChildScrollView(
-              child: ErrorView(
-                title: 'Assessments unavailable',
-                message: error is ApiError
-                    ? error.message
-                    : 'Unable to load assessments.',
-                onRetry: () => ref.invalidate(provider),
-              ),
+            error: (error, _) => ApiErrorView(
+              error: error,
+              onRetry: () => ref.invalidate(provider),
             ),
             data: (catalog) {
               if (catalog == null) return const LoadingView();

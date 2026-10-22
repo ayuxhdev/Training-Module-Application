@@ -1,13 +1,18 @@
 {% extends "base.html" %}
 {% block content %}
-<header class="page-heading">
-	<h1>{% if reference_edit %}Edit{% else %}Add{% endif %} {{ reference_name }}</h1>
-	<a href="{% url reference_list_url %}">Back to {{ reference_name|lower }} list</a>
-</header>
-<form method="post" class="form-stack">
-	{% csrf_token %}
-	{{ form.non_field_errors }}
-	{{ form.as_p }}
-	<button type="submit">Save {{ reference_name|lower }}</button>
-</form>
+<div class="org-workspace">
+  <header class="page-header">
+    <div class="page-header-main"><h1>{% if reference_edit %}Edit{% else %}Add{% endif %} {{ reference_name }}</h1><p class="muted">Organization reference information</p></div>
+    <a class="btn btn-secondary" href="{% url reference_list_url %}">Back to {{ reference_name|lower }} list</a>
+  </header>
+  <section class="org-panel org-editor" aria-labelledby="reference-information-heading">
+    <header class="org-panel-heading"><h2 id="reference-information-heading">{{ reference_name|capfirst }} information</h2><p>Fields marked with an asterisk are required.</p></header>
+    <form method="post" class="form-stack org-form">
+      {% csrf_token %}
+      {% if form.errors %}<p class="org-validation" role="alert">Please correct the errors below. Your entries have been preserved.</p>{% endif %}
+      <div class="org-fields">{{ form.as_div }}</div>
+      <div class="org-form-actions"><button class="btn btn-primary" type="submit">Save {{ reference_name|lower }}</button><a class="btn btn-secondary" href="{% url reference_list_url %}">Cancel</a></div>
+    </form>
+  </section>
+</div>
 {% endblock %}

@@ -1,36 +1,148 @@
 {% extends "base.html" %}
 {% block content %}
-<header class="page-heading">
-  <h1>{% if shell_role == 'manager' %}Team assignments{% elif shell_role == 'employee' %}My assignments{% else %}Training assignments{% endif %}</h1>
-  {% if perms.training.add_trainingassignment %}
-    <nav aria-label="Assignment actions">
-      <ul class="action-list">
-        <li><a class="action-link" href="{% url 'training:assignment-create' %}">Assign one employee</a></li>
-        <li><a class="action-link" href="{% url 'training:role-assignment-create' %}">Assign by job role</a></li>
-        <li><a class="action-link" href="{% url 'training:role-requirement-list' %}">Manage job-role requirements</a></li>
-      </ul>
-    </nav>
-  {% endif %}
-</header>
-<div class="table-scroll" role="region" aria-label="Training assignments" tabindex="0">
-  <table>
-    <thead><tr><th scope="col">Employee</th><th scope="col">Training</th><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Assigned</th><th scope="col">Due</th><th scope="col">Completed</th><th scope="col">Details</th></tr></thead>
-    <tbody>
-    {% for assignment in assignments %}
-      <tr>
-        <td>{{ assignment.employee }}</td>
-        <td>{{ assignment.training_version.training.catalog_title }}</td>
-        <td>{{ assignment.training_version.title }} (v{{ assignment.training_version.version_number }})</td>
-        <td><span class="status-badge status-{{ assignment.status|lower }}">{{ assignment.get_status_display }}</span>{% if assignment.is_overdue %} <span class="status-badge status-overdue">Overdue</span>{% endif %}</td>
-        <td>{{ assignment.assigned_at|date:"Y-m-d H:i" }}</td>
-        <td{% if assignment.is_overdue %} class="due-overdue"{% endif %}>{{ assignment.due_at|date:"Y-m-d H:i"|default:"Not set" }}</td>
-        <td>{{ assignment.completed_at|date:"Y-m-d H:i"|default:"—" }}</td>
-        <td><a href="{% url 'training:assignment-detail' assignment.pk %}">View assignment</a></td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="8" class="empty-state">{% if shell_role == 'manager' %}No assignments for your reporting team.{% elif shell_role == 'employee' %}You have no training assignments yet.{% else %}No training assignments found.{% endif %}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+<style>
+  .assignment-catalog-table {
+    table-layout: auto !important;
+    min-width: 58rem;
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .assignment-catalog-table th,
+  .assignment-catalog-table td {
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    vertical-align: middle;
+  }
+  .assignment-catalog-table thead th {
+    width: auto !important;
+    white-space: nowrap;
+  }
+  .assignment-catalog-table .col-employee {
+    min-width: 9rem;
+  }
+  .assignment-catalog-table .col-training {
+    min-width: 14rem;
+  }
+  .assignment-catalog-table .col-status {
+    min-width: 7.5rem;
+    white-space: nowrap;
+  }
+  .assignment-catalog-table .col-date {
+    min-width: 8rem;
+    white-space: nowrap;
+  }
+  .assignment-catalog-table .col-actions {
+    min-width: 5.5rem;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .assignment-catalog-table time {
+    white-space: nowrap;
+  }
+  .assignment-catalog-table .status-badge {
+    white-space: nowrap;
+  }
+  .table-scroll-hint {
+    display: none;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    margin: 0 0 var(--space-2);
+  }
+  @media (max-width: 64rem) {
+    .table-scroll-hint {
+      display: flex;
+    }
+  }
+</style>
+<div class="catalog-workspace">
+  <header class="page-header">
+    <div class="page-header-main">
+      <h1>{% if shell_role == 'manager' %}Team assignments{% elif shell_role == 'employee' %}My assignments{% else %}Training assignments{% endif %}</h1>
+      <p class="muted">
+        {% if shell_role == 'manager' %}Training assigned within your authorized team scope.
+        {% elif shell_role == 'employee' %}Your assigned training, deadlines and completion dates.
+        {% else %}Training assigned to employees, with current status and deadlines.{% endif %}
+      </p>
+    </div>
+    {% if perms.training.add_trainingassignment %}
+      <nav class="catalog-actions" aria-label="Assignment management">
+        <a class="btn btn-primary" href="{% url 'training:assignment-create' %}">Assign to one employee</a>
+        <a class="btn btn-secondary" href="{% url 'training:role-assignment-create' %}">Assign by job role</a>
+        <a class="btn btn-secondary" href="{% url 'training:role-requirement-list' %}">Job-role requirements</a>
+      </nav>
+    {% endif %}
+  </header>
+
+  <section class="catalog-panel" aria-labelledby="assignment-list-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="assignment-list-heading">{% if shell_role == 'employee' %}Your training{% elif shell_role == 'manager' %}Team training{% else %}Assignment register{% endif %}</h2>
+      <p>Assignments are shown within your current access scope.</p>
+    </header>
+    <p class="table-scroll-hint" aria-hidden="true">&larr;&rarr; Scroll horizontally to view all columns</p>
+    <div class="table-scroll catalog-table-scroll" role="region" aria-label="{% if shell_role == 'employee' %}Your training assignments{% elif shell_role == 'manager' %}Team training assignments{% else %}Training assignments{% endif %}" tabindex="0">
+      <table class="catalog-table assignment-catalog-table">
+        <thead>
+          <tr>
+            {% if shell_role != 'employee' %}<th scope="col" class="col-employee">Employee</th>{% endif %}
+            <th scope="col" class="col-training">Training</th>
+            <th scope="col" class="col-status">Status</th>
+            <th scope="col" class="col-date">Assigned</th>
+            <th scope="col" class="col-date">Deadline</th>
+            <th scope="col" class="col-date">Completed</th>
+            <th scope="col" class="col-actions">Details</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for assignment in assignments %}
+          <tr>
+            {% if shell_role != 'employee' %}
+              <th scope="row" class="col-employee">
+                {{ assignment.employee.display_name }}
+                <span class="catalog-description">{{ assignment.employee.employee_code }}</span>
+              </th>
+            {% endif %}
+            {% if shell_role == 'employee' %}
+              <th scope="row" class="col-training">
+                <strong>{{ assignment.training_version.training.catalog_title }}</strong>
+                <span class="catalog-description">{{ assignment.training_version.title }} · Version {{ assignment.training_version.version_number }}</span>
+              </th>
+            {% else %}
+              <td class="col-training">
+                <strong>{{ assignment.training_version.training.catalog_title }}</strong>
+                <span class="catalog-description">{{ assignment.training_version.title }} · Version {{ assignment.training_version.version_number }}</span>
+              </td>
+            {% endif %}
+            <td class="col-status">
+              <span class="status-badge status-{{ assignment.status|lower }}">{{ assignment.get_status_display }}</span>
+              {% if assignment.is_overdue %}<span class="status-badge status-overdue">Overdue</span>{% endif %}
+            </td>
+            <td class="col-date"><time datetime="{{ assignment.assigned_at|date:'c' }}">{{ assignment.assigned_at|date:"M j, Y" }}</time></td>
+            <td class="col-date{% if assignment.is_overdue %} due-overdue{% endif %}">
+              {% if assignment.due_at %}<time datetime="{{ assignment.due_at|date:'c' }}">{{ assignment.due_at|date:"M j, Y" }}</time>{% else %}<span class="muted">No deadline</span>{% endif %}
+            </td>
+            <td class="col-date">
+              {% if assignment.completed_at %}<time datetime="{{ assignment.completed_at|date:'c' }}">{{ assignment.completed_at|date:"M j, Y" }}</time>
+              {% elif assignment.status == 'CANCELLED' %}<span class="muted">Not completed</span>
+              {% elif assignment.status == 'ASSIGNED' %}<span class="muted">Not started</span>
+              {% elif assignment.status == 'IN_PROGRESS' %}<span class="muted">In progress</span>
+              {% else %}<span class="muted">No completion date</span>{% endif %}
+            </td>
+            <td class="catalog-table-actions col-actions"><a class="btn btn-secondary" href="{% url 'training:assignment-detail' assignment.pk %}" aria-label="View assignment: {{ assignment.training_version.training.catalog_title }}{% if shell_role != 'employee' %} for {{ assignment.employee.display_name }}{% endif %}">View</a></td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td class="catalog-empty" colspan="{% if shell_role == 'employee' %}6{% else %}7{% endif %}">
+              {% if shell_role == 'manager' %}There are no training assignments in your authorized team scope.
+              {% elif shell_role == 'employee' %}You do not have any training assignments yet.
+              {% else %}No training assignments have been created yet.{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
 {% endblock %}

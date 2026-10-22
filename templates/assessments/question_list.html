@@ -1,12 +1,96 @@
 {% extends "base.html" %}
+{% block title %}Question bank | Garden's Need Training{% endblock %}
 {% block content %}
-<header class="page-heading"><h1>Question bank</h1>{% if perms.assessments.add_question %}<a class="action-link" href="{% url 'assessments:question-create' %}">Add question</a>{% endif %}</header>
-<div class="table-scroll" role="region" aria-label="Question bank" tabindex="0">
-  <table>
-    <thead><tr><th scope="col">Code</th><th scope="col">Topic</th><th scope="col">Status</th></tr></thead>
-    <tbody>{% for question in questions %}
-      <tr><td><a href="{% url 'assessments:question-detail' question.pk %}">{{ question.code }}</a></td><td>{{ question.topic|default:"-" }}</td><td><span class="status-badge{% if not question.is_active %} status-inactive{% endif %}">{% if question.is_active %}Active{% else %}Inactive{% endif %}</span></td></tr>
-    {% empty %}<tr><td colspan="3" class="empty-state">No questions available.</td></tr>{% endfor %}</tbody>
-  </table>
+<style>
+  .question-workspace { display: grid; gap: var(--space-4); min-width: 0; }
+  .question-header { margin-bottom: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-hero); box-shadow: var(--shadow-sm); }
+  .question-header p { margin: var(--space-2) 0 0; color: var(--color-text-muted); }
+  .question-header-content { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); }
+  .question-header-main { flex: 1 1 18rem; min-width: 0; }
+  .question-panel { min-width: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+  .question-panel-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); }
+  .question-panel-header h2 { margin: 0; font-size: var(--font-size-lg); }
+  .question-table { width: 100%; border-collapse: collapse; }
+  .question-table th, .question-table td { padding: var(--space-2) var(--space-3); text-align: left; border-bottom: 1px solid var(--color-border); }
+  .question-table th { font-weight: 650; color: var(--color-text-muted); font-size: var(--font-size-sm); background: var(--color-surface-subtle); }
+  .question-table th[scope="row"] { font-weight: 600; color: var(--color-text); }
+  .question-table td { font-size: var(--font-size-base); }
+  .question-code-link { font-weight: 700; color: var(--color-brand-primary); }
+</style>
+
+<div class="question-workspace">
+  <header class="page-heading question-header">
+    <div class="question-header-content">
+      <div class="question-header-main">
+        <h1>Question bank</h1>
+        <p>Master repository of assessment questions, revision history, and topic classifications.</p>
+      </div>
+      <div>
+        {% if perms.assessments.add_question %}
+          <a class="action-link btn btn-primary" href="{% url 'assessments:question-create' %}">Add question</a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <section class="question-panel" aria-labelledby="question-bank-heading">
+    <div class="question-panel-header">
+      <h2 id="question-bank-heading">Questions repository</h2>
+      <span class="muted" style="font-size: var(--font-size-sm);">{{ questions|length }} question{{ questions|length|pluralize }}</span>
+    </div>
+
+    <div class="table-scroll" role="region" aria-label="Question bank" tabindex="0">
+      <table class="question-table">
+        <thead>
+          <tr>
+            <th scope="col">Code</th>
+            <th scope="col">Topic</th>
+            <th scope="col">Revisions</th>
+            <th scope="col">Latest prompt</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for question in questions %}
+            <tr>
+              <th scope="row">
+                <a class="question-code-link" href="{% url 'assessments:question-detail' question.pk %}">{{ question.code }}</a>
+              </th>
+              <td>{{ question.topic|default:"General" }}</td>
+              <td>
+                {{ question.revision_count }} rev{{ question.revision_count|pluralize }}
+              </td>
+              <td style="max-width: 24rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                {% if question.latest_prompt %}
+                  {{ question.latest_prompt|truncatechars:70 }}
+                {% else %}
+                  <span class="muted">No revisions yet</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="status-badge{% if not question.is_active %} status-inactive{% else %} status-active{% endif %}">
+                  {% if question.is_active %}Active{% else %}Inactive{% endif %}
+                </span>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="5">
+                <div class="empty-state" style="padding: var(--space-6) var(--space-4); text-align: center;">
+                  <h2>No questions available.</h2>
+                  <p class="muted">The question bank is currently empty. Create questions to begin building training assessments.</p>
+                  {% if perms.assessments.add_question %}
+                    <p style="margin-top: var(--space-3);">
+                      <a class="action-link btn btn-primary" href="{% url 'assessments:question-create' %}">Add question</a>
+                    </p>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
 {% endblock %}

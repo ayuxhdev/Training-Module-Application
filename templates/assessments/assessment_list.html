@@ -1,13 +1,152 @@
 {% extends "base.html" %}
+{% block title %}{{ version.title }} assessments | Garden's Need Training{% endblock %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li>{% if perms.training.view_training %}<a href="{% url 'training:training-list' %}">Training</a>{% else %}Training{% endif %}</li><li>{% if perms.training.view_trainingversion %}<a href="{% url 'training:version-detail' version.pk %}">{{ version.title }}</a>{% else %}{{ version.title }}{% endif %}</li><li>Assessments</li></ol></nav>
-<header class="page-heading"><h1>{{ version.title }} assessments</h1>{% if version.status == 'DRAFT' and perms.assessments.add_assessment %}<a class="action-link" href="{% url 'assessments:assessment-create' version.pk %}">Add assessment</a>{% endif %}</header>
-<div class="table-scroll" role="region" aria-label="Version assessments" tabindex="0">
-  <table>
-    <thead><tr><th scope="col">Assessment</th><th scope="col">Type</th><th scope="col">Module</th><th scope="col">Sequence</th><th scope="col">Questions</th></tr></thead>
-    <tbody>{% for assessment in assessments %}
-      <tr><td><a href="{% url 'assessments:assessment-detail' assessment.pk %}">{{ assessment.title }}</a></td><td>{{ assessment.get_kind_display }}</td><td>{{ assessment.module.title|default:"-" }}</td><td>{{ assessment.sequence }}</td><td>{{ assessment.questions.count }}</td></tr>
-    {% empty %}<tr><td colspan="5" class="empty-state">No assessments in this version.</td></tr>{% endfor %}</tbody>
-  </table>
+<style>
+  .assessment-workspace { display: grid; gap: var(--space-4); min-width: 0; }
+  .assessment-header { margin-bottom: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-hero); box-shadow: var(--shadow-sm); }
+  .assessment-header p { margin: var(--space-2) 0 0; color: var(--color-text-muted); }
+  .assessment-header-content { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); }
+  .assessment-header-main { flex: 1 1 18rem; min-width: 0; }
+  .assessment-header-meta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+  .assessment-panel { min-width: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+  .assessment-panel-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); }
+  .assessment-panel-header h2 { margin: 0; font-size: var(--font-size-lg); }
+  .assessment-table { width: 100%; min-width: 52rem; border-collapse: collapse; }
+  .assessment-table th, .assessment-table td { padding: var(--space-2) var(--space-3); text-align: left; border-bottom: 1px solid var(--color-border); white-space: nowrap; }
+  .assessment-table th { font-weight: 650; color: var(--color-text-muted); font-size: var(--font-size-sm); background: var(--color-surface-subtle); }
+  .assessment-table th[scope="row"] { font-weight: 600; color: var(--color-text); white-space: normal; min-width: 12rem; }
+  .assessment-table td { font-size: var(--font-size-base); }
+  .assessment-empty-state { width: 100%; max-width: 100%; padding: var(--space-6) var(--space-4); text-align: center; box-sizing: border-box; }
+  .assessment-empty-state h2 { margin: 0 0 var(--space-2); font-size: var(--font-size-lg); color: var(--color-text); }
+  .assessment-empty-state p { margin: 0; }
+  .assessment-notice { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-subtle); color: var(--color-text-muted); font-size: var(--font-size-sm); }
+  .assessment-notice strong { color: var(--color-text); }
+  .assessment-tag { display: inline-block; padding: 0.1rem var(--space-2); font-size: var(--font-size-xs); font-weight: 600; border-radius: var(--radius-sm); background: var(--color-surface-subtle); color: var(--color-text-muted); }
+  .assessment-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .assessment-workspace .btn-primary,
+  .assessment-workspace .btn-primary:visited {
+    color: var(--color-on-primary) !important;
+    background: var(--color-brand-primary);
+    border-color: var(--color-brand-primary);
+  }
+  .assessment-workspace .btn-primary:hover:not(:disabled) {
+    color: var(--color-on-primary) !important;
+    background: var(--color-brand-primary-dark);
+    border-color: var(--color-brand-primary-dark);
+  }
+  .table-scroll-hint {
+    display: none;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    margin: 0 0 var(--space-2);
+  }
+  @media (max-width: 64rem) {
+    .table-scroll-hint {
+      display: flex;
+    }
+  }
+</style>
+
+<div class="assessment-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li>{% if perms.training.view_training %}<a href="{% url 'training:training-list' %}">Training</a>{% else %}Training{% endif %}</li>
+      <li>{% if perms.training.view_trainingversion %}<a href="{% url 'training:version-detail' version.pk %}">{{ version.title }}</a>{% else %}{{ version.title }}{% endif %}</li>
+      <li aria-current="page">Assessments</li>
+    </ol>
+  </nav>
+
+  <header class="page-heading assessment-header">
+    <div class="assessment-header-content">
+      <div class="assessment-header-main">
+        <h1>{{ version.title }} assessments</h1>
+        <p>Curriculum assessment requirements, module quizzes, and comprehensive final examinations.</p>
+        <div class="assessment-header-meta">
+          <span class="status-badge {% if version.status == 'DRAFT' %}status-badge--warning{% elif version.status == 'PUBLISHED' %}status-badge--success{% else %}status-badge--neutral{% endif %}">
+            {{ version.get_status_display }}
+          </span>
+          <span class="assessment-tag">Version {{ version.version_number }}</span>
+          <span class="assessment-tag">{{ assessments|length }} assessment{{ assessments|length|pluralize }} configured</span>
+        </div>
+      </div>
+      <div class="assessment-actions">
+        {% if version.status == 'DRAFT' and perms.assessments.add_assessment %}
+          <a class="btn btn-primary" href="{% url 'assessments:assessment-create' version.pk %}">Add assessment</a>
+        {% endif %}
+        {% if perms.training.view_trainingversion %}
+          <a class="btn btn-secondary" href="{% url 'training:version-detail' version.pk %}">Back to version</a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  {% if version.status != 'DRAFT' %}
+    <aside class="assessment-notice" aria-label="Curriculum freeze notice">
+      <p>
+        <strong>Curriculum is {{ version.get_status_display|lower }}:</strong>
+        Assessments are immutable to guarantee consistent training integrity and historical attempt scoring. To modify assessment requirements, create a new training version.
+      </p>
+    </aside>
+  {% endif %}
+
+  <section class="assessment-panel" aria-labelledby="assessments-list-heading">
+    <div class="assessment-panel-header">
+      <h2 id="assessments-list-heading">Configured curriculum assessments</h2>
+    </div>
+
+    <div class="table-scroll" role="region" aria-label="Version assessments" tabindex="0">
+      {% if assessments %}
+        <p class="table-scroll-hint" aria-hidden="true">&larr;&rarr; Scroll horizontally to view all columns</p>
+        <table class="assessment-table">
+          <thead>
+            <tr>
+              <th scope="col">Assessment</th>
+              <th scope="col">Type</th>
+              <th scope="col">Module</th>
+              <th scope="col">Sequence</th>
+              <th scope="col">Pass threshold</th>
+              <th scope="col">Time limit</th>
+              <th scope="col">Questions</th>
+              <th scope="col">Requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for assessment in assessments %}
+              <tr>
+                <th scope="row">
+                  <a href="{% url 'assessments:assessment-detail' assessment.pk %}">{{ assessment.title }}</a>
+                </th>
+                <td>{{ assessment.get_kind_display }}</td>
+                <td>{{ assessment.module.title|default:"Entire training" }}</td>
+                <td>{{ assessment.sequence }}</td>
+                <td>{{ assessment.pass_percentage }}%</td>
+                <td>{% if assessment.time_limit_minutes %}{{ assessment.time_limit_minutes }} min{% else %}<span class="muted">Untimed</span>{% endif %}</td>
+                <td>{{ assessment.questions.count }} question{{ assessment.questions.count|pluralize }}</td>
+                <td>
+                  {% if assessment.is_required %}
+                    <span class="status-badge status-badge--info">Required</span>
+                  {% else %}
+                    <span class="status-badge status-badge--neutral">Optional</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="empty-state assessment-empty-state">
+          <h2>No assessments in this version.</h2>
+          <p class="muted">No lesson quizzes or final assessments have been added to this training version yet.</p>
+          {% if version.status == 'DRAFT' and perms.assessments.add_assessment %}
+            <p style="margin-top: var(--space-3);">
+              <a class="btn btn-primary" href="{% url 'assessments:assessment-create' version.pk %}">Add assessment</a>
+            </p>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  </section>
 </div>
 {% endblock %}

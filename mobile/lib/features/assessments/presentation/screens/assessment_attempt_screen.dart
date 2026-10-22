@@ -9,6 +9,7 @@ import 'package:training_app/core/presentation/components/cinematic_notice.dart'
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/features/assessments/presentation/widgets/assessment_choice.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
+import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/features/assessments/domain/models/assessment.dart';
 import 'package:training_app/features/assessments/presentation/controllers/assessment_controller.dart';
@@ -139,6 +140,8 @@ class _AssessmentAttemptScreenState
                   ? 'Checking submission with the server…'
                   : 'Loading assessment…',
             )
+          : state.error != null && [401, 403].contains(state.error!.statusCode)
+          ? ApiErrorView(error: state.error!)
           : attempt == null
           ? SingleChildScrollView(
               child: ErrorView(

@@ -10,6 +10,7 @@ import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:training_app/features/management/domain/models/management_models.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -82,9 +83,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
             CinematicHero(
-              eyebrow: 'Employee profile',
-              title: employee.displayName,
-              subtitle: 'Your learning, your way.',
+              eyebrow: employee == null
+                  ? 'Account profile'
+                  : 'Employee profile',
+              title: employee?.displayName ?? authState.identity.displayName,
+              subtitle: employee == null
+                  ? 'Your account and appearance.'
+                  : 'Your learning, your way.',
               icon: Icons.person_outline_rounded,
               child: Align(
                 alignment: Alignment.centerLeft,
@@ -94,8 +99,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: StatusBadge(
-                    text: employee.isActive ? 'Active' : 'Inactive',
-                    status: employee.isActive
+                    text: employee == null || employee.isActive
+                        ? 'Active'
+                        : 'Inactive',
+                    status: employee == null || employee.isActive
                         ? BadgeStatus.success
                         : BadgeStatus.error,
                   ),
@@ -110,30 +117,49 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             CustomCard(
               child: Column(
                 children: [
+                  if (employee != null) ...[
+                    _ProfileItem(
+                      label: 'Employee Code',
+                      value: employee.employeeCode,
+                    ),
+                    const Divider(),
+                    _ProfileItem(
+                      label: 'Department',
+                      value: employee.department,
+                    ),
+                    const Divider(),
+                    _ProfileItem(label: 'Job Role', value: employee.jobRole),
+                    const Divider(),
+                  ],
                   _ProfileItem(
-                    label: 'Employee Code',
-                    value: employee.employeeCode,
+                    label: 'Username',
+                    value: authState.identity.username,
                   ),
-                  const Divider(),
-                  _ProfileItem(label: 'Department', value: employee.department),
-                  const Divider(),
-                  _ProfileItem(label: 'Job Role', value: employee.jobRole),
-                  const Divider(),
-                  _ProfileItem(label: 'Username', value: employee.username),
                 ],
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            Card(
-              child: ListTile(
-                contentPadding: const EdgeInsets.all(16),
-                leading: const Icon(Icons.workspace_premium_outlined),
-                title: const Text('My Certificates'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/profile/certificates'),
+            if (authState.canLearn)
+              Card(
+                child: ListTile(
+                  contentPadding: const EdgeInsets.all(16),
+                  leading: const Icon(Icons.workspace_premium_outlined),
+                  title: const Text('My Certificates'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/profile/certificates'),
+                ),
               ),
-            ),
             const SizedBox(height: AppSpacing.md),
+            for (final kind in ReferenceKind.values)
+              if (authState.identity.capabilities.contains(kind.permission))
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.account_tree_outlined),
+                    title: Text(kind.title),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/workspace/${kind.path}'),
+                  ),
+                ),
             SecondaryButton(
               text: 'Logout',
               onPressed: () {

@@ -1,14 +1,130 @@
 {% extends "base.html" %}
+{% block title %}{{ revision.question.code }} · Revision {{ revision.revision_number }} | Garden's Need Training{% endblock %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-list' %}">Question bank</a>{% else %}Question bank{% endif %}</li><li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-detail' revision.question_id %}">{{ revision.question.code }}</a>{% else %}{{ revision.question.code }}{% endif %}</li><li>Revision {{ revision.revision_number }}</li></ol></nav>
-<header class="page-heading">
-  <div><h1>{{ revision.question.code }} · Revision {{ revision.revision_number }}</h1><p class="muted"><span class="status-badge status-{{ revision.status|lower }}">{{ revision.get_status_display }}</span></p></div>
-  {% if revision.status == 'DRAFT' and perms.assessments.change_questionrevision %}<a class="action-link" href="{% url 'assessments:revision-update' revision.pk %}">Edit draft</a>{% endif %}
-</header>
-{% if errors %}<p class="form-errors" role="alert">{{ errors }}</p>{% endif %}
-<section><h2>Question</h2><p>{{ revision.prompt|linebreaksbr }}</p>{% if revision.explanation %}<p class="muted">Explanation: {{ revision.explanation|linebreaksbr }}</p>{% endif %}</section>
-<section><h2>Options</h2><ol>{% for option in revision.options.all %}<li>{{ option.text }}{% if option.is_correct %} <strong>(correct)</strong>{% endif %}</li>{% empty %}<li class="empty-state">No options yet.</li>{% endfor %}</ol></section>
-{% if revision.status == 'DRAFT' and perms.assessments.change_questionrevision %}
-  <form method="post" action="{% url 'assessments:revision-freeze' revision.pk %}">{% csrf_token %}<button type="submit">Freeze revision</button></form>
-{% endif %}
+<style>
+  .revision-workspace { display: grid; gap: var(--space-4); min-width: 0; }
+  .revision-header { margin-bottom: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-hero); box-shadow: var(--shadow-sm); }
+  .revision-header p { margin: var(--space-2) 0 0; color: var(--color-text-muted); }
+  .revision-header-content { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); }
+  .revision-header-main { flex: 1 1 18rem; min-width: 0; }
+  .revision-header-meta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+  .revision-panel { min-width: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+  .revision-panel-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); }
+  .revision-panel-header h2 { margin: 0; font-size: var(--font-size-lg); }
+  .revision-prompt-box { padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-subtle); font-size: var(--font-size-lg); font-weight: 600; color: var(--color-text); line-height: 1.5; margin-bottom: var(--space-3); }
+  .revision-explanation-box { padding: var(--space-3); border-left: 3px solid var(--color-brand-primary); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--color-surface-subtle); font-size: var(--font-size-sm); color: var(--color-text); margin-top: var(--space-2); }
+  .revision-options-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); counter-reset: option-counter; }
+  .revision-option-item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); }
+  .revision-option-item.is-correct { border-color: var(--color-brand-primary); background: var(--color-accent-surface); }
+  .revision-option-text { font-size: var(--font-size-base); color: var(--color-text); display: flex; align-items: baseline; gap: var(--space-2); }
+  .revision-option-badge { font-weight: 700; color: var(--color-brand-primary); }
+  .revision-notice { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-subtle); color: var(--color-text-muted); font-size: var(--font-size-sm); }
+  .revision-notice strong { color: var(--color-text); }
+  .revision-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+</style>
+
+<div class="revision-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-list' %}">Question bank</a>{% else %}Question bank{% endif %}</li>
+      <li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-detail' revision.question_id %}">{{ revision.question.code }}</a>{% else %}{{ revision.question.code }}{% endif %}</li>
+      <li aria-current="page">Revision {{ revision.revision_number }}</li>
+    </ol>
+  </nav>
+
+  <header class="page-heading revision-header">
+    <div class="revision-header-content">
+      <div class="revision-header-main">
+        <h1>{{ revision.question.code }} · Revision {{ revision.revision_number }}</h1>
+        <div class="revision-header-meta">
+          <span class="status-badge status-{{ revision.status|lower }}">{{ revision.get_status_display }}</span>
+          <span class="muted">{{ revision.get_question_type_display }}</span>
+          {% if revision.question.topic %}<span class="muted">· Topic: {{ revision.question.topic }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="revision-actions">
+        {% if revision.status == 'DRAFT' and perms.assessments.change_questionrevision %}
+          <a class="action-link btn btn-secondary" href="{% url 'assessments:revision-update' revision.pk %}">Edit draft</a>
+        {% endif %}
+        {% if perms.assessments.view_question %}
+          <a class="btn btn-secondary" href="{% url 'assessments:question-detail' revision.question_id %}">Back to question</a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  {% if errors %}
+    <p class="form-errors" role="alert" style="padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-danger-foreground); background: var(--color-danger-background); color: var(--color-danger-foreground); margin: 0;">
+      {{ errors }}
+    </p>
+  {% endif %}
+
+  {% if revision.status == 'DRAFT' %}
+    <aside class="revision-notice" aria-label="Draft revision notice">
+      <p>
+        <strong>Draft revision:</strong>
+        This revision is currently editable. You can modify prompt wording and answer options. Once finalized, freeze the revision to lock its content permanently and make it available for assessments.
+      </p>
+    </aside>
+  {% else %}
+    <aside class="revision-notice" aria-label="Frozen revision notice">
+      <p>
+        <strong>Frozen revision (Immutable):</strong>
+        This question revision was frozen on {{ revision.frozen_at|date:"Y-m-d H:i" }}. It cannot be modified or deleted, guaranteeing exam integrity and reproducible attempt history.
+      </p>
+    </aside>
+  {% endif %}
+
+  <section class="revision-panel" aria-labelledby="question-prompt-heading">
+    <div class="revision-panel-header">
+      <h2 id="question-prompt-heading">Question</h2>
+    </div>
+
+    <div class="revision-prompt-box">
+      {{ revision.prompt|linebreaksbr }}
+    </div>
+
+    {% if revision.explanation %}
+      <div class="revision-explanation-box">
+        <strong>Explanation:</strong> {{ revision.explanation|linebreaksbr }}
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="revision-panel" aria-labelledby="options-heading">
+    <div class="revision-panel-header">
+      <h2 id="options-heading">Options</h2>
+      <span class="muted" style="font-size: var(--font-size-sm);">{{ revision.options.count }} option{{ revision.options.count|pluralize }}</span>
+    </div>
+
+    <ol class="revision-options-list">
+      {% for option in revision.options.all %}
+        <li class="revision-option-item{% if option.is_correct %} is-correct{% endif %}">
+          <span class="revision-option-text">
+            <span>{{ option.text }}</span>
+            {% if option.is_correct %}
+              <span class="status-badge status-badge--success"><strong>(correct)</strong></span>
+            {% endif %}
+          </span>
+          <span class="muted" style="font-size: var(--font-size-xs);">Position {{ option.position }}</span>
+        </li>
+      {% empty %}
+        <li class="empty-state" style="padding: var(--space-4); text-align: center;">No options yet.</li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  {% if revision.status == 'DRAFT' and perms.assessments.change_questionrevision %}
+    <section class="revision-panel" aria-labelledby="freeze-heading" style="border-left: 4px solid var(--color-brand-primary);">
+      <h2 id="freeze-heading" style="margin-top: 0; font-size: var(--font-size-base);">Ready to freeze this revision?</h2>
+      <p class="muted" style="font-size: var(--font-size-sm); margin-bottom: var(--space-3);">
+        Freezing requires at least two options and exactly one correct answer (or True and False for True/False questions). Once frozen, changes can only be made by creating a new revision.
+      </p>
+      <form method="post" action="{% url 'assessments:revision-freeze' revision.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">Freeze revision</button>
+      </form>
+    </section>
+  {% endif %}
+</div>
 {% endblock %}

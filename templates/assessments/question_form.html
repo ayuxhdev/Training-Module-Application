@@ -1,11 +1,50 @@
 {% extends "base.html" %}
+{% block title %}{% if form.instance.pk %}Edit question metadata | {{ form.instance.code }}{% else %}Add question{% endif %} | Garden's Need Training{% endblock %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-list' %}">Question bank</a>{% else %}Question bank{% endif %}</li>{% if form.instance.pk %}<li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-detail' form.instance.pk %}">{{ form.instance.code }}</a>{% else %}{{ form.instance.code }}{% endif %}</li><li>Edit</li>{% else %}<li>Add question</li>{% endif %}</ol></nav>
-<header class="page-heading"><h1>{% if form.instance.pk %}Edit question metadata{% else %}Add question{% endif %}</h1></header>
-<form method="post" class="form-stack">
-  {% csrf_token %}
-  {{ form.non_field_errors }}
-  {{ form.as_p }}
-  <div class="action-list"><button type="submit">Save</button><a href="{% if perms.assessments.view_question %}{% if form.instance.pk %}{% url 'assessments:question-detail' form.instance.pk %}{% else %}{% url 'assessments:question-list' %}{% endif %}{% else %}{% url 'reports:dashboard' %}{% endif %}">Cancel</a></div>
-</form>
+<style>
+  .question-workspace { display: grid; gap: var(--space-4); min-width: 0; }
+  .question-header { margin-bottom: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-hero); box-shadow: var(--shadow-sm); }
+  .question-header p { margin: var(--space-2) 0 0; color: var(--color-text-muted); }
+  .question-panel { min-width: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+  .question-form-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-4); }
+  .question-validation-errors { padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-danger-foreground); background: var(--color-danger-background); color: var(--color-danger-foreground); margin-bottom: var(--space-3); }
+</style>
+
+<div class="question-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-list' %}">Question bank</a>{% else %}Question bank{% endif %}</li>
+      {% if form.instance.pk %}
+        <li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-detail' form.instance.pk %}">{{ form.instance.code }}</a>{% else %}{{ form.instance.code }}{% endif %}</li>
+        <li aria-current="page">Edit</li>
+      {% else %}
+        <li aria-current="page">Add question</li>
+      {% endif %}
+    </ol>
+  </nav>
+
+  <header class="page-heading question-header">
+    <div>
+      <h1>{% if form.instance.pk %}Edit question metadata{% else %}Add question{% endif %}</h1>
+      <p>Configure question bank code, topic classification, and active status.</p>
+    </div>
+  </header>
+
+  <section class="question-panel" aria-labelledby="question-form-heading">
+    <h2 id="question-form-heading" style="margin-top: 0; font-size: var(--font-size-lg);">Question details</h2>
+
+    <form method="post" class="form-stack">
+      {% csrf_token %}
+
+      <div class="form-fields">
+        {{ form.as_p }}
+      </div>
+
+      <div class="action-list question-form-actions">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a class="btn btn-secondary" href="{% if perms.assessments.view_question %}{% if form.instance.pk %}{% url 'assessments:question-detail' form.instance.pk %}{% else %}{% url 'assessments:question-list' %}{% endif %}{% else %}{% url 'reports:dashboard' %}{% endif %}">Cancel</a>
+      </div>
+    </form>
+  </section>
+</div>
 {% endblock %}

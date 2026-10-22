@@ -1,14 +1,55 @@
 {% extends "base.html" %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-list' %}">Assignments</a></li><li>Assign one employee</li></ol></nav>
-<header class="page-heading"><h1>Assign training to one employee</h1></header>
-<p>Select an active employee and the intended published training version. Existing assignments for the same employee and version cannot be created again.</p>
-<form method="post" class="form-stack">
-  {% csrf_token %}
-  {{ form.non_field_errors }}
-  <p>{{ form.employee.label_tag }} {{ form.employee }} {{ form.employee.errors }}</p>
-  <p>{{ form.training_version.label_tag }} {{ form.training_version }} {{ form.training_version.errors }}</p>
-  <p>{{ form.due_date.label_tag }} {{ form.due_date }} {% if form.due_date.help_text %}<span class="muted">{{ form.due_date.help_text }}</span>{% endif %} {{ form.due_date.errors }}</p>
-  <div class="action-list"><button type="submit">Create assignment</button><a href="{% url 'training:assignment-list' %}">Cancel</a></div>
-</form>
+<div class="catalog-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li><a href="{% url 'training:assignment-list' %}">Assignments</a></li>
+      <li aria-current="page">Assign one employee</li>
+    </ol>
+  </nav>
+  <header class="page-header">
+    <div class="page-header-main">
+      <h1>Assign training to one employee</h1>
+      <p class="muted">Create an individual assignment for an active employee.</p>
+    </div>
+    <a class="btn btn-secondary" href="{% url 'training:assignment-list' %}">Back to assignments</a>
+  </header>
+
+  <section class="catalog-panel catalog-editor" aria-labelledby="manual-assignment-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="manual-assignment-heading">Assignment details</h2>
+      <p>Choose a published training version for the employee.</p>
+    </header>
+    <form method="post" class="form-stack catalog-form">
+      {% csrf_token %}
+      {% if form.errors %}<p class="catalog-validation" role="alert">Please review the information below and correct the highlighted errors.</p>{% endif %}
+      {{ form.non_field_errors }}
+      <p class="catalog-notice">Manual assignment selects one employee and one published training version. An employee cannot receive a duplicate assignment for the same version.</p>
+      <div class="catalog-fields">
+        <div>
+          {{ form.employee.label_tag }}
+          {{ form.employee }}
+          {% if form.employee.help_text %}<span class="helptext">{{ form.employee.help_text }}</span>{% endif %}
+          {{ form.employee.errors }}
+        </div>
+        <div>
+          {{ form.training_version.label_tag }}
+          {{ form.training_version }}
+          {% if form.training_version.help_text %}<span class="helptext">{{ form.training_version.help_text }}</span>{% endif %}
+          {{ form.training_version.errors }}
+        </div>
+        <div>
+          {{ form.due_date.label_tag }}
+          {{ form.due_date }}
+          {% if form.due_date.help_text %}<span class="helptext">{{ form.due_date.help_text }}</span>{% endif %}
+          {{ form.due_date.errors }}
+        </div>
+      </div>
+      <div class="catalog-form-actions">
+        <button class="btn btn-primary" type="submit">Create assignment</button>
+        <a class="btn btn-secondary" href="{% url 'training:assignment-list' %}">Cancel</a>
+      </div>
+    </form>
+  </section>
+</div>
 {% endblock %}

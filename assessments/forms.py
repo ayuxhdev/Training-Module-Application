@@ -67,6 +67,13 @@ class AssessmentForm(forms.ModelForm):
         return cleaned
 
 
+def format_question_revision_label(revision):
+    prompt_clean = " ".join(revision.prompt.split())
+    prompt_excerpt = (prompt_clean[:65] + "…") if len(prompt_clean) > 65 else prompt_clean
+    topic_str = f" [{revision.question.topic}]" if revision.question.topic else ""
+    return f"{revision.question.code}{topic_str} — {prompt_excerpt} (rev {revision.revision_number})"
+
+
 class AssessmentQuestionForm(forms.ModelForm):
     class Meta:
         model = AssessmentQuestion
@@ -78,3 +85,5 @@ class AssessmentQuestionForm(forms.ModelForm):
             status=QuestionRevision.Status.FROZEN,
             question__is_active=True,
         ).select_related("question")
+        self.fields["question_revision"].label_from_instance = format_question_revision_label
+        self.fields["question_revision"].empty_label = "Select a question revision"

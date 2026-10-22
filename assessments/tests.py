@@ -11,12 +11,13 @@ from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, models, transaction
 from django.test import Client, TransactionTestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from config.model_test_utils import CurriculumTestCase
 from organization.models import Employee
 from training.models import LessonProgress, Module, TrainingAssignment
-from .forms import QuestionForm
+from .forms import AssessmentQuestionForm, QuestionForm
 from .models import Assessment, AssessmentAttempt, AssessmentQuestion, AttemptAnswer, Question, QuestionOption, QuestionRevision
 
 
@@ -495,6 +496,38 @@ class AssessmentEndpointTests(CurriculumTestCase):
         coordinator_client = self.client_for(self.coordinator)
         self.assertEqual(coordinator_client.get("/questions/").status_code, 200)
 
+    def test_question_list_avoids_per_row_revision_queries(self):
+        q2 = Question.objects.create(code="Q-PERF-CHECK-2", topic="Safety", created_by=self.coordinator)
+        QuestionRevision.objects.create(question=q2, revision_number=2, prompt="Second question updated prompt", created_by=self.coordinator)
+        QuestionRevision.objects.create(question=q2, revision_number=1, prompt="Second question prompt", created_by=self.coordinator)
+        Question.objects.create(code="Q-PERF-NONE", created_by=self.coordinator)
+        coordinator_client = self.client_for(self.coordinator)
+        with CaptureQueriesContext(connection) as small:
+            response = coordinator_client.get("/questions/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "2 revs")
+        self.assertContains(response, "Second question updated prompt")
+        self.assertNotContains(response, "Second question prompt")
+        self.assertContains(response, "No revisions yet")
+        self.assertContains(response, "0 revs")
+        questions = {q.code: q for q in response.context["questions"]}
+        self.assertEqual(questions["Q-PERF-CHECK-2"].revision_count, 2)
+        self.assertEqual(questions["Q-PERF-CHECK-2"].latest_prompt, "Second question updated prompt")
+        self.assertEqual(questions["Q-PERF-NONE"].revision_count, 0)
+        self.assertIsNone(questions["Q-PERF-NONE"].latest_prompt)
+
+        for index in range(10):
+            question = Question.objects.create(code=f"Q-PERF-EXTRA-{index}", created_by=self.coordinator)
+            if index % 2:
+                QuestionRevision.objects.create(question=question, revision_number=1,
+                    prompt=f"Extra prompt {index}", created_by=self.coordinator)
+        with CaptureQueriesContext(connection) as large:
+            response = coordinator_client.get("/questions/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["questions"]), 13)
+        self.assertEqual(len(large), len(small),
+            f"Question list queries grew from {len(small)} (3 rows) to {len(large)} (13 rows)")
+
     def test_assessment_parents_are_derived_and_published_assessments_are_read_only(self):
         version = self.new_version()
         module = Module.objects.create(training_version=version, title="Draft module", position=1)
@@ -727,6 +760,71 @@ class AssessmentEndpointTests(CurriculumTestCase):
         invalid = client.post(f"/versions/{draft_version.pk}/assessments/new/", {})
         self.assertEqual(invalid.status_code, 200)
         self.assertContains(invalid, "This field is required")
+
+    def test_assessment_question_form_labels_are_meaningful_and_hide_answer_keys(self):
+        form = AssessmentQuestionForm()
+        label = form.fields["question_revision"].label_from_instance(self.revision)
+        self.assertIn(self.question.code, label)
+        self.assertIn(self.revision.prompt[:20], label)
+        self.assertIn(f"(rev {self.revision.revision_number})", label)
+        self.assertNotIn("QuestionRevision object", label)
+        self.assertNotIn(self.correct_option.text, label)
+        self.assertNotIn("correct", label.lower())
+        rendered = form.as_p()
+        self.assertIn(self.question.code, rendered)
+        self.assertNotIn("QuestionRevision object", rendered)
+
+    def test_question_and_revision_string_representations(self):
+        q_str = str(self.question)
+        self.assertIn(self.question.code, q_str)
+        rev_str = str(self.revision)
+        self.assertIn(self.question.code, rev_str)
+        self.assertIn(f"rev {self.revision.revision_number}", rev_str)
+        self.assertNotIn("QuestionRevision object", rev_str)
+
+    def test_timed_attempt_screen_renders_authoritative_timer(self):
+        CurriculumTestCase.complete_lessons(self)
+        start_resp = self.start(assessment=self.quiz)
+        self.assertEqual(start_resp.status_code, 302)
+        attempt = self.quiz.attempts.get(assignment=self.assignment, status=AssessmentAttempt.Status.IN_PROGRESS)
+        self.assertIsNotNone(attempt.deadline_at)
+
+        client = self.client_for(self.employee_user)
+        resp = client.get(f"/attempts/{attempt.pk}/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'id="assessment-timer-banner"')
+        self.assertContains(resp, 'data-deadline="')
+        self.assertContains(resp, str(attempt.deadline_at.year))
+        self.assertContains(resp, 'id="assessment-timer"')
+        self.assertContains(resp, 'role="timer"')
+        self.assertContains(resp, 'id="assessment-deadline-time"')
+        self.assertContains(resp, "assessments/timer.js")
+        self.assertContains(resp, "assessments/timer.css")
+
+    def test_untimed_attempt_screen_omits_timer(self):
+        CurriculumTestCase.complete_lessons(self)
+        self.finish_attempt(self.quiz)
+        start_resp = self.start(assessment=self.final)
+        self.assertEqual(start_resp.status_code, 302)
+        attempt = self.final.attempts.get(assignment=self.assignment, status=AssessmentAttempt.Status.IN_PROGRESS)
+        self.assertIsNone(attempt.deadline_at)
+
+        client = self.client_for(self.employee_user)
+        resp = client.get(f"/attempts/{attempt.pk}/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, 'id="assessment-timer-banner"')
+        self.assertNotContains(resp, "assessments/timer.js")
+
+    def test_learner_overview_shows_deadline_when_attempt_is_ongoing(self):
+        CurriculumTestCase.complete_lessons(self)
+        self.start(assessment=self.quiz)
+        attempt = self.quiz.attempts.get(assignment=self.assignment, status=AssessmentAttempt.Status.IN_PROGRESS)
+
+        client = self.client_for(self.employee_user)
+        resp = client.get(f"/assignments/{self.assignment.pk}/assessments/{self.quiz.pk}/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Submit by:")
+        self.assertContains(resp, str(attempt.deadline_at.year))
 
 
 class AssessmentLockingTests(TransactionTestCase):

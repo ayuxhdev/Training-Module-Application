@@ -1,0 +1,25 @@
+<section class="dashboard-panel" aria-labelledby="recent-failures-heading">
+  <header class="dashboard-panel-heading">
+    <h2 id="recent-failures-heading">Recent assessment failures</h2>
+    {% if recent_attempts %}<span class="dashboard-panel-count">{{ recent_attempts|length }} recent</span>{% endif %}
+  </header>
+  {% if recent_attempts %}
+    <ul class="dashboard-failures">
+      {% for attempt in recent_attempts %}
+        <li>
+          <div class="dashboard-failure-title">
+            <h3>{{ attempt.assessment.title }}</h3>
+            <p>{{ attempt.assignment.employee.display_name }}</p>
+          </div>
+          <dl class="dashboard-failure-details">
+            <div><dt>Score</dt><dd>{{ attempt.score_points }} / {{ attempt.maximum_points }}</dd></div>
+            <div><dt>Submitted</dt><dd><time datetime="{{ attempt.submitted_at|date:'c' }}">{{ attempt.submitted_at|date:"M j, Y" }}</time></dd></div>
+          </dl>
+          {% include "components/status_badge.html" with status="NOT_PASSED" label="Not passed" %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="dashboard-panel-empty">There are no recent assessment failures to review.</p>
+  {% endif %}
+</section>

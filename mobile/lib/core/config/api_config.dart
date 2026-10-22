@@ -8,8 +8,8 @@ class ApiConfig {
   /// In a production environment, this can be overridden using:
   /// --dart-define=API_BASE_URL=https://api.yourdomain.com
   ///
-  /// For local Android emulator development,
-  /// 10.0.2.2 maps to the host's loopback interface (localhost).
+  /// For local Android development, use 10.0.2.2 on an emulator or
+  /// localhost with ADB reverse port forwarding on a physical device.
   static const String _envBaseUrl = String.fromEnvironment('API_BASE_URL');
 
   /// Helper to resolve the URL, exposed for testing trailing slash logic.
@@ -24,6 +24,8 @@ class ApiConfig {
     if (envUrl.isNotEmpty) {
       final uri = Uri.tryParse(envUrl);
       final localHost = isAndroid ? '10.0.2.2' : '127.0.0.1';
+      final isAndroidReverseHost =
+          isAndroid && uri?.host == 'localhost' && uri?.port == 8000;
       if (uri == null ||
           !uri.hasAuthority ||
           uri.host.isEmpty ||
@@ -31,7 +33,9 @@ class ApiConfig {
           uri.hasQuery ||
           uri.hasFragment ||
           (uri.scheme != 'https' &&
-              !(debug && uri.scheme == 'http' && uri.host == localHost))) {
+              !(debug &&
+                  uri.scheme == 'http' &&
+                  (uri.host == localHost || isAndroidReverseHost)))) {
         throw StateError(
           'API_BASE_URL requires HTTPS or the debug loopback host.',
         );

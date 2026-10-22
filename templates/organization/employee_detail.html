@@ -1,36 +1,38 @@
 {% extends "base.html" %}
 {% block content %}
-<header class="page-heading">
-	<div>
-		<h1>{{ employee.display_name }}</h1>
-		<p class="muted">Employee code: {{ employee.employee_code }}</p>
-	</div>
-	{% if perms.organization.change_employee %}<a class="action-link" href="{% url 'organization:employee-update' employee.pk %}">Edit employee</a>{% endif %}
-</header>
-<dl class="detail-list">
-	<div><dt>Department</dt><dd>{{ employee.department.name }}</dd></div>
-	<div><dt>Job role</dt><dd>{{ employee.job_role.name }}</dd></div>
-	<div><dt>Date joined</dt><dd>{{ employee.date_joined|date:"Y-m-d" }}</dd></div>
-	<div><dt>Employment status</dt><dd><span class="status-badge{% if not employee.is_active %} status-inactive{% endif %}">{% if employee.is_active %}Active{% else %}Inactive{% endif %}</span></dd></div>
-	<div><dt>Login account</dt><dd>{% if employee.user %}{% if employee.user.is_active %}Active{% else %}Inactive{% endif %}{% else %}Not linked{% endif %}</dd></div>
-</dl>
-{% if perms.organization.change_employee and employee.is_active %}
-	<section class="form-section">
-		<h2>Deactivate employee</h2>
-		<form method="post" action="{% url 'organization:employee-deactivate' employee.pk %}" class="form-stack">
-			{% csrf_token %}
-			{% if form %}
-				{{ form.non_field_errors }}
-				{{ form.reason.label_tag }}
-				{{ form.reason }}
-				{{ form.reason.errors }}
-			{% else %}
-				<label for="id_reason">Reason</label>
-				<textarea id="id_reason" name="reason" maxlength="1000" required></textarea>
-			{% endif %}
-			<button type="submit">Deactivate employee</button>
-		</form>
-	</section>
-{% endif %}
-<p><a href="{% url 'organization:employee-list' %}">Back to employees</a></p>
+<div class="org-workspace">
+  <header class="page-header">
+    <div class="page-header-main"><h1>{{ employee.display_name }}</h1><p class="muted">Employee code: <span class="org-code">{{ employee.employee_code }}</span></p></div>
+    <div class="page-header-actions">
+      <a class="btn btn-secondary" href="{% url 'organization:employee-list' %}">Back to employees</a>
+      {% if perms.organization.change_employee %}<a class="btn btn-primary" href="{% url 'organization:employee-update' employee.pk %}">Edit employee</a>{% endif %}
+    </div>
+  </header>
+  <section class="org-panel" aria-labelledby="employee-profile-heading">
+    <header class="org-panel-heading"><h2 id="employee-profile-heading">Employee profile</h2>{% if employee.is_active %}{% include "components/status_badge.html" with status="ACTIVE" label="Active" %}{% else %}{% include "components/status_badge.html" with status="INACTIVE" label="Inactive" %}{% endif %}</header>
+    <dl class="org-profile">
+      <div><dt>Department</dt><dd>{{ employee.department.name }}</dd></div>
+      <div><dt>Job role</dt><dd>{{ employee.job_role.name }}</dd></div>
+      <div><dt>Reporting manager</dt><dd>{% if employee.reporting_manager %}{{ employee.reporting_manager.display_name }}{% else %}Not assigned{% endif %}</dd></div>
+      <div><dt>Date joined</dt><dd><time datetime="{{ employee.date_joined|date:'Y-m-d' }}">{{ employee.date_joined|date:"Y-m-d" }}</time></dd></div>
+      <div><dt>Employment status</dt><dd>{% if employee.is_active %}Active{% else %}Inactive{% endif %}</dd></div>
+      <div><dt>Login account</dt><dd>{% if employee.user %}{% if employee.user.is_active %}Active{% else %}Inactive{% endif %}{% else %}Not linked{% endif %}</dd></div>
+    </dl>
+  </section>
+  {% if perms.organization.change_employee and employee.is_active %}
+    <section class="org-panel org-deactivation" aria-labelledby="employee-deactivation-heading">
+      <header class="org-panel-heading"><h2 id="employee-deactivation-heading">Deactivate employee</h2><p>Disables the linked login and preserves employee history.</p></header>
+      <form method="post" action="{% url 'organization:employee-deactivate' employee.pk %}" class="form-stack org-form">
+        {% csrf_token %}
+        {% if form %}
+          {% if form.errors %}<p class="org-validation" role="alert">Please correct the errors below.</p>{% endif %}
+          <div class="org-fields org-fields--single">{{ form.as_div }}</div>
+        {% else %}
+          <div class="org-fields org-fields--single"><div><label for="id_reason">Reason</label><textarea id="id_reason" name="reason" maxlength="1000" required></textarea></div></div>
+        {% endif %}
+        <div class="org-form-actions"><button class="btn btn-danger" type="submit">Deactivate employee</button></div>
+      </form>
+    </section>
+  {% endif %}
+</div>
 {% endblock %}

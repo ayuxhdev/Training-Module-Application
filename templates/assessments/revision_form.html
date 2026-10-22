@@ -1,17 +1,82 @@
 {% extends "base.html" %}
+{% block title %}{% if revision %}Edit draft revision | {{ question.code }} (Rev {{ revision.revision_number }}){% else %}New revision | {{ question.code }}{% endif %} | Garden's Need Training{% endblock %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-list' %}">Question bank</a>{% else %}Question bank{% endif %}</li><li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-detail' question.pk %}">{{ question.code }}</a>{% else %}{{ question.code }}{% endif %}</li>{% if revision %}<li>{% if perms.assessments.view_questionrevision %}<a href="{% url 'assessments:revision-detail' revision.pk %}">Revision {{ revision.revision_number }}</a>{% else %}Revision {{ revision.revision_number }}{% endif %}</li><li>Edit draft</li>{% else %}<li>New revision</li>{% endif %}</ol></nav>
-<header class="page-heading"><h1>{% if revision %}Edit draft revision{% else %}New question revision{% endif %}</h1></header>
-<form method="post" class="form-stack">
-  {% csrf_token %}
-  {{ form.non_field_errors }}
-  {{ form.as_p }}
-  {% if options %}
-    <h2>Answer options</h2>
-    {{ options.management_form }}
-    {{ options.non_form_errors }}
-    {% for option_form in options %}<fieldset class="assessment-question"><legend>Option {{ forloop.counter }}</legend>{{ option_form.non_field_errors }}{{ option_form.as_p }}</fieldset>{% endfor %}
-  {% endif %}
-  <div class="action-list"><button type="submit">Save draft</button><a href="{% if revision and perms.assessments.view_questionrevision %}{% url 'assessments:revision-detail' revision.pk %}{% elif perms.assessments.view_question %}{% url 'assessments:question-detail' question.pk %}{% else %}{% url 'reports:dashboard' %}{% endif %}">Cancel</a></div>
-</form>
+<style>
+  .revision-workspace { display: grid; gap: var(--space-4); min-width: 0; }
+  .revision-header { margin-bottom: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-hero); box-shadow: var(--shadow-sm); }
+  .revision-header p { margin: var(--space-2) 0 0; color: var(--color-text-muted); }
+  .revision-panel { min-width: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+  .revision-panel h2 { font-size: var(--font-size-lg); margin-top: var(--space-4); margin-bottom: var(--space-2); }
+  .revision-option-fieldset { border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--space-4); margin-bottom: var(--space-3); background: var(--color-surface-subtle); }
+  .revision-option-fieldset legend { font-weight: 700; font-size: var(--font-size-base); color: var(--color-brand-primary); padding: 0 var(--space-2); }
+  .revision-form-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-4); }
+  .revision-validation-errors { padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-danger-foreground); background: var(--color-danger-background); color: var(--color-danger-foreground); margin-bottom: var(--space-3); }
+  .revision-notice { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-subtle); color: var(--color-text-muted); font-size: var(--font-size-sm); margin-bottom: var(--space-3); }
+</style>
+
+<div class="revision-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-list' %}">Question bank</a>{% else %}Question bank{% endif %}</li>
+      <li>{% if perms.assessments.view_question %}<a href="{% url 'assessments:question-detail' question.pk %}">{{ question.code }}</a>{% else %}{{ question.code }}{% endif %}</li>
+      {% if revision %}
+        <li>{% if perms.assessments.view_questionrevision %}<a href="{% url 'assessments:revision-detail' revision.pk %}">Revision {{ revision.revision_number }}</a>{% else %}Revision {{ revision.revision_number }}{% endif %}</li>
+        <li aria-current="page">Edit draft</li>
+      {% else %}
+        <li aria-current="page">New revision</li>
+      {% endif %}
+    </ol>
+  </nav>
+
+  <header class="page-heading revision-header">
+    <div>
+      <h1>{% if revision %}Edit draft revision{% else %}New question revision{% endif %}</h1>
+      <p>Configure question prompt, response type, explanation, and answer options for <strong>{{ question.code }}</strong>.</p>
+    </div>
+  </header>
+
+  <section class="revision-panel" aria-labelledby="revision-form-heading">
+    <h2 id="revision-form-heading" style="margin-top: 0; font-size: var(--font-size-lg);">Question content</h2>
+
+    <aside class="revision-notice" aria-label="Option configuration rules">
+      <p>
+        <strong>Option rules:</strong>
+        Single-choice questions need at least two choices and exactly one correct answer. True/False questions require exactly the "True" and "False" options with one marked as correct.
+      </p>
+    </aside>
+
+    <form method="post" class="form-stack">
+      {% csrf_token %}
+
+      <div class="form-fields">
+        {{ form.as_p }}
+      </div>
+
+      {% if options %}
+        <h2>Answer options</h2>
+        <p class="muted" style="font-size: var(--font-size-sm); margin-top: 0;">Provide answer options and check exactly one correct option.</p>
+
+        {{ options.management_form }}
+
+        {% if options.non_form_errors %}
+          <div class="revision-validation-errors" role="alert">
+            {{ options.non_form_errors }}
+          </div>
+        {% endif %}
+
+        {% for option_form in options %}
+          <fieldset class="assessment-question revision-option-fieldset">
+            <legend>Option {{ forloop.counter }}</legend>
+            {{ option_form.as_p }}
+          </fieldset>
+        {% endfor %}
+      {% endif %}
+
+      <div class="action-list revision-form-actions">
+        <button type="submit" class="btn btn-primary">Save draft</button>
+        <a class="btn btn-secondary" href="{% if revision and perms.assessments.view_questionrevision %}{% url 'assessments:revision-detail' revision.pk %}{% elif perms.assessments.view_question %}{% url 'assessments:question-detail' question.pk %}{% else %}{% url 'reports:dashboard' %}{% endif %}">Cancel</a>
+      </div>
+    </form>
+  </section>
+</div>
 {% endblock %}

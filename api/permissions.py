@@ -1,5 +1,14 @@
 from rest_framework.permissions import BasePermission
 
+from .capabilities import can_use_mobile
+
+
+class IsMobileAccount(BasePermission):
+    """Identity access for eligible learners or explicitly authorized portal users."""
+
+    def has_permission(self, request, view):
+        return can_use_mobile(request.user)
+
 class IsActiveEmployee(BasePermission):
     """
     Allows access only to authenticated users who have an active Employee record.

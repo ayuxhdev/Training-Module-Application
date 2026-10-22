@@ -267,6 +267,103 @@ class OrganizationViewTests(TestCase):
                 self.assertIn("code", response.context["form"].errors)
                 self.assertEqual(model.objects.filter(code=code).count(), 1)
 
+    def test_management_forms_preserve_fields_values_and_accessible_errors(self):
+        client = Client()
+        client.force_login(self.coordinator_user)
+        pages = (
+            ("/employees/new/", "Employee information"),
+            (f"/employees/{self.report.pk}/edit/", "Employee information"),
+            ("/departments/new/", "Department information"),
+            (f"/departments/{self.department.pk}/edit/", "Department information"),
+            ("/job-roles/new/", "Job role information"),
+            (f"/job-roles/{self.role.pk}/edit/", "Job role information"),
+        )
+        for path, heading in pages:
+            with self.subTest(path=path):
+                response = client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, heading)
+                self.assertContains(response, 'class="org-workspace"')
+                self.assertContains(response, 'method="post"')
+                self.assertContains(response, 'name="csrfmiddlewaretoken"', count=2)  # Logout and editor.
+                for field in response.context["form"]:
+                    self.assertContains(response, f'name="{field.name}"', count=1)
+                    self.assertContains(response, f'id="{field.auto_id}"', count=1)
+                invalid = client.post(path, {})
+                self.assertEqual(invalid.status_code, 200)
+                self.assertContains(invalid, 'class="org-validation" role="alert"')
+                self.assertContains(invalid, 'aria-invalid="true"')
+                self.assertContains(invalid, 'aria-describedby="id_' )
+                self.assertContains(invalid, 'class="errorlist"')
+
+    def test_employee_editor_create_and_edit_still_persist_validated_data(self):
+        client = Client()
+        client.force_login(self.coordinator_user)
+        data = self.employee_data("ORG-UI-01")
+        data["reporting_manager"] = self.manager.pk
+        self.assertEqual(client.post("/employees/new/", data).status_code, 302)
+        employee = Employee.objects.get(employee_code="ORG-UI-01")
+        self.assertEqual(employee.reporting_manager_id, self.manager.pk)
+        data["display_name"] = "Updated employee presentation fixture"
+        self.assertEqual(client.post(f"/employees/{employee.pk}/edit/", data).status_code, 302)
+        employee.refresh_from_db()
+        self.assertEqual(employee.display_name, data["display_name"])
+        self.assertTrue(employee.is_active)
+        self.assertIsNone(employee.deactivated_at)
+
+    def test_reference_editors_create_and_edit_without_changing_workflows(self):
+        client = Client()
+        client.force_login(self.coordinator_user)
+        for path, model in (("departments", Department), ("job-roles", JobRole)):
+            with self.subTest(path=path):
+                data = {"code": "ORG-UI", "name": "Organization UI fixture", "description": "Description", "is_active": "on"}
+                self.assertEqual(client.post(f"/{path}/new/", data).status_code, 302)
+                record = model.objects.get(code="ORG-UI")
+                data["name"] = "Updated reference fixture"
+                self.assertEqual(client.post(f"/{path}/{record.pk}/edit/", data).status_code, 302)
+                record.refresh_from_db()
+                self.assertEqual(record.name, data["name"])
+                self.assertTrue(record.is_active)
+
+    def test_compact_tables_and_detail_preserve_semantics_escaping_and_role_actions(self):
+        self.report.display_name = "<script>unsafe employee</script>"
+        self.report.save()
+        for user, can_edit in ((self.admin_user, True), (self.manager_user, False), (self.employee_user, False)):
+            with self.subTest(user=user.username):
+                client = Client()
+                client.force_login(user)
+                listing = client.get("/employees/")
+                self.assertContains(listing, 'class="table-scroll org-table-scroll" role="region" aria-label="Employees" tabindex="0"')
+                self.assertContains(listing, '<th scope="col">Employee</th>')
+                self.assertContains(listing, '<th scope="row">')
+                self.assertContains(listing, '&lt;script&gt;unsafe employee&lt;/script&gt;')
+                self.assertNotContains(listing, self.report.display_name)
+                self.assertContains(listing, self.report.employee_code)
+                self.assertContains(listing, 'status-badge--success')
+                detail = client.get(f"/employees/{self.report.pk}/")
+                self.assertContains(detail, "Reporting manager")
+                self.assertContains(detail, self.manager.display_name)
+                self.assertEqual("Edit employee" in detail.content.decode(), can_edit)
+                self.assertEqual("Deactivate employee" in detail.content.decode(), can_edit)
+                self.assertNotContains(detail, f'href="/employees/{self.manager.pk}/"')
+
+    def test_deactivation_validation_is_accessible_preserves_input_and_requires_csrf(self):
+        client = Client()
+        client.force_login(self.coordinator_user)
+        reason = "<unsafe>" + "r" * 1001
+        response = client.post(f"/employees/{self.report.pk}/deactivate/", {"reason": reason})
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, 'class="org-validation" role="alert"', status_code=400)
+        self.assertContains(response, 'id="id_reason"', status_code=400)
+        self.assertContains(response, 'aria-describedby="id_reason_error"', status_code=400)
+        self.assertContains(response, '&lt;unsafe&gt;', status_code=400)
+        self.report.refresh_from_db()
+        self.assertTrue(self.report.is_active)
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.coordinator_user)
+        for path in ("/employees/new/", "/departments/new/", "/job-roles/new/", f"/employees/{self.report.pk}/deactivate/"):
+            self.assertEqual(csrf_client.post(path, {}).status_code, 403)
+
     def employee_data(self, code, user=None):
         return {
             "employee_code": code,

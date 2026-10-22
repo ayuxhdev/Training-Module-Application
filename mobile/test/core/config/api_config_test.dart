@@ -7,7 +7,12 @@ import 'dart:io';
 void main() {
   group('ApiConfig', () {
     test('non-debug builds require explicit HTTPS configuration', () {
-      for (final url in ['', 'http://10.0.2.2:8000', 'http://example.com']) {
+      for (final url in [
+        '',
+        'http://10.0.2.2:8000',
+        'http://localhost:8000',
+        'http://example.com',
+      ]) {
         expect(
           () => ApiConfig.resolveUrl(url, true, debug: false),
           throwsStateError,
@@ -19,15 +24,25 @@ void main() {
       );
     });
 
-    test('Android debug HTTP is restricted to the emulator loopback host', () {
+    test('Android debug HTTP allows emulator and ADB reverse hosts only', () {
       expect(
         ApiConfig.resolveUrl('http://10.0.2.2:8000', true),
         'http://10.0.2.2:8000/api/v1',
+      );
+      expect(
+        ApiConfig.resolveUrl('http://localhost:8000', true),
+        'http://localhost:8000/api/v1',
+      );
+      expect(
+        () => ApiConfig.resolveUrl('http://localhost:8000', false),
+        throwsStateError,
       );
       for (final url in [
         'http://example.com',
         'http://10.0.2.2.example.com',
         'http://127.0.0.1:8000',
+        'http://localhost:8001',
+        'http://localhost.example:8000',
         'https://user:password@example.com',
         'https://example.com?token=secret',
         'https://example.com#fragment',

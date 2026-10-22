@@ -7,7 +7,8 @@ from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
-from api.permissions import IsActiveEmployee
+from api.capabilities import mobile_capabilities
+from api.permissions import IsMobileAccount
 from .auth_serializers import EmployeeTokenObtainPairSerializer, EmployeeMeSerializer, EmployeeTokenRefreshSerializer
 
 class LoginThrottle(AnonRateThrottle):
@@ -25,7 +26,8 @@ class EmployeeRefreshView(TokenRefreshView):
     throttle_classes = [RefreshThrottle]
 
 class EmployeeLogoutView(APIView):
-    permission_classes = [IsAuthenticated, IsActiveEmployee]
+    # Revocation must remain possible after losing Employee/management eligibility.
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
         refresh_token = request.data.get("refresh")
@@ -59,9 +61,18 @@ class EmployeeLogoutView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 class EmployeeMeView(APIView):
-    permission_classes = [IsAuthenticated, IsActiveEmployee]
+    permission_classes = [IsAuthenticated, IsMobileAccount]
 
     def get(self, request, *args, **kwargs):
-        employee = request.user.employee
-        serializer = EmployeeMeSerializer(employee)
-        return Response(serializer.data)
+        user = request.user
+        employee = getattr(user, "employee", None)
+        employee_data = EmployeeMeSerializer(employee).data if employee else None
+        # Keep the original flat Employee contract for existing learner clients.
+        identity = dict(employee_data or {})
+        identity.update({
+            "user": {"id": user.pk, "username": user.get_username(),
+                     "display_name": user.get_full_name() or user.get_username()},
+            "employee": employee_data,
+            "capabilities": mobile_capabilities(user),
+        })
+        return Response(identity)

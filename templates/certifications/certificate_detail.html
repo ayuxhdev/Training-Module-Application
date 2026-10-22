@@ -1,28 +1,91 @@
 {% extends "base.html" %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'certifications:certificate-list' %}">Certificates</a></li><li>{{ certificate.certificate_number }}</li></ol></nav>
-<header class="page-heading">
-  <div><h1>{{ certificate.training_title_snapshot }} certificate</h1><p class="muted">{{ certificate.certificate_number }}</p></div>
-  <span class="status-badge {% if certificate.revoked_at %}status-inactive{% else %}status-completed{% endif %}">{% if certificate.revoked_at %}Revoked{% else %}Valid{% endif %}</span>
-</header>
-<dl class="detail-list">
-  <div><dt>Employee</dt><dd>{{ certificate.employee_name_snapshot }} ({{ certificate.employee_code_snapshot }})</dd></div>
-  <div><dt>Training</dt><dd>{{ certificate.training_title_snapshot }}</dd></div>
-  <div><dt>Version</dt><dd>{{ certificate.version_number_snapshot }}</dd></div>
-  <div><dt>Certificate number</dt><dd>{{ certificate.certificate_number }}</dd></div>
-  <div><dt>Issued</dt><dd>{{ certificate.issued_at|date:"Y-m-d H:i" }}</dd></div>
-</dl>
-{% if certificate.revoked_at %}
-  <section class="form-section"><h2>Revocation</h2><p>Revoked on {{ certificate.revoked_at|date:"Y-m-d H:i" }}</p><p>Reason: {{ certificate.revocation_reason }}</p></section>
-{% elif can_revoke %}
-  <section class="form-section">
-    <h2>Revoke certificate</h2>
-    <form method="post" action="{% url 'certifications:certificate-revoke' certificate.pk %}" class="form-stack">
-      {% csrf_token %}
-      <p><label for="reason">Revocation reason</label><textarea id="reason" name="reason" maxlength="1000" required></textarea></p>
-      <div class="action-list"><button type="submit">Revoke certificate</button></div>
-    </form>
+<div class="catalog-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li><a href="{% url 'certifications:certificate-list' %}">Certificates</a></li>
+      <li aria-current="page">{{ certificate.certificate_number }}</li>
+    </ol>
+  </nav>
+
+  <header class="page-header">
+    <div class="page-header-main">
+      <h1>{{ certificate.training_title_snapshot }} certificate</h1>
+      <p class="muted">Certificate number {{ certificate.certificate_number }}</p>
+    </div>
+    <span class="status-badge {% if certificate.revoked_at %}status-inactive{% else %}status-completed{% endif %}" aria-label="Certificate status: {% if certificate.revoked_at %}revoked{% else %}valid{% endif %}">
+      {% if certificate.revoked_at %}Revoked{% else %}Valid{% endif %}
+    </span>
+  </header>
+
+  <section class="catalog-panel" aria-labelledby="certificate-information-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="certificate-information-heading">Certificate information</h2>
+      <p>Employee and training details recorded at issuance.</p>
+    </header>
+    <div class="catalog-version-information">
+      <section aria-labelledby="certificate-employee-heading">
+        <h3 id="certificate-employee-heading">Employee</h3>
+        <p><strong>{{ certificate.employee_name_snapshot }}</strong></p>
+        <p class="muted">Employee code {{ certificate.employee_code_snapshot }}</p>
+      </section>
+      <section aria-labelledby="certificate-training-heading">
+        <h3 id="certificate-training-heading">Training earned</h3>
+        <p><strong>{{ certificate.training_title_snapshot }}</strong></p>
+        <p class="muted">Version {{ certificate.version_number_snapshot }}</p>
+      </section>
+      <section aria-labelledby="certificate-issue-heading">
+        <h3 id="certificate-issue-heading">Issuance</h3>
+        <p><strong>Certificate number</strong><br>{{ certificate.certificate_number }}</p>
+        <p><strong>Issued</strong><br><time datetime="{{ certificate.issued_at|date:'c' }}">{{ certificate.issued_at|date:"M j, Y, g:i A T" }}</time></p>
+      </section>
+    </div>
   </section>
-{% endif %}
-<p><a href="{% url 'certifications:certificate-list' %}">Back to certificates</a></p>
+
+  {% if certificate.revoked_at %}
+    <section class="catalog-panel" aria-labelledby="certificate-revocation-heading">
+      <header class="catalog-panel-heading">
+        <h2 id="certificate-revocation-heading">Revocation</h2>
+        <span class="status-badge status-inactive">Revoked</span>
+      </header>
+      <div class="catalog-panel-body">
+        <p>This certificate is no longer valid.</p>
+        <dl class="detail-list">
+          <div>
+            <dt>Revoked on</dt>
+            <dd><time datetime="{{ certificate.revoked_at|date:'c' }}">{{ certificate.revoked_at|date:"M j, Y, g:i A T" }}</time></dd>
+          </div>
+          {% if certificate.revoked_by %}
+            <div><dt>Revoked by</dt><dd>{{ certificate.revoked_by }}</dd></div>
+          {% endif %}
+        </dl>
+        <div class="catalog-notice">
+          <strong>Reason</strong>
+          <p class="catalog-prose">{{ certificate.revocation_reason }}</p>
+        </div>
+      </div>
+    </section>
+  {% elif can_revoke %}
+    <section class="catalog-panel catalog-editor" aria-labelledby="certificate-revoke-heading">
+      <header class="catalog-panel-heading">
+        <h2 id="certificate-revoke-heading">Revoke certificate</h2>
+        <p>Revocation changes this certificate’s status; it does not delete the certificate record.</p>
+      </header>
+      <form method="post" action="{% url 'certifications:certificate-revoke' certificate.pk %}" class="form-stack catalog-form">
+        {% csrf_token %}
+        <p class="catalog-notice">Provide a reason to record why this certificate is being revoked. This action cannot be undone.</p>
+        <div>
+          <label for="reason">Revocation reason</label>
+          <textarea id="reason" name="reason" maxlength="1000" required aria-describedby="certificate-revocation-reason-help"></textarea>
+          <span id="certificate-revocation-reason-help" class="helptext">Enter a reason of up to 1,000 characters.</span>
+        </div>
+        <div class="catalog-form-actions">
+          <button class="btn btn-primary" type="submit">Revoke certificate</button>
+        </div>
+      </form>
+    </section>
+  {% endif %}
+
+  <p><a class="btn btn-secondary" href="{% url 'certifications:certificate-list' %}">Back to certificates</a></p>
+</div>
 {% endblock %}

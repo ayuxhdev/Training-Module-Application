@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
-import 'package:training_app/core/presentation/components/error_view.dart';
+import 'package:training_app/core/presentation/components/api_error_view.dart';
+import 'package:training_app/core/presentation/formatters/date_labels.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/features/certificates/presentation/controllers/certificate_controller.dart';
 
@@ -23,14 +23,9 @@ class CertificateListScreen extends ConsumerWidget {
             skipLoadingOnReload: false,
             loading: () =>
                 const LoadingView(message: 'Loading your certificates...'),
-            error: (error, _) => SingleChildScrollView(
-              child: ErrorView(
-                title: 'Certificates unavailable',
-                message: error is ApiError
-                    ? error.message
-                    : 'Unable to load certificates.',
-                onRetry: () => ref.invalidate(certificateListProvider),
-              ),
+            error: (error, _) => ApiErrorView(
+              error: error,
+              onRetry: () => ref.invalidate(certificateListProvider),
             ),
             data: (certificates) => RefreshIndicator(
               onRefresh: () async {
@@ -78,7 +73,7 @@ class CertificateListScreen extends ConsumerWidget {
                           ? Icons.block
                           : Icons.workspace_premium_outlined,
                       footer: Text(
-                        'Issued ${certificateDate(certificate.issuedAt)}',
+                        'Issued ${localDateLabel(certificate.issuedAt)}',
                       ),
                       onTap: () => context.push(
                         '/profile/certificates/${certificate.id}',
@@ -91,9 +86,4 @@ class CertificateListScreen extends ConsumerWidget {
           ),
     );
   }
-}
-
-String certificateDate(DateTime value) {
-  final date = value.toLocal();
-  return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 }

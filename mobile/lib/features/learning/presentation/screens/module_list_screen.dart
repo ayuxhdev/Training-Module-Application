@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
-import 'package:training_app/core/presentation/components/error_view.dart';
+import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
@@ -26,8 +26,9 @@ class ModuleListScreen extends ConsumerWidget {
 
           if (modules.isEmpty) {
             return RefreshIndicator(
-              onRefresh: () async =>
-                  ref.refresh(assignmentDetailProvider(assignmentId).future),
+              onRefresh: () => ref
+                  .refresh(assignmentDetailProvider(assignmentId).future)
+                  .then<void>((_) {}, onError: (Object _, StackTrace _) {}),
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
@@ -43,8 +44,9 @@ class ModuleListScreen extends ConsumerWidget {
           }
 
           return RefreshIndicator(
-            onRefresh: () async =>
-                ref.refresh(assignmentDetailProvider(assignmentId).future),
+            onRefresh: () => ref
+                .refresh(assignmentDetailProvider(assignmentId).future)
+                .then<void>((_) {}, onError: (Object _, StackTrace _) {}),
             child: ListView.separated(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: AppSpacing.pagePadding,
@@ -70,10 +72,9 @@ class ModuleListScreen extends ConsumerWidget {
           );
         },
         loading: () => const LoadingView(),
-        error: (error, stackTrace) => ErrorView(
-          message: error.toString(),
-          onRetry: () =>
-              ref.refresh(assignmentDetailProvider(assignmentId).future),
+        error: (error, stackTrace) => ApiErrorView(
+          error: error,
+          onRetry: () => ref.invalidate(assignmentDetailProvider(assignmentId)),
         ),
       ),
     );

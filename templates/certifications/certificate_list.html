@@ -1,23 +1,124 @@
 {% extends "base.html" %}
 {% block content %}
-<header class="page-heading"><h1>Certificates</h1></header>
-<p class="muted">Issued certificates remain available here, including certificates later revoked.</p>
-<div class="table-scroll" role="region" aria-label="Certificates" tabindex="0">
-  <table>
-    <thead><tr><th scope="col">Certificate</th><th scope="col">Training</th><th scope="col">Employee</th><th scope="col">Issued</th><th scope="col">Status</th></tr></thead>
-    <tbody>
-    {% for certificate in certificates %}
-      <tr>
-        <td><a href="{% url 'certifications:certificate-detail' certificate.pk %}">{{ certificate.certificate_number }}</a></td>
-        <td>{{ certificate.training_title_snapshot }} · Version {{ certificate.version_number_snapshot }}</td>
-        <td>{{ certificate.employee_name_snapshot }}</td>
-        <td>{{ certificate.issued_at|date:"Y-m-d" }}</td>
-        <td><span class="status-badge {% if certificate.revoked_at %}status-inactive{% else %}status-completed{% endif %}">{% if certificate.revoked_at %}Revoked{% else %}Valid{% endif %}</span></td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="5" class="empty-state">No certificates found.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+<style>
+  .certificate-catalog-table {
+    table-layout: auto !important;
+    min-width: 56rem;
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .certificate-catalog-table th,
+  .certificate-catalog-table td {
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    vertical-align: middle;
+  }
+  .certificate-catalog-table thead th {
+    width: auto !important;
+    white-space: nowrap;
+  }
+  .certificate-catalog-table .col-cert {
+    min-width: 14rem;
+  }
+  .certificate-catalog-table .col-cert .catalog-record-link {
+    font-family: var(--font-family-mono, monospace);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+    display: inline-block;
+  }
+  .certificate-catalog-table .col-training {
+    min-width: 13rem;
+  }
+  .certificate-catalog-table .col-employee {
+    min-width: 13rem;
+  }
+  .certificate-catalog-table .col-issued {
+    min-width: 8rem;
+    white-space: nowrap;
+  }
+  .certificate-catalog-table .col-status {
+    min-width: 7.5rem;
+    white-space: nowrap;
+  }
+  .certificate-catalog-table .certificate-employee-name {
+    display: block;
+    font-weight: 600;
+  }
+  .certificate-catalog-table .catalog-description {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+  }
+  .table-scroll-hint {
+    display: none;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    margin: 0 0 var(--space-2);
+  }
+  @media (max-width: 64rem) {
+    .table-scroll-hint {
+      display: flex;
+    }
+  }
+</style>
+<div class="catalog-workspace">
+  <header class="page-header">
+    <div class="page-header-main">
+      <h1>Certificates</h1>
+      <p class="muted">Issued certificates remain available here, including certificates that have since been revoked.</p>
+    </div>
+  </header>
+
+  <section class="catalog-panel" aria-labelledby="certificate-register-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="certificate-register-heading">Certificate register</h2>
+      <p>Training and employee details reflect the information recorded when each certificate was issued.</p>
+    </header>
+    <p class="table-scroll-hint" aria-hidden="true">&larr;&rarr; Scroll horizontally to view all columns</p>
+    <div class="table-scroll catalog-table-scroll" role="region" aria-label="Certificates" tabindex="0">
+      <table class="catalog-table certificate-catalog-table">
+        <thead>
+          <tr>
+            <th scope="col" class="col-cert">Certificate</th>
+            <th scope="col" class="col-training">Training</th>
+            <th scope="col" class="col-employee">Employee</th>
+            <th scope="col" class="col-issued">Issued</th>
+            <th scope="col" class="col-status">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for certificate in certificates %}
+          <tr>
+            <th scope="row" class="col-cert">
+              <a class="catalog-record-link catalog-code" href="{% url 'certifications:certificate-detail' certificate.pk %}">{{ certificate.certificate_number }}</a>
+            </th>
+            <td class="col-training">
+              <strong>{{ certificate.training_title_snapshot }}</strong>
+              <span class="catalog-description">Version {{ certificate.version_number_snapshot }}</span>
+            </td>
+            <td class="col-employee">
+              <span class="certificate-employee-name">{{ certificate.employee_name_snapshot }}</span>
+              <span class="catalog-description">Employee code {{ certificate.employee_code_snapshot }}</span>
+            </td>
+            <td class="col-issued"><time datetime="{{ certificate.issued_at|date:'c' }}">{{ certificate.issued_at|date:"M j, Y" }}</time></td>
+            <td class="col-status">
+              {% if certificate.revoked_at %}
+                <span class="status-badge status-inactive">Revoked</span>
+                <span class="catalog-description">Revoked <time datetime="{{ certificate.revoked_at|date:'c' }}">{{ certificate.revoked_at|date:"M j, Y" }}</time></span>
+              {% else %}
+                <span class="status-badge status-completed">Valid</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td class="catalog-empty" colspan="5">No certificates are available.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
 {% endblock %}

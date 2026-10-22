@@ -8,6 +8,7 @@ import 'package:training_app/features/auth/presentation/controllers/auth_control
 import 'package:training_app/features/learning/data/repositories/learning_repository.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
 import 'package:training_app/features/learning/domain/models/protected_media_request.dart';
+import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 
 typedef PlaybackLesson = ({int assignmentId, int lessonId});
 
@@ -61,8 +62,8 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
   PlaybackSessionController(this.lesson);
 
   String? _account(AuthState auth) =>
-      auth is AuthAuthenticated && auth.employee.isActive
-      ? auth.employee.username
+      auth is AuthAuthenticated
+      ? auth.personalAccount
       : null;
 
   @override
@@ -349,6 +350,8 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
         phase: PlaybackPhase.ended,
         progress: progress,
       );
+      // A retained Learning page must reload the server-confirmed summary on return.
+      ref.invalidate(assignmentListProvider);
     } catch (error) {
       if (!_current(generation)) return;
       final failure = _error(error);

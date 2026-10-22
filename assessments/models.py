@@ -22,6 +22,9 @@ class Question(TimestampedModel):
     def delete(self, *args, **kwargs):
         protect_delete("Deactivate question-bank entries instead of deleting history.")
 
+    def __str__(self):
+        return f"{self.code} ({self.topic})" if self.topic else self.code
+
 
 class QuestionRevision(TimestampedModel):
     class QuestionType(models.TextChoices):
@@ -65,6 +68,11 @@ class QuestionRevision(TimestampedModel):
 
     def validate_delete(self):
         require(self.original().status == self.Status.DRAFT, "Frozen question revisions cannot be deleted.")
+
+    def __str__(self):
+        prompt_clean = " ".join(self.prompt.split())
+        prompt_excerpt = (prompt_clean[:65] + "…") if len(prompt_clean) > 65 else prompt_clean
+        return f"{self.question.code} — {prompt_excerpt} (rev {self.revision_number})"
 
 
 class QuestionOption(TimestampedModel):

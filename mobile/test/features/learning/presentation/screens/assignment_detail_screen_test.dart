@@ -20,6 +20,38 @@ void main() {
     );
   }
 
+  testWidgets(
+    'cancelled training explains unavailable curriculum without a Start action',
+    (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          assignmentDetailProvider(1).overrideWith(
+            (_) async => AssignmentDetail(
+              id: 1,
+              trainingId: 1,
+              trainingTitle: 'Cancelled training',
+              versionNumber: 1,
+              status: 'CANCELLED',
+              isOverdue: false,
+              modules: [],
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(createTestWidget(container));
+      await tester.pumpAndSettle();
+      expect(find.text('Start Training'), findsNothing);
+      expect(
+        find.text(
+          'This assignment was cancelled. Its learning content is unavailable.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('CANCELLED'), findsOneWidget);
+    },
+  );
+
   testWidgets('shows LoadingView while fetching detail', (tester) async {
     final completer = Completer<AssignmentDetail>();
     final container = ProviderContainer(

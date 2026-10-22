@@ -6,6 +6,7 @@ import 'package:training_app/core/presentation/components/cinematic_components.d
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
+import 'package:training_app/core/presentation/formatters/date_labels.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
@@ -22,8 +23,10 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authControllerProvider);
 
-    if (authState is! AuthAuthenticated) return const SizedBox.shrink();
-    final employeeName = authState.employee.displayName;
+    if (authState is! AuthAuthenticated || !authState.canLearn) {
+      return const SizedBox.shrink();
+    }
+    final employeeName = authState.employee!.displayName;
 
     final dashboardAsync = ref.watch(dashboardDataProvider);
 
@@ -238,7 +241,7 @@ class DashboardScreen extends ConsumerWidget {
                             const SizedBox(height: 4),
                             Text('Cert #: ${cert.certificateNumber}'),
                             if (cert.issuedAt != null)
-                              Text('Issued: ${_formatDate(cert.issuedAt)}'),
+                              Text('Issued: ${localDateLabel(cert.issuedAt!)}'),
                           ],
                         ),
                       ),

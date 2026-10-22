@@ -1,25 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
-<header class="page-heading">
-	<h1>Training</h1>
-	{% if perms.training.add_training %}<a class="action-link" href="{% url 'training:training-create' %}">Add training</a>{% endif %}
-</header>
-<div class="table-scroll" role="region" aria-label="Training catalog" tabindex="0">
-	<table>
-		<thead><tr><th>Code</th><th>Training</th><th>Description</th><th>Status</th><th>Actions</th></tr></thead>
-		<tbody>
-		{% for item in trainings %}
-			<tr>
-				<td>{{ item.code }}</td>
-				<td><a href="{% url 'training:training-detail' item.pk %}">{{ item.catalog_title }}</a></td>
-				<td>{{ item.description|default:"-"|truncatewords:18 }}</td>
-				<td><span class="status-badge{% if not item.is_active %} status-inactive{% endif %}">{% if item.is_active %}Active{% else %}Inactive{% endif %}</span></td>
-				<td>{% if perms.training.change_training %}<a href="{% url 'training:training-update' item.pk %}">Edit</a>{% endif %}</td>
-			</tr>
-		{% empty %}
-			<tr><td class="empty-state" colspan="5">No training has been added yet.</td></tr>
-		{% endfor %}
-		</tbody>
-	</table>
+<div class="catalog-workspace">
+  <header class="page-header">
+    <div class="page-header-main"><h1>Training</h1><p class="muted">Training catalog and version management</p></div>
+    {% if perms.training.add_training %}<a class="btn btn-primary" href="{% url 'training:training-create' %}">Add training</a>{% endif %}
+  </header>
+  <section class="catalog-panel" aria-labelledby="catalog-heading">
+    <header class="catalog-panel-heading"><h2 id="catalog-heading">Training catalog</h2><p>Catalog records and current availability</p></header>
+    <div class="table-scroll catalog-table-scroll" role="region" aria-label="Training catalog" tabindex="0">
+      <table class="catalog-table">
+        <thead><tr><th scope="col">Code</th><th scope="col">Training</th><th scope="col">Description</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
+        <tbody>
+        {% for item in trainings %}
+          <tr>
+            <td class="catalog-code">{{ item.code }}</td>
+            <th scope="row"><a class="catalog-record-link" href="{% url 'training:training-detail' item.pk %}">{{ item.catalog_title }}</a></th>
+            <td class="catalog-description">{{ item.description|default:"Not provided"|truncatewords:18 }}</td>
+            <td>{% if item.is_active %}{% include "components/status_badge.html" with status="ACTIVE" label="Active" %}{% else %}{% include "components/status_badge.html" with status="INACTIVE" label="Inactive" %}{% endif %}</td>
+            <td class="catalog-table-actions">{% if perms.training.change_training %}<a class="btn btn-secondary" href="{% url 'training:training-update' item.pk %}" aria-label="Edit training: {{ item.catalog_title }}">Edit</a>{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td class="catalog-empty" colspan="5">No training has been added yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
 {% endblock %}

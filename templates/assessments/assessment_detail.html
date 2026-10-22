@@ -1,16 +1,153 @@
 {% extends "base.html" %}
+{% block title %}{{ assessment.title }} | Garden's Need Training{% endblock %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li>{% if perms.training.view_trainingversion %}<a href="{% url 'training:version-detail' assessment.training_version_id %}">{{ assessment.training_version.title }}</a>{% else %}{{ assessment.training_version.title }}{% endif %}</li><li><a href="{% url 'assessments:assessment-list' assessment.training_version_id %}">Assessments</a></li><li>{{ assessment.title }}</li></ol></nav>
-<header class="page-heading">
-  <div><h1>{{ assessment.title }}</h1><p class="muted">{{ assessment.get_kind_display }}{% if assessment.module %} · {{ assessment.module.title }}{% endif %}</p></div>
-  <div class="action-list">
-    {% if assessment.training_version.status == 'DRAFT' and perms.assessments.change_assessment %}<a class="action-link" href="{% url 'assessments:assessment-update' assessment.pk %}">Edit assessment</a>{% endif %}
-    {% if assessment.training_version.status == 'DRAFT' and perms.assessments.add_assessmentquestion %}<a class="action-link" href="{% url 'assessments:assessment-question-create' assessment.pk %}">Add question</a>{% endif %}
-  </div>
-</header>
-<dl class="detail-list"><div><dt>Version</dt><dd>{{ assessment.training_version.title }}</dd></div><div><dt>Pass threshold</dt><dd>{{ assessment.pass_percentage }}%</dd></div><div><dt>Attempt limit</dt><dd>{{ assessment.max_attempts }}</dd></div><div><dt>Time limit</dt><dd>{{ assessment.time_limit_minutes|default:"None" }}</dd></div><div><dt>Required</dt><dd>{% if assessment.is_required %}Yes{% else %}No{% endif %}</dd></div></dl>
-<h2>Questions</h2>
-<ol>{% for item in assessment.questions.all %}
-  <li>{{ item.question_revision.prompt }} ({{ item.points }} points){% if assessment.training_version.status == 'DRAFT' and perms.assessments.change_assessmentquestion %} <a href="{% url 'assessments:assessment-question-update' item.pk %}">Edit</a>{% endif %}</li>
-{% empty %}<li class="empty-state">No questions have been added.</li>{% endfor %}</ol>
+<style>
+  .assessment-workspace { display: grid; gap: var(--space-4); min-width: 0; }
+  .assessment-header { margin-bottom: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-hero); box-shadow: var(--shadow-sm); }
+  .assessment-header p { margin: var(--space-2) 0 0; color: var(--color-text-muted); }
+  .assessment-header-content { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); }
+  .assessment-header-main { flex: 1 1 18rem; min-width: 0; }
+  .assessment-header-meta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+  .assessment-panel { min-width: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+  .assessment-panel-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); }
+  .assessment-panel-header h2 { margin: 0; font-size: var(--font-size-lg); }
+  .assessment-config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr)); gap: var(--space-3); margin-bottom: var(--space-2); }
+  .assessment-config-card { padding: var(--space-3); border: var(--border-subtle); border-radius: var(--radius-sm); background: var(--color-surface-subtle); }
+  .assessment-config-card dt { font-size: var(--font-size-xs); font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: var(--space-1); }
+  .assessment-config-card dd { margin: 0; font-size: var(--font-size-base); font-weight: 600; color: var(--color-text); }
+  .assessment-questions-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+  .assessment-question-item { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); transition: border-color 0.15s ease; }
+  .assessment-question-main { flex: 1 1 20rem; min-width: 0; }
+  .assessment-question-prompt { font-weight: 600; color: var(--color-text); margin: 0 0 var(--space-1); }
+  .assessment-question-meta { font-size: var(--font-size-xs); color: var(--color-text-muted); display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .assessment-question-actions { display: flex; align-items: center; gap: var(--space-2); }
+  .assessment-notice { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-subtle); color: var(--color-text-muted); font-size: var(--font-size-sm); }
+  .assessment-notice strong { color: var(--color-text); }
+  .assessment-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+</style>
+
+<div class="assessment-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li>{% if perms.training.view_trainingversion %}<a href="{% url 'training:version-detail' assessment.training_version_id %}">{{ assessment.training_version.title }}</a>{% else %}{{ assessment.training_version.title }}{% endif %}</li>
+      <li><a href="{% url 'assessments:assessment-list' assessment.training_version_id %}">Assessments</a></li>
+      <li aria-current="page">{{ assessment.title }}</li>
+    </ol>
+  </nav>
+
+  <header class="page-heading assessment-header">
+    <div class="assessment-header-content">
+      <div class="assessment-header-main">
+        <h1>{{ assessment.title }}</h1>
+        <p class="muted">{{ assessment.get_kind_display }}{% if assessment.module %} · {{ assessment.module.title }}{% else %} · Comprehensive Course Assessment{% endif %}</p>
+        <div class="assessment-header-meta">
+          <span class="status-badge {% if assessment.training_version.status == 'DRAFT' %}status-badge--warning{% elif assessment.training_version.status == 'PUBLISHED' %}status-badge--success{% else %}status-badge--neutral{% endif %}">
+            {{ assessment.training_version.get_status_display }}
+          </span>
+          <span class="status-badge {% if assessment.is_required %}status-badge--info{% else %}status-badge--neutral{% endif %}">
+            {% if assessment.is_required %}Required for Completion{% else %}Optional Assessment{% endif %}
+          </span>
+        </div>
+      </div>
+      <div class="action-list assessment-actions">
+        {% if assessment.training_version.status == 'DRAFT' and perms.assessments.change_assessment %}
+          <a class="action-link btn btn-secondary" href="{% url 'assessments:assessment-update' assessment.pk %}">Edit assessment</a>
+        {% endif %}
+        {% if assessment.training_version.status == 'DRAFT' and perms.assessments.add_assessmentquestion %}
+          <a class="action-link btn btn-primary" href="{% url 'assessments:assessment-question-create' assessment.pk %}">Add question</a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  {% if assessment.training_version.status != 'DRAFT' %}
+    <aside class="assessment-notice" aria-label="Assessment immutable notice">
+      <p>
+        <strong>Curriculum is locked ({{ assessment.training_version.get_status_display }}):</strong>
+        Questions, point allocations, and passing thresholds in this assessment cannot be modified. Existing assignment attempts and certificates remain pinned to this version.
+      </p>
+    </aside>
+  {% endif %}
+
+  <section class="assessment-panel" aria-labelledby="assessment-config-heading">
+    <div class="assessment-panel-header">
+      <h2 id="assessment-config-heading">Configuration & scoring parameters</h2>
+    </div>
+
+    <dl class="detail-list assessment-config-grid">
+      <div class="assessment-config-card">
+        <dt>Training version</dt>
+        <dd>{{ assessment.training_version.title }}</dd>
+      </div>
+      <div class="assessment-config-card">
+        <dt>Assessment type</dt>
+        <dd>{{ assessment.get_kind_display }}</dd>
+      </div>
+      <div class="assessment-config-card">
+        <dt>Module</dt>
+        <dd>{{ assessment.module.title|default:"Entire training" }}</dd>
+      </div>
+      <div class="assessment-config-card">
+        <dt>Sequence order</dt>
+        <dd>#{{ assessment.sequence }}</dd>
+      </div>
+      <div class="assessment-config-card">
+        <dt>Pass threshold</dt>
+        <dd>{{ assessment.pass_percentage }}%</dd>
+      </div>
+      <div class="assessment-config-card">
+        <dt>Attempt limit</dt>
+        <dd>{{ assessment.max_attempts }} attempt{{ assessment.max_attempts|pluralize }}</dd>
+      </div>
+      <div class="assessment-config-card">
+        <dt>Time limit</dt>
+        <dd>{% if assessment.time_limit_minutes %}{{ assessment.time_limit_minutes }} minutes{% else %}None (Untimed){% endif %}</dd>
+      </div>
+      <div class="assessment-config-card">
+        <dt>Completion requirement</dt>
+        <dd>{% if assessment.is_required %}Yes{% else %}No{% endif %}</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="assessment-panel" aria-labelledby="assessment-questions-heading">
+    <div class="assessment-panel-header">
+      <h2 id="assessment-questions-heading">Questions ({{ assessment.questions.count }})</h2>
+      {% if assessment.training_version.status == 'DRAFT' and perms.assessments.add_assessmentquestion %}
+        <a class="action-link btn btn-secondary" href="{% url 'assessments:assessment-question-create' assessment.pk %}">Add question</a>
+      {% endif %}
+    </div>
+
+    <ol class="assessment-questions-list">
+      {% for item in assessment.questions.all %}
+        <li class="assessment-question-item">
+          <div class="assessment-question-main">
+            <p class="assessment-question-prompt">{{ item.position }}. {{ item.question_revision.prompt }}</p>
+            <div class="assessment-question-meta">
+              <span><strong>Points:</strong> {{ item.points }} pt{{ item.points|pluralize }}</span>
+              <span><strong>Code:</strong> {{ item.question_revision.question.code }}</span>
+              <span><strong>Topic:</strong> {{ item.question_revision.question.topic|default:"General" }}</span>
+              <span><strong>Revision:</strong> Rev {{ item.question_revision.revision_number }}</span>
+            </div>
+          </div>
+          <div class="assessment-question-actions">
+            {% if assessment.training_version.status == 'DRAFT' and perms.assessments.change_assessmentquestion %}
+              <a class="btn btn-secondary" href="{% url 'assessments:assessment-question-update' item.pk %}">Edit</a>
+            {% endif %}
+          </div>
+        </li>
+      {% empty %}
+        <li class="empty-state" style="padding: var(--space-6) var(--space-4); text-align: center;">
+          <h2>No questions have been added.</h2>
+          <p class="muted">This assessment has no questions configured. Add frozen question revisions from the Question Bank.</p>
+          {% if assessment.training_version.status == 'DRAFT' and perms.assessments.add_assessmentquestion %}
+            <p style="margin-top: var(--space-3);">
+              <a class="action-link btn btn-primary" href="{% url 'assessments:assessment-question-create' assessment.pk %}">Add question</a>
+            </p>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+</div>
 {% endblock %}

@@ -1,0 +1,3 @@
+{% csrf_token %}
+{% if form.errors %}<p class="catalog-validation" role="alert">Please correct the errors below. Text entries have been preserved.{% if form.is_multipart %} Reselect an upload if needed.{% endif %}</p>{% endif %}
+<div class="catalog-fields">{{ form.as_div }}</div>

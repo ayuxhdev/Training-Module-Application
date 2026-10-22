@@ -46,11 +46,11 @@ class AuthController extends Notifier<AuthState> {
         state = AuthUnauthenticated();
         return;
       }
-      final employee = await _repository.getCurrentEmployee();
-      if (_isCurrent(revision)) state = AuthAuthenticated(employee);
+      final identity = await _repository.getCurrentIdentity();
+      if (_isCurrent(revision)) state = AuthAuthenticated.identity(identity);
     } catch (e) {
       if (!_isCurrent(revision)) return;
-      if (e is ApiError && e.statusCode == 401) {
+      if (e is ApiError && (e.statusCode == 401 || e.statusCode == 403)) {
         await logout();
       } else {
         state = AuthError(e is ApiError ? e : ApiError.unexpected());
@@ -62,14 +62,14 @@ class AuthController extends Notifier<AuthState> {
     await _checkAuthentication();
   }
 
-  Future<void> login(String employeeCode, String password) async {
+  Future<void> login(String username, String password) async {
     final repository = _repository;
     await _changeSession((revision) async {
       try {
-        final employee = await repository.login(employeeCode, password);
+        final identity = await repository.login(username, password);
         if (_isCurrent(revision)) {
           _requiresLogin = false;
-          state = AuthAuthenticated(employee);
+          state = AuthAuthenticated.identity(identity);
         }
       } catch (e) {
         if (!_isCurrent(revision)) return;
@@ -97,8 +97,7 @@ class AuthController extends Notifier<AuthState> {
           if (_isCurrent(revision)) {
             state = AuthError(
               ApiError(
-                message:
-                    'Unable to clear saved credentials. Sign in again to continue.',
+                message: 'Unable to clear saved credentials. Sign in again to continue.',
                 code: 'credential_cleanup_failed',
               ),
             );
@@ -113,9 +112,9 @@ class AuthController extends Notifier<AuthState> {
     final sessionRevision = _sessionRevision;
     final profileRevision = ++_profileRevision;
     try {
-      final employee = await _repository.getCurrentEmployee();
+      final identity = await _repository.getCurrentIdentity();
       if (_isCurrent(sessionRevision) && profileRevision == _profileRevision) {
-        state = AuthAuthenticated(employee);
+        state = AuthAuthenticated.identity(identity);
       }
     } catch (e) {
       if (!_isCurrent(sessionRevision) || profileRevision != _profileRevision) {

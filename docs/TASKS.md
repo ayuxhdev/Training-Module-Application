@@ -14,6 +14,41 @@ The Excel roadmap may remain the management tracker, but it must not override th
 
 ## 2. Current Status
 
+### Approved multi-role Android expansion
+
+Android scope now includes Administrator, Manager and Employee business workflows
+from the custom Django portal. The employee-only assumption in historical entries
+is superseded, not a reason to rewrite their milestone names or QA evidence.
+Framework `/admin/` User/Group/password/token administration remains excluded.
+
+Batch 1 is implemented locally: effective capability discovery, management-only
+login, optional Employee context, protected personal navigation/providers and
+Team/Management account-access overviews. Batch 2 is also implemented locally:
+read-only company/team dashboards, employee directory/detail and Department/Job
+Role reference lists, with authenticated APIs and native Flutter navigation.
+Management mutations remain future work. Manager reporting hierarchy, existing permissions,
+personal learning security and appearance persistence remain unchanged.
+
+Historical Batch 1 validation: **234/234 Django/API and role-scoping tests on isolated
+MySQL**, **72/72 focused Flutter tests**, **518/518 full Flutter tests**; Flutter
+analyzer and Django system/migration checks passed. The isolated MySQL schema was
+removed. No persistent QA data was modified. Android runtime verification remains
+pending; this batch is not committed and no CI result is claimed.
+
+Subsequent Batch 1–2 checkpoints passed **170/170 selected Django/MySQL tests**
+(including **18/18 management API tests**) and **551/551 full Flutter tests**,
+with clean Flutter analysis. The dedicated MySQL test database was retained and
+its role bootstrap verified. These separate checkpoints do not represent a full
+Django-suite run or CI. Android login/role runtime QA remains pending: the new APK
+was built and installed, but emulator system responsiveness and host memory
+blocked verification. Both batches remain uncommitted.
+
+The final combined web/mobile regression gate is separate from these implementation
+checkpoints and remains pending; they do not establish release readiness.
+
+The approved nine-batch sequence is recorded in `docs/ROADMAP.md`. Batches 3-9
+remain planned and require separate authorization before implementation.
+
 Current milestone:
 
 ```text

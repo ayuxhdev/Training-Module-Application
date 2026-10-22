@@ -1,4 +1,6 @@
 import json
+import hashlib
+import os
 import tempfile
 from io import BytesIO
 from datetime import timedelta
@@ -11,6 +13,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import InMemoryUploadedFile, SimpleUploadedFile, TemporaryUploadedFile
 from django.core.files.storage import FileSystemStorage
 from django.conf import settings
 from django.contrib.staticfiles.storage import staticfiles_storage
@@ -21,7 +24,7 @@ from django.test import Client, TestCase, override_settings
 from audit.models import AuditLog
 from config.model_test_utils import CurriculumTestCase
 from organization.models import Employee, JobRole
-from .forms import TrainingForm
+from .forms import LessonForm, TrainingForm
 from .models import Lesson, LessonProgress, Module, RoleTrainingRequirement, Training, TrainingAssignment, TrainingVersion, VideoWatchSession
 
 
@@ -241,6 +244,137 @@ class ContentManagementViewTests(CurriculumTestCase):
         self.assertNotContains(retired_page, "Retire version")
         self.assertNotContains(retired_page, "Edit draft")
         self.assertNotContains(retired_page, "Add module")
+
+    def test_management_editors_preserve_fields_errors_and_upload_encoding(self):
+        client = self.client_for(self.coordinator)
+        draft = self.new_version()
+        module = Module.objects.create(training_version=draft, title="Editor module", position=1)
+        lesson = Lesson.objects.create(module=module, title="Editor text", position=1, content_type="TEXT", body="Saved text")
+        paths = (
+            "/trainings/new/", f"/trainings/{self.training.pk}/edit/",
+            f"/trainings/{self.training.pk}/versions/new/", f"/versions/{draft.pk}/edit/",
+            f"/versions/{draft.pk}/modules/new/", f"/modules/{module.pk}/edit/",
+            f"/modules/{module.pk}/lessons/new/", f"/lessons/{lesson.pk}/edit/",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                response = client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'class="catalog-workspace"')
+                self.assertContains(response, 'class="form-stack catalog-form"')
+                self.assertContains(response, 'name="csrfmiddlewaretoken"', count=2)
+                for field in response.context["form"]:
+                    self.assertContains(response, f'name="{field.name}"', count=1)
+                    self.assertContains(response, f'id="{field.auto_id}"', count=1)
+                if "lessons/new" in path or path.startswith("/lessons/"):
+                    self.assertContains(response, 'enctype="multipart/form-data"')
+                    self.assertContains(response, 'type="file" name="video_file"')
+                    self.assertNotContains(response, 'name="module"')
+                invalid = client.post(path, {})
+                self.assertEqual(invalid.status_code, 200)
+                self.assertContains(invalid, 'class="catalog-validation" role="alert"')
+                self.assertContains(invalid, 'aria-invalid="true"')
+                self.assertContains(invalid, 'class="errorlist"')
+        lesson.refresh_from_db()
+        self.assertEqual(lesson.body, "Saved text")
+        self.assertEqual(lesson.module_id, module.pk)
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, TrainingVersion.Status.DRAFT)
+
+    def test_catalog_history_and_curriculum_keep_semantics_and_safe_content(self):
+        client = self.client_for(self.coordinator)
+        draft = self.new_version()
+        module = Module.objects.create(training_version=draft, title="<script>module</script>", position=3)
+        Lesson.objects.create(module=module, title="<script>lesson</script>", position=5, content_type="TEXT", body="Plain text <script>body</script>", is_required=False)
+        catalog = client.get("/trainings/")
+        self.assertContains(catalog, '<th scope="col">Training</th>')
+        self.assertContains(catalog, 'class="catalog-record-link"')
+        history = client.get(f"/trainings/{self.training.pk}/versions/")
+        self.assertContains(history, "Draft")
+        self.assertContains(history, "Published")
+        self.assertContains(history, f'href="/versions/{draft.pk}/edit/"')
+        self.assertNotContains(history, f'href="/versions/{self.version.pk}/edit/"')
+        curriculum = client.get(f"/versions/{draft.pk}/")
+        self.assertContains(curriculum, '<ol class="catalog-modules" role="list">')
+        self.assertContains(curriculum, '<li value="3">')
+        self.assertContains(curriculum, 'Module 3')
+        self.assertContains(curriculum, 'Lesson 5')
+        self.assertContains(curriculum, '&lt;script&gt;module&lt;/script&gt;')
+        self.assertContains(curriculum, '&lt;script&gt;lesson&lt;/script&gt;')
+        self.assertContains(curriculum, '&lt;script&gt;body&lt;/script&gt;')
+        self.assertNotContains(curriculum, '<script>module</script>')
+        self.assertContains(curriculum, "Optional")
+        published = client.get(f"/versions/{self.version.pk}/")
+        self.assertContains(published, "read-only")
+        self.assertContains(published, "Required")
+        self.assertContains(published, "100 seconds")
+        self.assertContains(published, "Completion threshold: 90.00%")
+        self.assertNotContains(published, self.video_lesson.video_file.url)
+
+    @patch("training.video_uploads._probe_video_duration", return_value=69)
+    def test_video_lesson_editor_preserves_multipart_upload_and_existing_file(self, probe):
+        client = self.client_for(self.coordinator)
+        draft = self.new_version()
+        for position, (memory_limit, upload_type) in enumerate(((2621440, InMemoryUploadedFile), (0, TemporaryUploadedFile)), start=1):
+            with self.subTest(upload_type=upload_type.__name__), override_settings(FILE_UPLOAD_MAX_MEMORY_SIZE=memory_limit):
+                module = Module.objects.create(training_version=draft, title="Upload module", position=position)
+                payload = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 12
+                data = {"title": "Uploaded video", "position": 1, "content_type": "VIDEO", "video_file": ContentFile(payload, name="editor-upload.mp4"), "is_required": "on", "minimum_watch_percent": "80"}
+                response = client.post(f"/modules/{module.pk}/lessons/new/", data)
+                self.assertEqual(response.status_code, 302, response.context["form"].errors if response.status_code == 200 else None)
+                uploaded = response.wsgi_request.FILES["video_file"]
+                self.assertIsInstance(uploaded, upload_type)
+                self.assertTrue(uploaded.closed)
+                if isinstance(uploaded, TemporaryUploadedFile):
+                    self.assertFalse(os.path.exists(uploaded.temporary_file_path()))
+                lesson = Lesson.objects.get(module=module)
+                self.assertEqual(lesson.video_checksum, hashlib.sha256(payload).hexdigest())
+                self.assertEqual(lesson.video_duration_seconds, 69)
+                stored_name = lesson.video_file.name
+                with lesson.video_file.storage.open(stored_name, "rb") as stored:
+                    self.assertEqual(stored.read(), payload)
+                editor = client.get(f"/lessons/{lesson.pk}/edit/")
+                self.assertContains(editor, 'enctype="multipart/form-data"')
+                self.assertNotContains(editor, lesson.video_file.url)
+                data.pop("video_file")
+                data["title"] = "Edited video"
+                self.assertEqual(client.post(f"/lessons/{lesson.pk}/edit/", data).status_code, 302)
+                lesson.refresh_from_db()
+                self.assertEqual(lesson.video_file.name, stored_name)
+                self.assertEqual(lesson.title, "Edited video")
+                self.assertEqual(lesson.minimum_watch_percent, Decimal("80"))
+
+    def test_view_only_curriculum_access_does_not_expose_mutation_actions(self):
+        viewer = get_user_model().objects.create_user(username="catalog-read-only")
+        viewer.user_permissions.add(*Permission.objects.filter(content_type__app_label="training", codename__in=("view_training", "view_trainingversion")))
+        client = Client()
+        client.force_login(viewer)
+        draft = self.new_version()
+        module = Module.objects.create(training_version=draft, title="Visible module", position=1)
+        Lesson.objects.create(module=module, title="Visible lesson", position=1, content_type="TEXT", body="Read me")
+        for path in ("/trainings/", f"/trainings/{self.training.pk}/", f"/trainings/{self.training.pk}/versions/", f"/versions/{draft.pk}/"):
+            with self.subTest(path=path):
+                response = client.get(path)
+                self.assertEqual(response.status_code, 200)
+                for label in ("Add training", "Edit training", "Add version", "Edit draft", "Publish version", "Retire version", "Add module", "Edit module", "Add lesson", "Edit lesson"):
+                    self.assertNotContains(response, label)
+        self.assertEqual(client.get(f"/versions/{draft.pk}/edit/").status_code, 403)
+
+    def test_lifecycle_actions_remain_csrf_protected_posts_on_separate_pages(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.coordinator)
+        draft = self.new_version()
+        page = client.get(f"/versions/{draft.pk}/")
+        self.assertContains(page, f'<form method="post" action="/versions/{draft.pk}/publish/">')
+        self.assertContains(page, f'href="/versions/{draft.pk}/edit/"')
+        self.assertNotContains(page, 'name="title"')
+        self.assertEqual(client.post(f"/versions/{draft.pk}/publish/").status_code, 403)
+        self.assertEqual(client.get(f"/versions/{draft.pk}/publish/").status_code, 404)
+        self.assertEqual(client.post(f"/versions/{self.version.pk}/retire/").status_code, 403)
+        draft.refresh_from_db()
+        self.version.refresh_from_db()
+        self.assertEqual(draft.status, TrainingVersion.Status.DRAFT)
+        self.assertEqual(self.version.status, TrainingVersion.Status.PUBLISHED)
 
     def test_duplicate_training_code_is_a_controlled_form_error(self):
         response = self.client_for(self.coordinator).post("/trainings/new/", {
@@ -483,6 +617,209 @@ class ContentManagementViewTests(CurriculumTestCase):
                                   video_duration_seconds=30, video_checksum="a" * 64)
 
 
+class VideoUploadValidationTests(CurriculumTestCase):
+    # Tests the existing signature check, not codec decoding or playable frames.
+    payload = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 12
+
+    def setUp(self):
+        self.draft = self.new_version()
+        self.upload_module = Module.objects.create(training_version=self.draft, title="Upload validation", position=1)
+
+    def upload(self, temporary=False, name="validation.mp4", content=None):
+        content = self.payload if content is None else content
+        if temporary:
+            uploaded = TemporaryUploadedFile(name, "video/mp4", len(content), None)
+            uploaded.write(content)
+            uploaded.seek(0)
+        else:
+            uploaded = SimpleUploadedFile(name, content, "video/mp4")
+        self.addCleanup(uploaded.close)
+        return uploaded
+
+    def lesson(self, uploaded):
+        return Lesson(module=self.upload_module, title="Validated video", position=1, content_type="VIDEO",
+                      video_file=uploaded, video_duration_seconds=69, video_checksum="a" * 64)
+
+    @patch("training.video_uploads._probe_video_duration", return_value=69)
+    def test_repeated_form_and_save_validation_preserves_both_upload_streams(self, probe):
+        for temporary in (False, True):
+            with self.subTest(temporary=temporary):
+                uploaded = self.upload(temporary)
+                uploaded.seek(7)
+                form = LessonForm(data={"title": "Validated upload", "position": 1 if not temporary else 2,
+                    "content_type": "VIDEO", "video_duration_seconds": 69, "video_checksum": "a" * 64,
+                    "minimum_watch_percent": 80}, files={"video_file": uploaded}, instance=Lesson(module=self.upload_module))
+                self.assertTrue(form.is_valid(), form.errors)
+                for _ in range(2):
+                    self.assertFalse(uploaded.closed)
+                    self.assertEqual(uploaded.tell(), 7)
+                    if temporary:
+                        self.assertTrue(os.path.exists(uploaded.temporary_file_path()))
+                    form.instance.full_clean()
+                lesson = form.save()
+                with lesson.video_file.storage.open(lesson.video_file.name, "rb") as stored:
+                    self.assertEqual(stored.read(), self.payload)
+                self.assertFalse(uploaded.closed)
+                if temporary:
+                    # Windows may retain the source until its request-owned handle closes.
+                    uploaded.close()
+                    self.assertFalse(os.path.exists(uploaded.temporary_file_path()))
+
+    def test_storage_owned_file_is_closed_but_borrowed_storage_file_is_preserved(self):
+        lesson = self.lesson("training/videos/lesson.mp4")
+        lesson.full_clean()
+        self.assertTrue(lesson.video_file.closed)
+        lesson.video_file.open("rb")
+        self.addCleanup(lesson.video_file.close)
+        lesson.video_file.seek(3)
+        lesson.full_clean()
+        self.assertFalse(lesson.video_file.closed)
+        self.assertEqual(lesson.video_file.tell(), 3)
+
+    def test_supported_signatures_and_extensions_remain_accepted(self):
+        for name, content in (("valid.mp4", self.payload), ("valid.mov", self.payload), ("valid.webm", b"\x1a\x45\xdf\xa3" + b"\x00" * 8)):
+            with self.subTest(name=name):
+                uploaded = self.upload(name=name, content=content)
+                self.lesson(uploaded).full_clean()
+                self.assertFalse(uploaded.closed)
+                self.assertEqual(uploaded.tell(), 0)
+
+    def test_invalid_content_and_extensions_still_fail_without_closing_uploads(self):
+        for temporary in (False, True):
+            for name, content, message in (("invalid.mp4", b"not a video header", "valid video format"),
+                    ("invalid.exe", self.payload, "Supported video formats")):
+                with self.subTest(temporary=temporary, name=name):
+                    uploaded = self.upload(temporary, name, content)
+                    uploaded.seek(2)
+                    with self.assertRaisesMessage(ValidationError, message):
+                        self.lesson(uploaded).full_clean()
+                    self.assertFalse(uploaded.closed)
+                    self.assertEqual(uploaded.tell(), 2)
+
+    def test_size_limit_unknown_size_and_checksum_validation_are_unchanged(self):
+        for size, message in ((2 * 1024 * 1024 * 1024 + 1, "cannot exceed 2GB"), (None, "size could not be determined")):
+            with self.subTest(size=size):
+                uploaded = self.upload()
+                uploaded.size = size
+                with self.assertRaisesMessage(ValidationError, message):
+                    self.lesson(uploaded).full_clean()
+                self.assertFalse(uploaded.closed)
+        lesson = self.lesson(self.upload())
+        lesson.video_checksum = "INVALID"
+        with self.assertRaisesMessage(ValidationError, "lowercase SHA-256 digest"):
+            lesson.full_clean()
+
+    def test_read_failure_and_closed_upload_fail_with_controlled_validation(self):
+        uploaded = self.upload()
+        uploaded.seek(4)
+        with patch.object(uploaded.file, "read", side_effect=OSError("Unreadable test stream")):
+            with self.assertRaisesMessage(ValidationError, "valid video format"):
+                self.lesson(uploaded).full_clean()
+        self.assertFalse(uploaded.closed)
+        self.assertEqual(uploaded.tell(), 4)
+        uploaded.close()
+        with self.assertRaisesMessage(ValidationError, "valid video format"):
+            self.lesson(uploaded).full_clean()
+
+
+class AdministratorVideoFormTests(CurriculumTestCase):
+    def setUp(self):
+        self.draft = self.new_version()
+        self.draft_module = Module.objects.create(training_version=self.draft, title="Administrator uploads", position=1)
+        Group.objects.get(name="Training Coordinator").user_set.add(self.user)
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.data = {"title": "Uploaded lesson", "content_type": "VIDEO", "position": 1, "minimum_watch_percent": 80, "is_required": "on"}
+        self.payload = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 12
+        self.url = f"/modules/{self.draft_module.pk}/lessons/new/"
+
+    @patch("training.video_uploads._probe_video_duration", return_value=69)
+    def test_forged_metadata_is_ignored_and_replacement_preserves_old_file(self, probe):
+        response = self.client.post(self.url, {**self.data, "video_file": ContentFile(self.payload, name="original.mp4"), "video_checksum": "forged", "video_duration_seconds": "1"})
+        self.assertEqual(response.status_code, 302)
+        lesson = Lesson.objects.get(module=self.draft_module)
+        self.assertEqual(lesson.video_checksum, hashlib.sha256(self.payload).hexdigest())
+        self.assertEqual(lesson.video_duration_seconds, 69)
+        old_name = lesson.video_file.name
+        edit_url = f"/lessons/{lesson.pk}/edit/"
+        self.assertEqual(self.client.post(edit_url, {**self.data, "video_checksum": "forged", "video_duration_seconds": "1"}).status_code, 302)
+        self.assertEqual(probe.call_count, 1)
+        lesson.refresh_from_db()
+        self.assertEqual(lesson.video_checksum, hashlib.sha256(self.payload).hexdigest())
+        self.assertEqual(lesson.video_duration_seconds, 69)
+        replacement = self.payload + b"replacement"
+        self.assertEqual(self.client.post(edit_url, {**self.data, "video_file": ContentFile(replacement, name="replacement.mp4")}).status_code, 302)
+        lesson.refresh_from_db()
+        self.assertNotEqual(lesson.video_file.name, old_name)
+        self.assertEqual(lesson.video_checksum, hashlib.sha256(replacement).hexdigest())
+        with lesson.video_file.storage.open(old_name, "rb") as original:
+            self.assertEqual(original.read(), self.payload)
+
+    def test_missing_empty_unsupported_and_unreadable_videos_have_field_errors(self):
+        for file in (None, ContentFile(b"", name="empty.mp4"), ContentFile(self.payload, name="wrong.exe"), ContentFile(b"bad content", name="bad.mp4")):
+            with self.subTest(file=getattr(file, "name", "missing")):
+                data = {**self.data, "video_file": file} if file is not None else self.data
+                response = self.client.post(self.url, data)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("video_file", response.context["form"].errors)
+                self.assertContains(response, 'class="catalog-validation" role="alert"')
+                self.assertContains(response, 'id="id_video_file_error"')
+                self.assertContains(response, 'name="title" value="Uploaded lesson"')
+                self.assertNotContains(response, "lesson_content_fields")
+                self.assertNotContains(response, "lowercase SHA-256")
+        self.assertFalse(Lesson.objects.filter(module=self.draft_module).exists())
+
+    @patch("training.video_uploads._probe_video_duration", side_effect=ValidationError("Automatic video processing is unavailable. Contact your administrator and try again."))
+    def test_unavailable_processing_is_controlled_without_accepting_manual_duration(self, probe):
+        response = self.client.post(self.url, {**self.data, "video_file": ContentFile(self.payload, name="original.mp4"), "video_duration_seconds": "69"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Automatic video processing is unavailable")
+        self.assertIn("video_file", response.context["form"].errors)
+        self.assertFalse(Lesson.objects.filter(module=self.draft_module).exists())
+
+    @patch("training.video_uploads._probe_video_duration", return_value=69)
+    def test_text_switch_clears_metadata_without_deleting_the_old_video(self, probe):
+        self.client.post(self.url, {**self.data, "video_file": ContentFile(self.payload, name="original.mp4")})
+        lesson = Lesson.objects.get(module=self.draft_module)
+        old_name = lesson.video_file.name
+        response = self.client.post(f"/lessons/{lesson.pk}/edit/", {**self.data, "content_type": "TEXT", "body": "Written lesson content"})
+        self.assertEqual(response.status_code, 302)
+        lesson.refresh_from_db()
+        self.assertFalse(lesson.video_file)
+        self.assertEqual(lesson.video_checksum, "")
+        self.assertIsNone(lesson.video_duration_seconds)
+        self.assertTrue(lesson.video_file.storage.exists(old_name))
+        empty_text = self.client.post(f"/lessons/{lesson.pk}/edit/", {**self.data, "content_type": "TEXT", "body": " "})
+        self.assertIn("body", empty_text.context["form"].errors)
+        self.assertNotContains(empty_text, "lesson_content_fields")
+
+    def test_stored_video_read_failure_has_a_friendly_field_error(self):
+        lesson = Lesson.objects.create(module=self.draft_module, title="Stored video", position=1, content_type="VIDEO",
+            video_file="training/videos/lesson.mp4", video_duration_seconds=69, video_checksum="a" * 64)
+        form = LessonForm(self.data, instance=lesson)
+        with patch.object(lesson.video_file.storage, "size", side_effect=OSError("private filesystem details")):
+            self.assertFalse(form.is_valid())
+        self.assertIn("video_file", form.errors)
+        self.assertIn("saved video could not be read", str(form.errors["video_file"]))
+        self.assertNotIn("private filesystem", str(form.errors))
+
+    def test_form_hides_metadata_and_training_editor_links_to_version_management(self):
+        page = self.client.get(self.url)
+        self.assertNotContains(page, 'name="video_checksum"')
+        self.assertNotContains(page, 'name="video_duration_seconds"')
+        self.assertContains(page, 'accept=".mp4,.webm,.mov"')
+        self.assertContains(page, "calculated automatically")
+        self.assertEqual(page.context["form"]["position"].value(), 1)
+        self.assertEqual(page.context["form"]["content_type"].value(), "VIDEO")
+        edit = self.client.get(f"/trainings/{self.training.pk}/edit/")
+        self.assertContains(edit, f'href="/trainings/{self.training.pk}/versions/"')
+        self.assertContains(edit, "Versions and curriculum")
+        viewer = get_user_model().objects.create_user(username="edit-catalog-only")
+        viewer.user_permissions.add(Permission.objects.get(content_type__app_label="training", codename="change_training"))
+        self.client.force_login(viewer)
+        self.assertNotContains(self.client.get(f"/trainings/{self.training.pk}/edit/"), "Versions and curriculum")
+
+
 class AssignmentTests(CurriculumTestCase):
     def duplicate(self, **overrides):
         values = dict(employee=self.employee, training_version=self.version, department_at_assignment=self.department,
@@ -584,12 +921,16 @@ class AssignmentViewTests(CurriculumTestCase):
     def test_role_requirement_management_uses_existing_assignment_permission(self):
         for user in (self.admin, self.coordinator):
             client = self.client_for(user)
-            self.assertContains(client.get("/assignments/"), "Manage job-role requirements")
+            self.assertContains(client.get("/assignments/"), "Job-role requirements")
             self.assertEqual(client.get("/assignments/requirements/").status_code, 200)
-            self.assertContains(client.get("/assignments/requirements/new/"), 'class="form-stack"')
+            requirement_form = client.get("/assignments/requirements/new/")
+            self.assertRegex(
+                requirement_form.content.decode(),
+                r'<form(?=[^>]*\bmethod="post")(?=[^>]*\bclass="[^"]*\bform-stack\b)[^>]*>',
+            )
         for user in (self.manager_user, self.employee_user):
             client = self.client_for(user)
-            self.assertNotContains(client.get("/assignments/"), "Manage job-role requirements")
+            self.assertNotContains(client.get("/assignments/"), "Job-role requirements")
             self.assertEqual(client.get("/assignments/requirements/").status_code, 403)
             self.assertEqual(client.get("/assignments/requirements/new/").status_code, 403)
             self.assertEqual(client.post("/assignments/requirements/new/", {
@@ -676,15 +1017,23 @@ class AssignmentViewTests(CurriculumTestCase):
     def test_employee_and_manager_assignment_scopes_are_enforced(self):
         employee_client = self.client_for(self.employee_user)
         response = employee_client.get("/assignments/")
-        self.assertContains(response, str(self.employee))
-        self.assertNotContains(response, str(self.report))
+        self.assertContains(response, f'href="/assignments/{self.assignment.pk}/"')
+        self.assertContains(response, self.training.catalog_title)
+        self.assertContains(response, self.version.title)
+        self.assertNotContains(response, self.report.display_name)
+        self.assertNotContains(response, self.report.employee_code)
         self.assertEqual(employee_client.get(f"/assignments/{self.report.pk}/").status_code, 404)
 
         manager_client = self.client_for(self.manager_user)
-        self.assertContains(manager_client.get("/assignments/"), str(self.employee))
+        manager_response = manager_client.get("/assignments/")
+        self.assertContains(manager_response, self.employee.display_name)
+        self.assertContains(manager_response, self.employee.employee_code)
         outside = TrainingAssignment.objects.create(employee=self.other, training_version=self.version,
             department_at_assignment=self.other.department, job_role_at_assignment=self.other.job_role,
             assigned_by=self.coordinator)
+        manager_response = manager_client.get("/assignments/")
+        self.assertNotContains(manager_response, self.other.display_name)
+        self.assertNotContains(manager_response, self.other.employee_code)
         self.assertEqual(manager_client.get(f"/assignments/{outside.pk}/").status_code, 404)
 
     def test_administrator_assignment_pages_show_relationships_and_real_actions(self):
@@ -694,6 +1043,7 @@ class AssignmentViewTests(CurriculumTestCase):
         self.assertContains(response, self.training.catalog_title)
         self.assertContains(response, self.version.title)
         self.assertContains(response, self.employee.display_name)
+        self.assertContains(response, self.employee.employee_code)
         self.assertContains(response, f'/assignments/{self.assignment.pk}/')
         self.assertContains(response, 'href="/assignments/new/"')
         self.assertContains(response, 'href="/assignments/role/new/"')
@@ -704,7 +1054,10 @@ class AssignmentViewTests(CurriculumTestCase):
         self.assertEqual(client.get("/assignments/new/").status_code, 200)
         role_form = client.get("/assignments/role/new/")
         self.assertEqual(role_form.status_code, 200)
-        self.assertContains(role_form, "No active job-role requirements are available.")
+        self.assertContains(
+            role_form,
+            "There are no active requirements for published training versions to select.",
+        )
         self.assertNotContains(role_form, "<button type=\"submit\">Create missing assignments</button>")
 
     def test_manager_and_employee_assignment_pages_keep_scope_and_hide_management(self):
@@ -744,7 +1097,7 @@ class AssignmentViewTests(CurriculumTestCase):
         Group.objects.get(name="Employee").user_set.add(self.other_user)
         empty = self.client_for(self.other_user).get("/assignments/")
         self.assertEqual(empty.status_code, 200)
-        self.assertContains(empty, "You have no training assignments yet.")
+        self.assertContains(empty, "You do not have any training assignments yet.")
 
         self.assignment.due_at = self.now + timedelta(minutes=1)
         self.assignment.save()
@@ -1189,7 +1542,7 @@ class LearnerFrontendTests(CurriculumTestCase):
         )
         self.client.force_login(other_user)
         response = self.client.get("/assignments/")
-        self.assertContains(response, "You have no training assignments yet.")
+        self.assertContains(response, "You do not have any training assignments yet.")
 
 
 class ProtectedVideoTests(CurriculumTestCase):
