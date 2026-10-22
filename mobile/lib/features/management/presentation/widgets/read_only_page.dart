@@ -8,6 +8,7 @@ class ReadOnlyPage<T> extends StatelessWidget {
   final AsyncValue<T> value;
   final Future<void> Function() refresh;
   final List<Widget> Function(T) content;
+  final List<Widget> actions;
 
   const ReadOnlyPage({
     super.key,
@@ -15,6 +16,7 @@ class ReadOnlyPage<T> extends StatelessWidget {
     required this.value,
     required this.refresh,
     required this.content,
+    this.actions = const [],
   });
 
   Future<void> _refresh() async {
@@ -30,6 +32,7 @@ class ReadOnlyPage<T> extends StatelessWidget {
     appBar: AppBar(
       title: Text(title),
       actions: [
+        ...actions,
         IconButton(
           tooltip: 'Refresh',
           onPressed: value.isLoading ? null : _refresh,

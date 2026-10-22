@@ -35,8 +35,8 @@ class WorkspaceScreen extends ConsumerWidget {
                 leading: Icon(Icons.business_outlined),
                 title: Text('Management access'),
                 subtitle: Text(
-                  'Available read-only pages are listed below. '
-                  'Other management workflows are not available in this build.',
+                  'Create/edit Departments and Job Roles when permitted. '
+                  'Other management workflows are unavailable.',
                 ),
               ),
             ),

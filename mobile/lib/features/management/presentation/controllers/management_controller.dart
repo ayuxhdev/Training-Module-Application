@@ -17,6 +17,144 @@ String? managementAccount(AuthState auth) {
   return '${identity.userId}:${identity.username}:${identity.personalAccount}:${capabilities.join(',')}';
 }
 
+bool canCreateOrganizationReference(
+  AuthenticatedIdentity identity,
+  ReferenceKind kind,
+) => identity.capabilities.contains(kind.addPermission);
+
+bool canEditOrganizationReference(
+  AuthenticatedIdentity identity,
+  ReferenceKind kind,
+) => identity.capabilities.contains(kind.changePermission);
+
+bool canEditEmployee(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('organization.change_employee');
+
+class EmployeeProfileMutationController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  const EmployeeProfileMutationController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<DirectoryEmployee> save({
+    required DirectoryEmployee original,
+    required String displayName,
+    required int departmentId,
+    required int jobRoleId,
+    required String dateJoined,
+    required bool updateReportingManager,
+    int? reportingManagerId,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canEditEmployee(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot edit employee profiles.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final saved = await repository.updateEmployeeProfile(
+      original,
+      displayName: displayName,
+      departmentId: departmentId,
+      jobRoleId: jobRoleId,
+      dateJoined: dateJoined,
+      updateReportingManager: updateReportingManager,
+      reportingManagerId: reportingManagerId,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canEditEmployee(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before the save completed. Reopen the form to continue.',
+        statusCode: 403,
+      );
+    }
+    return saved;
+  }
+}
+
+final employeeProfileMutationProvider =
+    Provider<EmployeeProfileMutationController>(
+      (ref) => EmployeeProfileMutationController(
+        repository: ref.watch(managementRepositoryProvider),
+        readAuth: () => ref.read(authControllerProvider),
+      ),
+    );
+
+class OrganizationReferenceMutationController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  const OrganizationReferenceMutationController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<OrganizationReference> save({
+    required ReferenceKind kind,
+    int? id,
+    OrganizationReference? original,
+    required String code,
+    required String name,
+    required String description,
+    required bool isActive,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !(id == null
+            ? canCreateOrganizationReference(initialAuth.identity, kind)
+            : canEditOrganizationReference(initialAuth.identity, kind))) {
+      throw ApiError(
+        message: 'This account cannot save this ${kind.singular}.',
+        statusCode: 403,
+      );
+    }
+    if (id != null && (original == null || original.id != id)) {
+      throw ArgumentError.value(original, 'original');
+    }
+    final account = managementAccount(initialAuth);
+    final saved = await repository.saveReference(
+      kind,
+      id: id,
+      original: original,
+      code: code,
+      name: name,
+      description: description,
+      isActive: isActive,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !(id == null
+            ? canCreateOrganizationReference(currentAuth.identity, kind)
+            : canEditOrganizationReference(currentAuth.identity, kind))) {
+      throw ApiError(
+        message: 'The account changed before the save completed. Reopen the form to continue.',
+        statusCode: 403,
+      );
+    }
+    return saved;
+  }
+}
+
+final organizationReferenceMutationProvider =
+    Provider<OrganizationReferenceMutationController>(
+      (ref) => OrganizationReferenceMutationController(
+        repository: ref.watch(managementRepositoryProvider),
+        readAuth: () => ref.read(authControllerProvider),
+      ),
+    );
+
 CancelToken _request(Ref ref, bool Function(AuthenticatedIdentity) allowed) {
   final account = ref.watch(authControllerProvider.select(managementAccount));
   final auth = ref.read(authControllerProvider);
@@ -63,6 +201,19 @@ final directoryEmployeeProvider = FutureProvider.autoDispose
       return ref
           .watch(managementRepositoryProvider)
           .employee(id, cancelToken: request);
+    }, retry: (_, _) => null);
+
+final employeeEditChoicesProvider = FutureProvider.autoDispose
+    .family<EmployeeEditChoices, int>((ref, employeeId) {
+      if (employeeId <= 0) throw ArgumentError.value(employeeId, 'employeeId');
+      final request = _request(
+        ref,
+        (identity) =>
+            identity.capabilities.contains('organization.view_employee'),
+      );
+      return ref
+          .watch(managementRepositoryProvider)
+          .employeeEditChoices(employeeId: employeeId, cancelToken: request);
     }, retry: (_, _) => null);
 
 typedef ReferencePageRequest = ({ReferenceKind kind, int page});

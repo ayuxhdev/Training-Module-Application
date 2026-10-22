@@ -10,6 +10,12 @@ extension ReferenceKindLabels on ReferenceKind {
   String get permission => this == ReferenceKind.departments
       ? 'organization.view_department'
       : 'organization.view_jobrole';
+  String get addPermission => this == ReferenceKind.departments
+      ? 'organization.add_department'
+      : 'organization.add_jobrole';
+  String get changePermission => this == ReferenceKind.departments
+      ? 'organization.change_department'
+      : 'organization.change_jobrole';
 }
 
 class OrganizationReference {
@@ -40,6 +46,7 @@ class DirectoryEmployee {
   final String employeeCode, displayName;
   final OrganizationReference department, jobRole;
   final String? reportingManager;
+  final int? reportingManagerId;
   final bool isActive;
   final String? dateJoined, loginStatus;
 
@@ -51,6 +58,7 @@ class DirectoryEmployee {
     required this.jobRole,
     required this.isActive,
     this.reportingManager,
+    this.reportingManagerId,
     this.dateJoined,
     this.loginStatus,
   });
@@ -68,11 +76,26 @@ class DirectoryEmployee {
       json['job_role'] as Map<String, dynamic>,
     ),
     reportingManager: json['reporting_manager'] as String?,
+    reportingManagerId: json['reporting_manager_id'] as int?,
     isActive: json['is_active'] as bool,
     // Date-only employment dates must not be shifted through a device timezone.
     dateJoined: json['date_joined'] as String?,
     loginStatus: json['login_status'] as String?,
   );
+}
+
+class EmployeeEditChoices {
+  final List<OrganizationReference> departments;
+  final List<OrganizationReference> jobRoles;
+  final List<DirectoryEmployee> reportingManagers;
+
+  EmployeeEditChoices({
+    required List<OrganizationReference> departments,
+    required List<OrganizationReference> jobRoles,
+    required List<DirectoryEmployee> reportingManagers,
+  }) : departments = List.unmodifiable(departments),
+       jobRoles = List.unmodifiable(jobRoles),
+       reportingManagers = List.unmodifiable(reportingManagers);
 }
 
 class ManagementPage<T> {

@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
+import 'package:training_app/features/auth/domain/models/authenticated_identity.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:training_app/core/presentation/screens/app_shell.dart';
 import 'package:training_app/core/presentation/screens/workspace_screen.dart';
 import 'package:training_app/features/management/presentation/screens/management_dashboard_screen.dart';
 import 'package:training_app/features/management/presentation/screens/organization_screens.dart';
+import 'package:training_app/features/management/presentation/screens/organization_reference_form_screen.dart';
+import 'package:training_app/features/management/presentation/screens/employee_profile_form_screen.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -24,6 +27,30 @@ import 'package:training_app/features/assessments/presentation/screens/assessmen
 import 'package:training_app/features/certificates/presentation/screens/certificate_list_screen.dart';
 import 'package:training_app/features/certificates/presentation/screens/certificate_detail_screen.dart';
 import 'package:training_app/features/notifications/presentation/screens/notification_center_screen.dart';
+
+bool _canAccessWorkspacePath(String path, AuthenticatedIdentity identity) {
+  if (path == '/workspace/dashboard') {
+    return canViewManagementDashboard(identity);
+  }
+  if (path == '/workspace/employees' ||
+      path.startsWith('/workspace/employees/')) {
+    if (RegExp(r'^/workspace/employees/[1-9][0-9]*/edit$').hasMatch(path)) {
+      return canEditEmployee(identity);
+    }
+    return identity.capabilities.contains('organization.view_employee');
+  }
+  for (final kind in ReferenceKind.values) {
+    final base = '/workspace/${kind.path}';
+    if (path == base) return identity.capabilities.contains(kind.permission);
+    if (path == '$base/new') {
+      return canCreateOrganizationReference(identity, kind);
+    }
+    if (RegExp('^${RegExp.escape(base)}/[1-9][0-9]*/edit\$').hasMatch(path)) {
+      return canEditOrganizationReference(identity, kind);
+    }
+  }
+  return false;
+}
 
 // Create a Listenable to trigger router redirects on auth state changes
 class RouterNotifier extends ChangeNotifier {
@@ -69,15 +96,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path.startsWith('/profile/certificates/');
         if (personal && !identity.canLearn) return identity.homePath;
         if (path.startsWith('/workspace/')) {
-          final allowed = path == '/workspace/dashboard'
-              ? canViewManagementDashboard(identity)
-              : path == '/workspace/employees' ||
-                    path.startsWith('/workspace/employees/')
-              ? identity.capabilities.contains('organization.view_employee')
-              : path == '/workspace/departments'
-              ? identity.capabilities.contains('organization.view_department')
-              : path == '/workspace/job-roles' &&
-                    identity.capabilities.contains('organization.view_jobrole');
+          final allowed = _canAccessWorkspacePath(path, identity);
           if (!allowed) return identity.homePath;
         }
         if (path == '/workspace' &&
@@ -152,16 +171,85 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             },
           ),
           GoRoute(
+            path: '/workspace/employees/:employeeId/edit',
+            builder: (_, state) {
+              final id = int.tryParse(state.pathParameters['employeeId'] ?? '');
+              if (id == null || id <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid employee ID'),
+                );
+              }
+              return EmployeeProfileFormScreen(
+                employeeId: id,
+                initialEmployee: state.extra is DirectoryEmployee
+                    ? state.extra as DirectoryEmployee
+                    : null,
+              );
+            },
+          ),
+          GoRoute(
             path: '/workspace/departments',
             builder: (_, _) => const OrganizationListScreen(
               referenceKind: ReferenceKind.departments,
             ),
           ),
           GoRoute(
+            path: '/workspace/departments/new',
+            builder: (_, _) => const OrganizationReferenceFormScreen(
+              kind: ReferenceKind.departments,
+            ),
+          ),
+          GoRoute(
+            path: '/workspace/departments/:referenceId/edit',
+            builder: (_, state) {
+              final id = int.tryParse(
+                state.pathParameters['referenceId'] ?? '',
+              );
+              if (id == null || id <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid reference ID'),
+                );
+              }
+              return OrganizationReferenceFormScreen(
+                kind: ReferenceKind.departments,
+                referenceId: id,
+                initialReference: state.extra is OrganizationReference
+                    ? state.extra as OrganizationReference
+                    : null,
+              );
+            },
+          ),
+          GoRoute(
             path: '/workspace/job-roles',
             builder: (_, _) => const OrganizationListScreen(
               referenceKind: ReferenceKind.jobRoles,
             ),
+          ),
+          GoRoute(
+            path: '/workspace/job-roles/new',
+            builder: (_, _) => const OrganizationReferenceFormScreen(
+              kind: ReferenceKind.jobRoles,
+            ),
+          ),
+          GoRoute(
+            path: '/workspace/job-roles/:referenceId/edit',
+            builder: (_, state) {
+              final id = int.tryParse(
+                state.pathParameters['referenceId'] ?? '',
+              );
+              if (id == null || id <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid reference ID'),
+                );
+              }
+              return OrganizationReferenceFormScreen(
+                kind: ReferenceKind.jobRoles,
+                referenceId: id,
+                initialReference: state.extra is OrganizationReference
+                    ? state.extra as OrganizationReference
+                    : null,
+              );
+            },
           ),
           GoRoute(
             path: '/dashboard',

@@ -16,13 +16,21 @@ class ManagementRepository {
     String path,
     T Function(Map<String, dynamic>) parse, {
     int? page,
+    int? pageSize,
     CancelToken? cancelToken,
   }) async {
     if (page != null && page <= 0) throw ArgumentError.value(page, 'page');
+    if (pageSize != null && (pageSize <= 0 || pageSize > 100)) {
+      throw ArgumentError.value(pageSize, 'pageSize');
+    }
+    final query = <String, dynamic>{
+      if (page != null && page > 1) 'page': page,
+      'page_size': ?pageSize,
+    };
     try {
       final response = await apiClient.dio.get(
         '/management/$path',
-        queryParameters: page == null || page == 1 ? null : {'page': page},
+        queryParameters: query.isEmpty ? null : query,
         cancelToken: cancelToken,
       );
       if (cancelToken?.cancelError case final error?) throw error;
@@ -40,17 +48,20 @@ class ManagementRepository {
 
   Future<ManagementPage<DirectoryEmployee>> employees({
     int page = 1,
+    int? pageSize,
     CancelToken? cancelToken,
   }) => _get(
     'employees/',
     (json) => ManagementPage.fromJson(json, DirectoryEmployee.fromJson),
     page: page,
+    pageSize: pageSize,
     cancelToken: cancelToken,
   );
 
   Future<DirectoryEmployee> employee(int id, {CancelToken? cancelToken}) async {
     if (id <= 0) throw ArgumentError.value(id, 'id');
     return _get('employees/$id/', (json) {
+      _validateManagerResponseContract(json);
       final result = DirectoryEmployee.fromJson(json);
       if (result.id != id) {
         throw const FormatException('Employee identity mismatch.');
@@ -62,11 +73,232 @@ class ManagementRepository {
   Future<ManagementPage<OrganizationReference>> references(
     ReferenceKind kind, {
     int page = 1,
+    int? pageSize,
     CancelToken? cancelToken,
   }) => _get(
     '${kind.path}/',
     (json) => ManagementPage.fromJson(json, OrganizationReference.fromJson),
     page: page,
+    pageSize: pageSize,
     cancelToken: cancelToken,
   );
+
+  Future<OrganizationReference> saveReference(
+    ReferenceKind kind, {
+    int? id,
+    OrganizationReference? original,
+    required String code,
+    required String name,
+    required String description,
+    required bool isActive,
+    CancelToken? cancelToken,
+  }) async {
+    if (id != null && id <= 0) throw ArgumentError.value(id, 'id');
+    final path = '/management/${kind.path}/${id == null ? '' : '$id/'}';
+    final Map<String, Object> data;
+    if (id == null) {
+      data = {
+        'code': code,
+        'name': name,
+        'description': description,
+        'is_active': isActive,
+      };
+    } else {
+      if (original == null || original.id != id) {
+        throw ArgumentError.value(original, 'original');
+      }
+      data = {
+        if (code != original.code) 'code': code,
+        if (name != original.name) 'name': name,
+        if (description != original.description) 'description': description,
+        if (isActive != original.isActive) 'is_active': isActive,
+      };
+      if (data.isEmpty) {
+        throw ArgumentError('No organization reference fields changed.');
+      }
+    }
+    try {
+      final response = id == null
+          ? await apiClient.dio.post(path, data: data, cancelToken: cancelToken)
+          : await apiClient.dio.patch(
+              path,
+              data: data,
+              cancelToken: cancelToken,
+            );
+      if (cancelToken?.cancelError case final error?) throw error;
+      final saved = OrganizationReference.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+      if (id != null && saved.id != id) {
+        throw const FormatException(
+          'Organization reference identity mismatch.',
+        );
+      }
+      return saved;
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<EmployeeEditChoices> employeeEditChoices({
+    required int employeeId,
+    int pageSize = 100,
+    CancelToken? cancelToken,
+  }) async {
+    if (employeeId <= 0) {
+      throw ArgumentError.value(employeeId, 'employeeId');
+    }
+    if (pageSize <= 0 || pageSize > 100) {
+      throw ArgumentError.value(pageSize, 'pageSize');
+    }
+    final pages = await Future.wait([
+      _allReferencePages(
+        ReferenceKind.departments,
+        cancelToken,
+        pageSize: pageSize,
+      ),
+      _allReferencePages(
+        ReferenceKind.jobRoles,
+        cancelToken,
+        pageSize: pageSize,
+      ),
+      _allEmployeePages(cancelToken, pageSize: pageSize),
+    ]);
+    return EmployeeEditChoices(
+      departments: pages[0] as List<OrganizationReference>,
+      jobRoles: pages[1] as List<OrganizationReference>,
+      reportingManagers: (pages[2] as List<DirectoryEmployee>)
+          .where((employee) => employee.id != employeeId)
+          .toList(),
+    );
+  }
+
+  Future<List<OrganizationReference>> _allReferencePages(
+    ReferenceKind kind,
+    CancelToken? cancelToken, {
+    int pageSize = 100,
+    int maxPages = 50,
+  }) async {
+    final items = <OrganizationReference>[];
+    final seenIds = <int>{};
+    var pageNumber = 1;
+    var hasMore = true;
+    while (hasMore && pageNumber <= maxPages) {
+      final page = await references(
+        kind,
+        page: pageNumber,
+        pageSize: pageSize,
+        cancelToken: cancelToken,
+      );
+      if (page.items.isEmpty) break;
+      var newCount = 0;
+      for (final item in page.items) {
+        if (seenIds.add(item.id)) {
+          items.add(item);
+          newCount++;
+        }
+      }
+      if (newCount == 0) break;
+      hasMore = page.hasMore;
+      pageNumber++;
+    }
+    return items;
+  }
+
+  Future<List<DirectoryEmployee>> _allEmployeePages(
+    CancelToken? cancelToken, {
+    int pageSize = 100,
+    int maxPages = 50,
+  }) async {
+    final items = <DirectoryEmployee>[];
+    final seenIds = <int>{};
+    var pageNumber = 1;
+    var hasMore = true;
+    while (hasMore && pageNumber <= maxPages) {
+      final page = await employees(
+        page: pageNumber,
+        pageSize: pageSize,
+        cancelToken: cancelToken,
+      );
+      if (page.items.isEmpty) break;
+      var newCount = 0;
+      for (final item in page.items) {
+        if (seenIds.add(item.id)) {
+          items.add(item);
+          newCount++;
+        }
+      }
+      if (newCount == 0) break;
+      hasMore = page.hasMore;
+      pageNumber++;
+    }
+    return items;
+  }
+
+  Future<DirectoryEmployee> updateEmployeeProfile(
+    DirectoryEmployee original, {
+    required String displayName,
+    required int departmentId,
+    required int jobRoleId,
+    required String dateJoined,
+    required bool updateReportingManager,
+    int? reportingManagerId,
+    CancelToken? cancelToken,
+  }) async {
+    if (original.id <= 0) throw ArgumentError.value(original.id, 'employeeId');
+    if (departmentId <= 0) {
+      throw ArgumentError.value(departmentId, 'departmentId');
+    }
+    if (jobRoleId <= 0) throw ArgumentError.value(jobRoleId, 'jobRoleId');
+    if (updateReportingManager &&
+        reportingManagerId != null &&
+        reportingManagerId <= 0) {
+      throw ArgumentError.value(reportingManagerId, 'reportingManagerId');
+    }
+    final data = <String, Object?>{
+      if (displayName != original.displayName) 'display_name': displayName,
+      if (departmentId != original.department.id) 'department': departmentId,
+      if (jobRoleId != original.jobRole.id) 'job_role': jobRoleId,
+      if (dateJoined != original.dateJoined) 'date_joined': dateJoined,
+      if (updateReportingManager) 'reporting_manager': reportingManagerId,
+    };
+    if (data.isEmpty) {
+      throw ArgumentError('No employee profile fields changed.');
+    }
+    final path = '/management/employees/${original.id}/';
+    try {
+      final response = await apiClient.dio.patch(
+        path,
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      final json = response.data as Map<String, dynamic>;
+      _validateManagerResponseContract(json);
+      final saved = DirectoryEmployee.fromJson(json);
+      if (saved.id != original.id) {
+        throw const FormatException('Employee identity mismatch.');
+      }
+      return saved;
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  void _validateManagerResponseContract(Map<String, dynamic> json) {
+    if (!json.containsKey('reporting_manager_id') ||
+        !json.containsKey('reporting_manager')) {
+      throw const FormatException(
+        'Employee response is missing reporting manager data.',
+      );
+    }
+    final managerId = json['reporting_manager_id'];
+    final managerName = json['reporting_manager'];
+    if ((managerId != null && (managerId is! int || managerId <= 0)) ||
+        (managerName != null && managerName is! String)) {
+      throw const FormatException(
+        'Employee response has invalid reporting manager data.',
+      );
+    }
+  }
 }

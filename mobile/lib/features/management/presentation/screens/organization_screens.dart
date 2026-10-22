@@ -59,6 +59,22 @@ class _OrganizationListScreenState
     ),
   ];
 
+  Future<void> _openReferenceForm(
+    BuildContext context,
+    WidgetRef ref,
+    ReferenceKind kind, {
+    OrganizationReference? reference,
+  }) async {
+    final path = reference == null
+        ? '/workspace/${kind.path}/new'
+        : '/workspace/${kind.path}/${reference.id}/edit';
+    final saved = await context.push<bool>(path, extra: reference);
+    if (saved == true && mounted) {
+      setState(() => _page = 1);
+      ref.invalidate(organizationReferencesProvider((kind: kind, page: 1)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authControllerProvider);
@@ -109,8 +125,18 @@ class _OrganizationListScreenState
         ),
       );
     }
+    final canCreate = canCreateOrganizationReference(auth.identity, kind);
+    final canEdit = canEditOrganizationReference(auth.identity, kind);
     return ReadOnlyPage<ManagementPage<OrganizationReference>>(
       title: kind.title,
+      actions: [
+        if (canCreate)
+          IconButton(
+            tooltip: 'Add ${kind.singular}',
+            onPressed: () => _openReferenceForm(context, ref, kind),
+            icon: const Icon(Icons.add),
+          ),
+      ],
       value: ref.watch(
         organizationReferencesProvider((kind: kind, page: _page)),
       ),
@@ -125,14 +151,31 @@ class _OrganizationListScreenState
       content: (page) => _items(
         page,
         (item) => CustomCard(
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(item.name, style: Theme.of(context).textTheme.titleMedium),
-              Text(item.code),
-              if (item.description.isNotEmpty) Text(item.description),
-              const SizedBox(height: 8),
-              _status(item.isActive),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.name,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    Text(item.code),
+                    if (item.description.isNotEmpty) Text(item.description),
+                    const SizedBox(height: 8),
+                    _status(item.isActive),
+                  ],
+                ),
+              ),
+              if (canEdit)
+                IconButton(
+                  tooltip: 'Edit ${kind.singular}: ${item.name}',
+                  onPressed: () =>
+                      _openReferenceForm(context, ref, kind, reference: item),
+                  icon: const Icon(Icons.edit_outlined),
+                ),
             ],
           ),
         ),
@@ -157,9 +200,27 @@ class DirectoryEmployeeScreen extends ConsumerWidget {
         !auth.identity.capabilities.contains('organization.view_employee')) {
       return const SizedBox.shrink();
     }
+    final employee = ref.watch(directoryEmployeeProvider(employeeId));
     return ReadOnlyPage<DirectoryEmployee>(
       title: 'Employee details',
-      value: ref.watch(directoryEmployeeProvider(employeeId)),
+      actions: [
+        if (canEditEmployee(auth.identity) && employee.hasValue)
+          IconButton(
+            tooltip: 'Edit employee',
+            onPressed: () async {
+              final saved = await context.push<bool>(
+                '/workspace/employees/$employeeId/edit',
+                extra: employee.value,
+              );
+              if (saved == true) {
+                ref.invalidate(directoryEmployeeProvider(employeeId));
+                ref.invalidate(employeeDirectoryProvider);
+              }
+            },
+            icon: const Icon(Icons.edit_outlined),
+          ),
+      ],
+      value: employee,
       refresh: () => ref
           .refresh(directoryEmployeeProvider(employeeId).future)
           .then<void>((_) {}),

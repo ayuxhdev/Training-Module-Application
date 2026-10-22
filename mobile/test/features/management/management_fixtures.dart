@@ -16,6 +16,7 @@ AuthenticatedIdentity managementIdentity({
   bool team = false,
   String username = 'admin',
   Set<String>? capabilities,
+  bool writeReferences = false,
 }) => AuthenticatedIdentity(
   userId: team ? 2 : 1,
   username: username,
@@ -43,6 +44,12 @@ AuthenticatedIdentity managementIdentity({
         'organization.view_employee',
         'organization.view_department',
         'organization.view_jobrole',
+        if (writeReferences) ...{
+          'organization.add_department',
+          'organization.change_department',
+          'organization.add_jobrole',
+          'organization.change_jobrole',
+        },
       },
 );
 
@@ -65,6 +72,38 @@ Map<String, dynamic> employeeJson([int id = 1, String? name]) => {
   'date_joined': '2020-01-02',
   'login_status': 'ACTIVE',
 };
+
+Map<String, dynamic> employeeDetailJson([int id = 1, String? name]) =>
+    employeeJson(id, name)..['reporting_manager_id'] = 9;
+
+EmployeeEditChoices employeeEditChoicesFixture({int employeeId = 1}) =>
+    EmployeeEditChoices(
+      departments: [
+        OrganizationReference(id: 1, code: 'OPS', name: 'Operations'),
+        const OrganizationReference(
+          id: 2,
+          code: 'ARCHIVE',
+          name: 'Archived Department',
+          isActive: false,
+        ),
+      ],
+      jobRoles: [
+        const OrganizationReference(id: 1, code: 'OP', name: 'Operator'),
+        const OrganizationReference(
+          id: 2,
+          code: 'LEAD',
+          name: 'Lead',
+          isActive: false,
+        ),
+      ],
+      reportingManagers: [
+        for (final id in [1, 2, 3])
+          if (id != employeeId)
+            DirectoryEmployee.fromJson(
+              employeeJson(id, id == 2 ? 'Manager Two' : 'Employee $id'),
+            ),
+      ],
+    );
 
 Map<String, dynamic> pageJson(
   List<Map<String, dynamic>> items, {

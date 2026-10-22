@@ -1,4 +1,8 @@
+from collections.abc import Mapping
+
 from rest_framework import serializers
+
+from organization.models import Department, Employee, JobRole
 
 
 class ReferenceSummarySerializer(serializers.Serializer):
@@ -10,6 +14,29 @@ class ReferenceSummarySerializer(serializers.Serializer):
 class OrganizationReferenceSerializer(ReferenceSummarySerializer):
     description = serializers.CharField()
     is_active = serializers.BooleanField()
+
+
+class OrganizationReferenceWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        fields = ("id", "code", "name", "description", "is_active")
+        read_only_fields = ("id",)
+
+    def to_internal_value(self, data):
+        if isinstance(data, Mapping):
+            unexpected = set(data) - {"code", "name", "description", "is_active"}
+            if unexpected:
+                raise serializers.ValidationError({field: ["This field is not writable."] for field in sorted(unexpected)})
+        return super().to_internal_value(data)
+
+
+class DepartmentWriteSerializer(OrganizationReferenceWriteSerializer):
+    class Meta(OrganizationReferenceWriteSerializer.Meta):
+        model = Department
+
+
+class JobRoleWriteSerializer(OrganizationReferenceWriteSerializer):
+    class Meta(OrganizationReferenceWriteSerializer.Meta):
+        model = JobRole
 
 
 class EmployeeDirectorySerializer(serializers.Serializer):
@@ -24,6 +51,7 @@ class EmployeeDirectorySerializer(serializers.Serializer):
 
 
 class EmployeeDirectoryDetailSerializer(EmployeeDirectorySerializer):
+    reporting_manager_id = serializers.IntegerField(read_only=True, allow_null=True)
     date_joined = serializers.DateField()
     login_status = serializers.SerializerMethodField()
 
@@ -31,6 +59,19 @@ class EmployeeDirectoryDetailSerializer(EmployeeDirectorySerializer):
         if employee.user_id is None:
             return "NOT_LINKED"
         return "ACTIVE" if employee.user.is_active else "INACTIVE"
+
+
+class EmployeeProfileWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Employee
+        fields = ("display_name", "department", "job_role", "reporting_manager", "date_joined")
+
+    def to_internal_value(self, data):
+        if isinstance(data, Mapping):
+            unexpected = set(data) - set(self.Meta.fields)
+            if unexpected:
+                raise serializers.ValidationError({field: ["This field is not writable."] for field in sorted(unexpected)})
+        return super().to_internal_value(data)
 
 
 class ManagementMetricsSerializer(serializers.Serializer):

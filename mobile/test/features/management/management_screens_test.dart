@@ -18,6 +18,8 @@ import 'package:training_app/features/dashboard/presentation/controllers/dashboa
 import 'package:training_app/features/management/data/repositories/management_repository.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/screens/organization_screens.dart';
+import 'package:training_app/features/management/presentation/screens/organization_reference_form_screen.dart';
+import 'package:training_app/features/management/presentation/screens/employee_profile_form_screen.dart';
 import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
 
 import 'management_fixtures.dart';
@@ -33,7 +35,10 @@ void main() {
   late ScreenRepositoryMock repository;
   late ManagementTestAuth auth;
   late GoRouter router;
-  setUpAll(() => registerFallbackValue(CancelToken()));
+  setUpAll(() {
+    registerFallbackValue(CancelToken());
+    registerFallbackValue(DirectoryEmployee.fromJson(employeeJson()));
+  });
   setUp(() {
     repository = ScreenRepositoryMock();
     when(() => repository.dashboard(cancelToken: any(named: 'cancelToken')))
@@ -48,7 +53,17 @@ void main() {
       () => repository.employee(any(), cancelToken: any(named: 'cancelToken')),
     ).thenAnswer(
       (call) async => DirectoryEmployee.fromJson(
-        employeeJson(call.positionalArguments.first as int),
+        employeeDetailJson(call.positionalArguments.first as int),
+      ),
+    );
+    when(
+      () => repository.employeeEditChoices(
+        employeeId: any(named: 'employeeId'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer(
+      (call) async => employeeEditChoicesFixture(
+        employeeId: call.namedArguments[#employeeId] as int,
       ),
     );
     for (final kind in ReferenceKind.values) {
@@ -274,6 +289,533 @@ void main() {
     },
   );
 
+  testWidgets('employee edit action requires server-issued capability', (
+    tester,
+  ) async {
+    await launch(
+      tester,
+      path: '/workspace/employees/1',
+      identity: managementIdentity(
+        capabilities: {'organization.view_employee'},
+      ),
+    );
+    expect(find.byTooltip('Edit employee'), findsNothing);
+
+    auth.setAuth(
+      AuthAuthenticated.identity(
+        managementIdentity(
+          capabilities: {
+            'organization.view_employee',
+            'organization.change_employee',
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Edit employee'), findsOneWidget);
+  });
+
+  testWidgets(
+    'employee edit displays protected fields and submits selected relationship IDs',
+    (tester) async {
+      when(
+        () => repository.updateEmployeeProfile(
+          any(),
+          displayName: 'Updated employee',
+          departmentId: 2,
+          jobRoleId: 2,
+          dateJoined: '2020-01-02',
+          updateReportingManager: true,
+          reportingManagerId: 2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => DirectoryEmployee.fromJson(
+          employeeDetailJson()
+            ..['display_name'] = 'Updated employee'
+            ..['department'] = {
+              'id': 2,
+              'code': 'ARCHIVE',
+              'name': 'Archived Department',
+            }
+            ..['job_role'] = {'id': 2, 'code': 'LEAD', 'name': 'Lead'}
+            ..['reporting_manager'] = 'Manager Two'
+            ..['reporting_manager_id'] = 2,
+        ),
+      );
+      await launch(
+        tester,
+        path: '/workspace/employees/1',
+        identity: managementIdentity(
+          capabilities: {
+            'organization.view_employee',
+            'organization.change_employee',
+          },
+        ),
+      );
+      await tester.tap(find.byTooltip('Edit employee'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Employee code, login access, groups and employment status are protected.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('EMP1'), findsNothing);
+      expect(find.text('Reporting manager'), findsOneWidget);
+      final managerField = tester.widget<DropdownButtonFormField<int>>(
+        find.byType(DropdownButtonFormField<int>).at(2),
+      );
+      expect(managerField.initialValue, 9);
+      expect(find.text('Team Manager (current)'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextFormField), 'Updated employee');
+      await tester.tap(find.byType(DropdownButtonFormField<int>).at(0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Archived Department (inactive)').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(DropdownButtonFormField<int>).at(1));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Lead (inactive)').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(DropdownButtonFormField<int>).at(2));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Manager Two · EMP2'));
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+      await tester.pumpAndSettle();
+      final saveButton = find.widgetWithText(FilledButton, 'Save');
+      await tester.ensureVisible(saveButton);
+      await tester.tap(saveButton);
+      await tester.pumpAndSettle();
+      verify(
+        () => repository.updateEmployeeProfile(
+          any(),
+          displayName: 'Updated employee',
+          departmentId: 2,
+          jobRoleId: 2,
+          dateJoined: '2020-01-02',
+          updateReportingManager: true,
+          reportingManagerId: 2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      expect(find.text('Employee profile saved.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('employee edit preserves server field and non-field errors', (
+    tester,
+  ) async {
+    when(
+      () => repository.updateEmployeeProfile(
+        any(),
+        displayName: 'Duplicate employee',
+        departmentId: 1,
+        jobRoleId: 1,
+        dateJoined: '2020-01-02',
+        updateReportingManager: false,
+        reportingManagerId: null,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenThrow(
+      ApiError(
+        message: 'Please correct the highlighted fields.',
+        statusCode: 400,
+        details: {
+          'display_name': ['This name is already in use.'],
+          'non_field_errors': ['The profile cannot be changed right now.'],
+        },
+      ),
+    );
+    await launch(
+      tester,
+      path: '/workspace/employees/1',
+      identity: managementIdentity(
+        capabilities: {
+          'organization.view_employee',
+          'organization.change_employee',
+        },
+      ),
+    );
+    await tester.tap(find.byTooltip('Edit employee'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), 'Duplicate employee');
+    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    final saveButton = find.widgetWithText(FilledButton, 'Save');
+    await tester.ensureVisible(saveButton);
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+    expect(find.text('This name is already in use.'), findsOneWidget);
+    expect(
+      find.text('The profile cannot be changed right now.'),
+      findsOneWidget,
+    );
+    expect(find.text('Employee profile saved.'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('employee edit presents a real authorization denial', (
+    tester,
+  ) async {
+    when(
+      () => repository.updateEmployeeProfile(
+        any(),
+        displayName: 'Changed employee',
+        departmentId: 1,
+        jobRoleId: 1,
+        dateJoined: '2020-01-02',
+        updateReportingManager: false,
+        reportingManagerId: null,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenThrow(ApiError(message: 'Permission denied.', statusCode: 403));
+    await launch(
+      tester,
+      path: '/workspace/employees/1',
+      identity: managementIdentity(
+        capabilities: {
+          'organization.view_employee',
+          'organization.change_employee',
+        },
+      ),
+    );
+    await tester.tap(find.byTooltip('Edit employee'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), 'Changed employee');
+    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('You are not authorized to edit this employee.'),
+      findsOneWidget,
+    );
+    expect(find.text('Employee profile saved.'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('employee edit cancels pending mutation on account switch', (
+    tester,
+  ) async {
+    final response = Completer<DirectoryEmployee>();
+    late CancelToken request;
+    when(
+      () => repository.updateEmployeeProfile(
+        any(),
+        displayName: 'Changed employee',
+        departmentId: 1,
+        jobRoleId: 1,
+        dateJoined: '2020-01-02',
+        updateReportingManager: false,
+        reportingManagerId: null,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((call) {
+      request = call.namedArguments[#cancelToken] as CancelToken;
+      return response.future;
+    });
+    await launch(
+      tester,
+      path: '/workspace/employees/1',
+      identity: managementIdentity(
+        username: 'first',
+        capabilities: {
+          'organization.view_employee',
+          'organization.change_employee',
+        },
+      ),
+    );
+    await tester.tap(find.byTooltip('Edit employee'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), 'Changed employee');
+    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    final saveButton = find.widgetWithText(FilledButton, 'Save');
+    await tester.ensureVisible(saveButton);
+    await tester.tap(saveButton);
+    await tester.pump();
+
+    auth.setAuth(
+      AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'second',
+          capabilities: {
+            'organization.view_employee',
+            'organization.change_employee',
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(request.isCancelled, isTrue);
+    response.complete(DirectoryEmployee.fromJson(employeeJson()));
+    await tester.pumpAndSettle();
+    expect(find.text('Employee profile saved.'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('employee edit route without a loaded record fails safely', (
+    tester,
+  ) async {
+    await launch(
+      tester,
+      path: '/workspace/employees/1/edit',
+      identity: managementIdentity(
+        capabilities: {
+          'organization.view_employee',
+          'organization.change_employee',
+        },
+      ),
+    );
+    expect(find.byType(EmployeeProfileFormScreen), findsOneWidget);
+    expect(
+      find.text(
+        'Employee details are unavailable. Return to the directory and open the record again.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(TextFormField), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Save'), findsNothing);
+    verifyNever(
+      () => repository.updateEmployeeProfile(
+        any(),
+        displayName: any(named: 'displayName'),
+        departmentId: any(named: 'departmentId'),
+        jobRoleId: any(named: 'jobRoleId'),
+        dateJoined: any(named: 'dateJoined'),
+        updateReportingManager: any(named: 'updateReportingManager'),
+        reportingManagerId: any(named: 'reportingManagerId'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+  });
+
+  testWidgets('unchanged employee edit cannot be submitted', (
+    tester,
+  ) async {
+    await launch(
+      tester,
+      path: '/workspace/employees/1',
+      identity: managementIdentity(
+        capabilities: {
+          'organization.view_employee',
+          'organization.change_employee',
+        },
+      ),
+    );
+    await tester.tap(find.byTooltip('Edit employee'));
+    await tester.pumpAndSettle();
+    expect(find.byType(EmployeeProfileFormScreen), findsOneWidget);
+
+    final saveButtonFinder = find.widgetWithText(FilledButton, 'Save');
+    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(saveButtonFinder);
+    var saveButton = tester.widget<FilledButton>(saveButtonFinder);
+    expect(saveButton.onPressed, isNull);
+
+    await tester.drag(find.byType(ListView).last, const Offset(0, 600));
+    await tester.pumpAndSettle();
+    final nameField = find.byType(TextFormField);
+    await tester.enterText(nameField, 'Changed Name');
+    await tester.pump();
+
+    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(saveButtonFinder);
+    saveButton = tester.widget<FilledButton>(saveButtonFinder);
+    expect(saveButton.onPressed, isNotNull);
+
+    await tester.drag(find.byType(ListView).last, const Offset(0, 600));
+    await tester.pumpAndSettle();
+    await tester.enterText(nameField, 'Employee 1');
+    await tester.pump();
+
+    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(saveButtonFinder);
+    saveButton = tester.widget<FilledButton>(saveButtonFinder);
+    expect(saveButton.onPressed, isNull);
+
+    verifyNever(
+      () => repository.updateEmployeeProfile(
+        any(),
+        displayName: any(named: 'displayName'),
+        departmentId: any(named: 'departmentId'),
+        jobRoleId: any(named: 'jobRoleId'),
+        dateJoined: any(named: 'dateJoined'),
+        updateReportingManager: any(named: 'updateReportingManager'),
+        reportingManagerId: any(named: 'reportingManagerId'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+  });
+
+  testWidgets('discard confirmation appears when leaving dirty employee edit form', (
+    tester,
+  ) async {
+    await launch(
+      tester,
+      path: '/workspace/employees/1',
+      identity: managementIdentity(
+        capabilities: {
+          'organization.view_employee',
+          'organization.change_employee',
+        },
+      ),
+    );
+    await tester.tap(find.byTooltip('Edit employee'));
+    await tester.pumpAndSettle();
+
+    final nameField = find.byType(TextFormField);
+    await tester.enterText(nameField, 'Changed Name');
+    await tester.pump();
+
+    final cancelButtonFinder = find.widgetWithText(OutlinedButton, 'Cancel');
+    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(cancelButtonFinder);
+    await tester.tap(cancelButtonFinder);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Discard changes?'), findsOneWidget);
+    expect(find.text('Your unsaved changes will be lost.'), findsOneWidget);
+
+    await tester.tap(find.text('Keep editing'));
+    await tester.pumpAndSettle();
+    expect(find.byType(EmployeeProfileFormScreen), findsOneWidget);
+
+    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(cancelButtonFinder);
+    await tester.tap(cancelButtonFinder);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard'));
+    await tester.pumpAndSettle();
+    expect(find.byType(EmployeeProfileFormScreen), findsNothing);
+  });
+
+  testWidgets('missing reference view permissions fail safe with liveRegion notice', (
+    tester,
+  ) async {
+    when(
+      () => repository.employeeEditChoices(
+        employeeId: 1,
+        pageSize: any(named: 'pageSize'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenThrow(
+      ApiError(
+        message: 'You do not have permission to view departments.',
+        statusCode: 403,
+      ),
+    );
+
+    await launch(
+      tester,
+      path: '/workspace/employees/1',
+      identity: managementIdentity(
+        capabilities: {
+          'organization.view_employee',
+          'organization.change_employee',
+        },
+      ),
+    );
+    await tester.tap(find.byTooltip('Edit employee'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('You do not have permission to view departments.'),
+      findsOneWidget,
+    );
+    expect(find.byType(TextFormField), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Save'), findsNothing);
+
+    final semantics = tester.widget<Semantics>(
+      find.descendant(
+        of: find.byType(EmployeeProfileFormScreen),
+        matching: find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.liveRegion == true,
+        ),
+      ).first,
+    );
+    expect(semantics.properties.liveRegion, isTrue);
+  });
+
+  testWidgets(
+    'successful employee profile update invalidates directory cache and re-fetches',
+    (tester) async {
+      when(
+        () => repository.updateEmployeeProfile(
+          any(),
+          displayName: any(named: 'displayName'),
+          departmentId: any(named: 'departmentId'),
+          jobRoleId: any(named: 'jobRoleId'),
+          dateJoined: any(named: 'dateJoined'),
+          updateReportingManager: any(named: 'updateReportingManager'),
+          reportingManagerId: any(named: 'reportingManagerId'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => DirectoryEmployee.fromJson(
+          employeeDetailJson()..['display_name'] = 'Updated Name',
+        ),
+      );
+
+      await launch(
+        tester,
+        path: '/workspace/employees',
+        identity: managementIdentity(
+          capabilities: {
+            'organization.view_employee',
+            'organization.change_employee',
+          },
+        ),
+      );
+
+      expect(find.text('Employee 1'), findsOneWidget);
+      verify(
+        () => repository.employees(
+          page: 1,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+
+      await tester.tap(find.text('Employee 1'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Edit employee'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField), 'Updated Name');
+      await tester.pumpAndSettle();
+
+      final saveButton = find.widgetWithText(FilledButton, 'Save');
+      await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(saveButton);
+      await tester.tap(saveButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Employee profile saved.'), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+
+      verify(
+        () => repository.employees(
+          page: 1,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'Employee keeps three tabs and opens only its authorized reference lists',
     (tester) async {
@@ -401,6 +943,437 @@ void main() {
     expect(find.text('1 department'), findsOneWidget);
     expect(find.text('INACTIVE'), findsOneWidget);
   });
+
+  testWidgets(
+    'reference actions are visible only for granted write capabilities',
+    (tester) async {
+      await launch(
+        tester,
+        path: '/workspace/departments',
+        identity: managementIdentity(
+          team: true,
+          capabilities: {
+            'personal_learning',
+            'team_workspace',
+            'organization.view_department',
+          },
+        ),
+      );
+      expect(find.byTooltip('Add department'), findsNothing);
+      expect(find.byTooltip('Edit department: Operations 1'), findsNothing);
+
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            team: true,
+            capabilities: {'personal_learning', 'organization.view_department'},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Add department'), findsNothing);
+      expect(find.byTooltip('Edit department: Operations 1'), findsNothing);
+
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            capabilities: {
+              'personal_learning',
+              'organization.view_department',
+              'organization.add_department',
+              'organization.change_department',
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Add department'), findsOneWidget);
+      expect(find.byTooltip('Edit department: Operations 1'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('edit route without a loaded record fails safely', (
+    tester,
+  ) async {
+    await launch(
+      tester,
+      path: '/workspace/departments/44/edit',
+      identity: managementIdentity(
+        capabilities: {
+          'organization.view_department',
+          'organization.change_department',
+        },
+      ),
+    );
+    expect(find.byType(OrganizationReferenceFormScreen), findsOneWidget);
+    expect(
+      find.text(
+        'This record could not be loaded. Return to the list and select it again.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(TextFormField), findsNothing);
+  });
+
+  testWidgets(
+    'Department creation prevents duplicate submits and refreshes the list',
+    (tester) async {
+      final request = Completer<OrganizationReference>();
+      var listReads = 0;
+      when(
+        () => repository.references(
+          ReferenceKind.departments,
+          page: 1,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async {
+        listReads++;
+        return ManagementPage(
+          items: [
+            OrganizationReference(
+              id: listReads == 1 ? 1 : 2,
+              code: listReads == 1 ? 'REF1' : 'D2',
+              name: listReads == 1 ? 'Operations 1' : 'Facilities',
+            ),
+          ],
+          count: 1,
+          hasMore: false,
+        );
+      });
+      when(
+        () => repository.saveReference(
+          ReferenceKind.departments,
+          original: null,
+          code: 'D2',
+          name: 'Facilities',
+          description: '',
+          isActive: true,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => request.future);
+      await launch(
+        tester,
+        path: '/workspace/departments',
+        identity: managementIdentity(writeReferences: true),
+      );
+      await tester.tap(find.byTooltip('Add department'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OrganizationReferenceFormScreen), findsOneWidget);
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'D2');
+      await tester.enterText(find.byType(TextFormField).at(1), 'Facilities');
+      tester.testTextInput.hide();
+      await tester.pumpAndSettle();
+      final saveButton = find.widgetWithText(FilledButton, 'Save');
+      await tester.drag(find.byType(ListView).last, const Offset(0, -240));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(saveButton);
+      await tester.tap(saveButton);
+      await tester.pump();
+      expect(find.text('Saving…'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, 'Saving…'))
+            .onPressed,
+        isNull,
+      );
+      verify(
+        () => repository.saveReference(
+          ReferenceKind.departments,
+          original: null,
+          code: 'D2',
+          name: 'Facilities',
+          description: '',
+          isActive: true,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      request.complete(
+        const OrganizationReference(id: 2, code: 'D2', name: 'Facilities'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Facilities'), findsOneWidget);
+      expect(listReads, 2);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Job Role edit pre-fills values and displays backend field errors',
+    (tester) async {
+      var saveCalls = 0;
+      when(
+        () => repository.saveReference(
+          ReferenceKind.jobRoles,
+          id: 1,
+          original: any(named: 'original'),
+          code: 'REF1',
+          name: 'Changed role',
+          description: 'Organization reference',
+          isActive: true,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async {
+        saveCalls++;
+        if (saveCalls == 1) {
+          throw ApiError(
+            message: 'Please correct the highlighted fields.',
+            statusCode: 400,
+            details: {
+              'name': ['A role with this name already exists.'],
+              'non_field_errors': [
+                'This reference cannot be changed right now.',
+              ],
+            },
+          );
+        }
+        throw ApiError(message: 'Not authorized.', statusCode: 403);
+      });
+      await launch(
+        tester,
+        path: '/workspace/job-roles',
+        identity: managementIdentity(
+          capabilities: {
+            'organization.view_jobrole',
+            'organization.change_jobrole',
+          },
+        ),
+      );
+      await tester.tap(find.byTooltip('Edit job role: Operations 1'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OrganizationReferenceFormScreen), findsOneWidget);
+      final codeField = tester.widget<TextFormField>(
+        find.byType(TextFormField).at(0),
+      );
+      expect(codeField.controller?.text, 'REF1');
+      final descriptionField = tester.widget<TextFormField>(
+        find.byType(TextFormField).at(2),
+      );
+      expect(descriptionField.controller?.text, 'Organization reference');
+
+      await tester.enterText(find.byType(TextFormField).at(1), 'Changed role');
+      tester.testTextInput.hide();
+      await tester.pumpAndSettle();
+      final saveButton = find.widgetWithText(FilledButton, 'Save');
+      await tester.drag(find.byType(ListView).last, const Offset(0, -240));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(saveButton);
+      await tester.tap(saveButton);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('A role with this name already exists.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Please correct the highlighted fields.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('This reference cannot be changed right now.'),
+        findsOneWidget,
+      );
+      final retryButton = find.widgetWithText(FilledButton, 'Save');
+      await tester.drag(find.byType(ListView).last, const Offset(0, -240));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(retryButton);
+      await tester.tap(retryButton);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('You are not authorized to save this job role.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Job Role update saves and returns to the refreshed list', (
+    tester,
+  ) async {
+    var listReads = 0;
+    when(
+      () => repository.references(
+        ReferenceKind.jobRoles,
+        page: 1,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) async {
+      listReads++;
+      return ManagementPage(
+        items: [
+          OrganizationReference(
+            id: 1,
+            code: 'REF1',
+            name: listReads == 1 ? 'Operations 1' : 'Senior Operator',
+            description: 'Organization reference',
+          ),
+        ],
+        count: 1,
+        hasMore: false,
+      );
+    });
+    when(
+      () => repository.saveReference(
+        ReferenceKind.jobRoles,
+        id: 1,
+        original: any(named: 'original'),
+        code: 'REF1',
+        name: 'Senior Operator',
+        description: 'Organization reference',
+        isActive: true,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => const OrganizationReference(
+        id: 1,
+        code: 'REF1',
+        name: 'Senior Operator',
+        description: 'Organization reference',
+      ),
+    );
+    await launch(
+      tester,
+      path: '/workspace/job-roles',
+      identity: managementIdentity(
+        capabilities: {
+          'organization.view_jobrole',
+          'organization.change_jobrole',
+        },
+      ),
+    );
+    await tester.tap(find.byTooltip('Edit job role: Operations 1'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).at(1), 'Senior Operator');
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    final saveButton = find.widgetWithText(FilledButton, 'Save');
+    await tester.drag(find.byType(ListView).last, const Offset(0, -240));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(saveButton);
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Senior Operator'), findsOneWidget);
+    verify(
+      () => repository.saveReference(
+        ReferenceKind.jobRoles,
+        id: 1,
+        original: any(named: 'original'),
+        code: 'REF1',
+        name: 'Senior Operator',
+        description: 'Organization reference',
+        isActive: true,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('unchanged Job Role edit cannot be submitted', (tester) async {
+    await launch(
+      tester,
+      path: '/workspace/job-roles',
+      identity: managementIdentity(
+        capabilities: {
+          'organization.view_jobrole',
+          'organization.change_jobrole',
+        },
+      ),
+    );
+    await tester.tap(find.byTooltip('Edit job role: Operations 1'));
+    await tester.pumpAndSettle();
+    var saveButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Save'),
+    );
+    expect(saveButton.onPressed, isNull);
+
+    final nameField = find.byType(TextFormField).at(1);
+    await tester.enterText(nameField, 'Temporary name');
+    await tester.pump();
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Save'))
+          .onPressed,
+      isNotNull,
+    );
+    await tester.enterText(nameField, 'Operations 1');
+    await tester.pump();
+    saveButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Save'),
+    );
+    expect(saveButton.onPressed, isNull);
+    verifyNever(
+      () => repository.saveReference(
+        ReferenceKind.jobRoles,
+        id: 1,
+        original: any(named: 'original'),
+        code: any(named: 'code'),
+        name: any(named: 'name'),
+        description: any(named: 'description'),
+        isActive: any(named: 'isActive'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+  });
+
+  testWidgets(
+    'permission denial and account switching cannot show save success',
+    (tester) async {
+      final request = Completer<OrganizationReference>();
+      late CancelToken token;
+      when(
+        () => repository.saveReference(
+          ReferenceKind.departments,
+          original: null,
+          code: 'D2',
+          name: 'Facilities',
+          description: '',
+          isActive: true,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((call) {
+        token = call.namedArguments[#cancelToken] as CancelToken;
+        return request.future;
+      });
+      await launch(
+        tester,
+        path: '/workspace/departments',
+        identity: managementIdentity(writeReferences: true),
+      );
+      await tester.tap(find.byTooltip('Add department'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OrganizationReferenceFormScreen), findsOneWidget);
+      await tester.enterText(find.byType(TextFormField).at(0), 'D2');
+      await tester.enterText(find.byType(TextFormField).at(1), 'Facilities');
+      tester.testTextInput.hide();
+      await tester.pumpAndSettle();
+      final saveButton = find.widgetWithText(FilledButton, 'Save');
+      await tester.drag(find.byType(ListView).last, const Offset(0, -240));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(saveButton);
+      await tester.tap(saveButton);
+      await tester.pump();
+      expect(find.text('Saving…'), findsOneWidget);
+
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(username: 'new-account', writeReferences: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(token.isCancelled, isTrue);
+      expect(
+        find.text('This account does not have permission to make this change.'),
+        findsOneWidget,
+      );
+      request.complete(
+        const OrganizationReference(id: 2, code: 'D2', name: 'Facilities'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Department saved.'), findsNothing);
+      expect(find.text('Facilities'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final brightness in Brightness.values) {
     for (final (size, scale) in [

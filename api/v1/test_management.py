@@ -208,10 +208,14 @@ class ManagementReadAPITests(CurriculumTestCase):
         self.manager.save()
         self.assertEqual(self.client.get("/api/v1/management/employees/").status_code, 403)
 
-    def test_all_management_endpoints_reject_mutations(self):
+    def test_read_only_endpoints_and_reference_collections_reject_unsupported_mutations(self):
         self.authenticate(self.admin)
         for path in ("dashboard/", "employees/", f"employees/{self.employee.pk}/", "departments/", "job-roles/"):
             for method in ("post", "put", "patch", "delete"):
+                if method == "post" and path in ("departments/", "job-roles/"):
+                    continue  # Batch 3A explicitly permits reference creation.
+                if method == "patch" and path == f"employees/{self.employee.pk}/":
+                    continue  # Batch 3B permits profile-only updates with change_employee.
                 with self.subTest(path=path, method=method):
                     response = getattr(self.client, method)("/api/v1/management/" + path, {}, format="json")
                     self.assertEqual(response.status_code, 405)

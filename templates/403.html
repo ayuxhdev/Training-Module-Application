@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Access denied | Garden's Need Training{% endblock %}
+
+{% block content %}
+<div class="error-workspace" style="max-width: 44rem; margin: var(--space-8) auto 0; min-width: 0;">
+  <section class="empty-state error-panel" aria-labelledby="error-heading" style="padding: clamp(var(--space-6), 5vw, var(--space-8));">
+    <div style="margin-bottom: var(--space-3);">
+      <span class="status-badge status-overdue">403 Forbidden</span>
+    </div>
+    <h1 id="error-heading" style="margin: 0; font-size: clamp(1.4rem, 2.5vw, 1.85rem); color: var(--color-text);">Access denied</h1>
+    <p style="margin-top: var(--space-3); font-size: var(--font-size-base); color: var(--color-text-muted); line-height: 1.5;">
+      You do not have permission to access or manage this page.
+    </p>
+    <p class="muted" style="margin-top: var(--space-2); font-size: var(--font-size-sm); line-height: 1.5;">
+      If you believe you should have access to this resource, please contact your training coordinator, manager, or system administrator.
+    </p>
+    <div class="error-actions" style="display: flex; justify-content: center; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-6);">
+      {% if user.is_authenticated %}
+        <a class="btn btn-primary" href="{% url 'reports:dashboard' %}">Return to dashboard</a>
+        {% if shell_role == 'employee' %}
+          <a class="btn btn-secondary" href="{% url 'training:assignment-list' %}">My training</a>
+        {% endif %}
+      {% else %}
+        <a class="btn btn-primary" href="{% url 'accounts:login' %}">Sign in</a>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -33,6 +33,165 @@ void main() {
   });
   tearDown(() => container.dispose());
 
+  test(
+    'reference mutations require exact server-issued capabilities',
+    () async {
+      final identity = managementIdentity(
+        capabilities: {'organization.view_department'},
+      );
+      final mutations = OrganizationReferenceMutationController(
+        repository: repository,
+        readAuth: () => AuthAuthenticated.identity(identity),
+      );
+      await expectLater(
+        mutations.save(
+          kind: ReferenceKind.departments,
+          code: 'D1',
+          name: 'Department',
+          description: '',
+          isActive: true,
+        ),
+        throwsA(isA<ApiError>()),
+      );
+      await expectLater(
+        mutations.save(
+          kind: ReferenceKind.departments,
+          id: 1,
+          code: 'D1',
+          name: 'Department',
+          description: '',
+          isActive: true,
+        ),
+        throwsA(isA<ApiError>()),
+      );
+      verifyZeroInteractions(repository);
+    },
+  );
+
+  test(
+    'reference mutation discards a response after the account changes',
+    () async {
+      final response = Completer<OrganizationReference>();
+      final manager = managementIdentity(
+        username: 'first',
+        capabilities: {'organization.change_department'},
+      );
+      var currentAuth = AuthAuthenticated.identity(manager);
+      when(
+        () => repository.saveReference(
+          ReferenceKind.departments,
+          id: 1,
+          original: const OrganizationReference(
+            id: 1,
+            code: 'D1',
+            name: 'Department',
+          ),
+          code: 'D1',
+          name: 'Updated department',
+          description: 'Existing description',
+          isActive: true,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => response.future);
+      final mutations = OrganizationReferenceMutationController(
+        repository: repository,
+        readAuth: () => currentAuth,
+      );
+      final pending = mutations.save(
+        kind: ReferenceKind.departments,
+        id: 1,
+        original: const OrganizationReference(
+          id: 1,
+          code: 'D1',
+          name: 'Department',
+        ),
+        code: 'D1',
+        name: 'Updated department',
+        description: 'Existing description',
+        isActive: true,
+      );
+      currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'second',
+          capabilities: {'organization.change_department'},
+        ),
+      );
+      response.complete(OrganizationReference.fromJson(referenceJson()));
+      await expectLater(pending, throwsA(isA<ApiError>()));
+    },
+  );
+
+  test('employee profile mutation requires the change capability', () async {
+    final mutations = EmployeeProfileMutationController(
+      repository: repository,
+      readAuth: () => AuthAuthenticated.identity(
+        managementIdentity(capabilities: {'organization.view_employee'}),
+      ),
+    );
+    await expectLater(
+      mutations.save(
+        original: DirectoryEmployee.fromJson(employeeJson()),
+        displayName: 'Updated',
+        departmentId: 1,
+        jobRoleId: 1,
+        dateJoined: '2020-01-02',
+        updateReportingManager: false,
+      ),
+      throwsA(isA<ApiError>()),
+    );
+    verifyZeroInteractions(repository);
+  });
+
+  test(
+    'employee profile mutation discards a response after account switching',
+    () async {
+      final response = Completer<DirectoryEmployee>();
+      var currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'first',
+          capabilities: {'organization.change_employee'},
+        ),
+      );
+      final original = DirectoryEmployee.fromJson(employeeJson());
+      when(
+        () => repository.updateEmployeeProfile(
+          original,
+          displayName: 'Updated',
+          departmentId: 1,
+          jobRoleId: 1,
+          dateJoined: '2020-01-02',
+          updateReportingManager: false,
+          reportingManagerId: null,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => response.future);
+      final mutations = EmployeeProfileMutationController(
+        repository: repository,
+        readAuth: () => currentAuth,
+      );
+      final pending = mutations.save(
+        original: original,
+        displayName: 'Updated',
+        departmentId: 1,
+        jobRoleId: 1,
+        dateJoined: '2020-01-02',
+        updateReportingManager: false,
+      );
+      currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'second',
+          capabilities: {'organization.change_employee'},
+        ),
+      );
+      response.complete(
+        DirectoryEmployee.fromJson(
+          employeeJson()..['display_name'] = 'Updated',
+        ),
+      );
+      await expectLater(pending, throwsA(isA<ApiError>()));
+    },
+  );
+
   test('company, team and paginated directory reads use their repository operations', () async {
     when(() => repository.dashboard(cancelToken: any(named: 'cancelToken')))
         .thenAnswer((_) async => dashboardFixture());

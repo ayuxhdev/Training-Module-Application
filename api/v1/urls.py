@@ -4,8 +4,8 @@ from .views import APINotFoundView, APIStatusView
 from .auth_views import EmployeeLoginView, EmployeeRefreshView, EmployeeLogoutView, EmployeeMeView
 from .dashboard_views import EmployeeDashboardView
 from .management_views import (
-    DepartmentReferenceView, EmployeeDirectoryDetailView, EmployeeDirectoryView,
-    JobRoleReferenceView, ManagementDashboardView,
+    DepartmentReferenceUpdateView, DepartmentReferenceView, EmployeeDirectoryDetailView, EmployeeDirectoryView,
+    JobRoleReferenceUpdateView, JobRoleReferenceView, ManagementDashboardView,
 )
 from .certificate_views import CertificateDetailView, CertificateListView
 from .notification_views import (
@@ -45,7 +45,9 @@ urlpatterns = [
     path("management/employees/", EmployeeDirectoryView.as_view(), name="management-employees"),
     path("management/employees/<int:pk>/", EmployeeDirectoryDetailView.as_view(), name="management-employee-detail"),
     path("management/departments/", DepartmentReferenceView.as_view(), name="management-departments"),
+    path("management/departments/<int:pk>/", DepartmentReferenceUpdateView.as_view(), name="management-department-update"),
     path("management/job-roles/", JobRoleReferenceView.as_view(), name="management-job-roles"),
+    path("management/job-roles/<int:pk>/", JobRoleReferenceUpdateView.as_view(), name="management-job-role-update"),
     path("notifications/", NotificationListView.as_view(), name="notification-list"),
     path("notifications/unread-count/", NotificationUnreadCountView.as_view(), name="notification-unread-count"),
     path("notifications/read-all/", NotificationReadAllView.as_view(), name="notification-read-all"),
