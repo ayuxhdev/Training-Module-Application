@@ -20,6 +20,7 @@ import 'package:training_app/features/management/domain/models/management_models
 import 'package:training_app/features/management/presentation/screens/organization_screens.dart';
 import 'package:training_app/features/management/presentation/screens/organization_reference_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/employee_profile_form_screen.dart';
+import 'package:training_app/features/management/presentation/screens/employee_creation_form_screen.dart';
 import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
 
 import 'management_fixtures.dart';
@@ -66,6 +67,12 @@ void main() {
         employeeId: call.namedArguments[#employeeId] as int,
       ),
     );
+    when(
+      () => repository.employeeCreationChoices(
+        includeReportingManagers: any(named: 'includeReportingManagers'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) async => employeeEditChoicesFixture());
     for (final kind in ReferenceKind.values) {
       when(
         () => repository.references(
@@ -143,6 +150,22 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     await tester.tap(find.text(label));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> fillEmployeeCreationForm(WidgetTester tester) async {
+    await tester.enterText(find.byType(TextFormField).at(0), 'NEW-42');
+    await tester.enterText(find.byType(TextFormField).at(1), 'New employee');
+    for (final (index, label) in [(0, 'Operations'), (1, 'Operator')]) {
+      final field = find.byType(DropdownButtonFormField<int>).at(index);
+      await tester.ensureVisible(field);
+      await tester.tap(field);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label).last);
+      await tester.pumpAndSettle();
+    }
+    await tap(tester, 'Choose date');
+    await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
   }
 
@@ -314,6 +337,332 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byTooltip('Edit employee'), findsOneWidget);
   });
+
+  testWidgets('Add Employee entry point requires server-issued capability', (
+    tester,
+  ) async {
+    await launch(
+      tester,
+      path: '/workspace/employees',
+      identity: managementIdentity(
+        capabilities: {'organization.view_employee'},
+      ),
+    );
+    expect(find.byTooltip('Add employee'), findsNothing);
+
+    auth.setAuth(
+      AuthAuthenticated.identity(
+        managementIdentity(
+          capabilities: {
+            'organization.view_employee',
+            'organization.add_employee',
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Add employee'), findsOneWidget);
+    await tester.tap(find.byTooltip('Add employee'));
+    await tester.pumpAndSettle();
+    expect(find.byType(EmployeeCreationFormScreen), findsOneWidget);
+    expect(find.text('Employee code'), findsOneWidget);
+    expect(find.text('Display name'), findsOneWidget);
+    expect(find.text('Department'), findsOneWidget);
+    expect(find.text('Job role'), findsOneWidget);
+    expect(find.textContaining('will not have login access'), findsOneWidget);
+  });
+
+  testWidgets('Employee creation validates required profile fields locally', (
+    tester,
+  ) async {
+    await launch(
+      tester,
+      path: '/workspace/employees/new',
+      identity: managementIdentity(
+        capabilities: {
+          'organization.view_employee',
+          'organization.add_employee',
+        },
+      ),
+    );
+    expect(find.byType(EmployeeCreationFormScreen), findsOneWidget);
+    await tap(tester, 'Create employee');
+    await tester.pumpAndSettle();
+    expect(find.text('This field is required.'), findsAtLeastNWidgets(1));
+    expect(find.text('Select a department.'), findsOneWidget);
+    expect(find.text('Select a job role.'), findsOneWidget);
+    expect(find.text('Select a date joined.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'Employee creation posts validated profile and refreshes directory',
+    (tester) async {
+      final response = DirectoryEmployee.fromJson(
+        employeeDetailJson(42, 'New employee')
+          ..['employee_code'] = 'NEW-42'
+          ..['reporting_manager'] = null
+          ..['reporting_manager_id'] = null
+          ..['login_status'] = 'NOT_LINKED',
+      );
+      final pending = Completer<DirectoryEmployee>();
+      when(
+        () => repository.createEmployee(
+          employeeCode: 'NEW-42',
+          displayName: 'New employee',
+          departmentId: 1,
+          jobRoleId: 1,
+          dateJoined: any(named: 'dateJoined'),
+          reportingManagerId: null,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => pending.future);
+      await launch(
+        tester,
+        path: '/workspace/employees',
+        identity: managementIdentity(
+          capabilities: {
+            'organization.view_employee',
+            'organization.add_employee',
+          },
+        ),
+      );
+      await tester.tap(find.byTooltip('Add employee'));
+      await tester.pumpAndSettle();
+      await fillEmployeeCreationForm(tester);
+      await tester.scrollUntilVisible(
+        find.text('Create employee'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Create employee'));
+      await tester.pump();
+      expect(find.text('Creating…'), findsOneWidget);
+      await tester.tap(find.text('Creating…'));
+      await tester.pump();
+      pending.complete(response);
+      await tester.pumpAndSettle();
+
+      verify(
+        () => repository.createEmployee(
+          employeeCode: 'NEW-42',
+          displayName: 'New employee',
+          departmentId: 1,
+          jobRoleId: 1,
+          dateJoined: any(named: 'dateJoined'),
+          reportingManagerId: null,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      verify(
+        () => repository.employees(
+          page: 1,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(2);
+      expect(find.byType(EmployeeCreationFormScreen), findsNothing);
+      expect(
+        find.text('Employee created. No login account was linked.'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('Employee creation shows server field and non-field errors', (
+    tester,
+  ) async {
+    when(
+      () => repository.createEmployee(
+        employeeCode: 'DUPLICATE',
+        displayName: 'New employee',
+        departmentId: 1,
+        jobRoleId: 1,
+        dateJoined: any(named: 'dateJoined'),
+        reportingManagerId: null,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => throw ApiError(
+        message: 'Correct the highlighted details.',
+        statusCode: 400,
+        details: {
+          'employee_code': ['This employee code is already in use.'],
+          'non_field_errors': ['Employee could not be created.'],
+        },
+      ),
+    );
+    await launch(
+      tester,
+      path: '/workspace/employees/new',
+      identity: managementIdentity(capabilities: {'organization.add_employee'}),
+    );
+    await fillEmployeeCreationForm(tester);
+    await tester.enterText(find.byType(TextFormField).at(0), 'DUPLICATE');
+    await tap(tester, 'Create employee');
+    expect(find.text('This employee code is already in use.'), findsOneWidget);
+    expect(find.text('Employee could not be created.'), findsOneWidget);
+    expect(find.text('Correct the highlighted details.'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Employee creation dynamic error notices announce via Semantics liveRegion',
+    (tester) async {
+      when(
+        () => repository.createEmployee(
+          employeeCode: 'DUPLICATE',
+          displayName: 'New employee',
+          departmentId: 1,
+          jobRoleId: 1,
+          dateJoined: any(named: 'dateJoined'),
+          reportingManagerId: null,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => throw ApiError(
+          message: 'Correct the highlighted details.',
+          statusCode: 400,
+          details: {
+            'employee_code': ['This employee code is already in use.'],
+            'non_field_errors': ['Employee could not be created.'],
+          },
+        ),
+      );
+      await launch(
+        tester,
+        path: '/workspace/employees/new',
+        identity: managementIdentity(
+          capabilities: {'organization.add_employee'},
+        ),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(EmployeeCreationFormScreen),
+          matching: find.byWidgetPredicate(
+            (w) => w is Semantics && w.properties.liveRegion == true,
+          ),
+        ),
+        findsNothing,
+      );
+
+      await fillEmployeeCreationForm(tester);
+      await tester.enterText(find.byType(TextFormField).at(0), 'DUPLICATE');
+      await tap(tester, 'Create employee');
+
+      expect(
+        find.text('This employee code is already in use.'),
+        findsOneWidget,
+      );
+      expect(find.text('Employee could not be created.'), findsOneWidget);
+
+      final liveRegions = find.descendant(
+        of: find.byType(EmployeeCreationFormScreen),
+        matching: find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.liveRegion == true,
+        ),
+      );
+      expect(liveRegions, findsAtLeastNWidgets(1));
+      final semantics = tester.widget<Semantics>(liveRegions.first);
+      expect(semantics.properties.liveRegion, isTrue);
+    },
+  );
+
+  testWidgets('Employee creation handles 403 and network errors', (
+    tester,
+  ) async {
+    var attempts = 0;
+    when(
+      () => repository.createEmployee(
+        employeeCode: 'NEW-42',
+        displayName: 'New employee',
+        departmentId: 1,
+        jobRoleId: 1,
+        dateJoined: any(named: 'dateJoined'),
+        reportingManagerId: null,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) async {
+      attempts++;
+      if (attempts == 1) {
+        throw ApiError(message: 'Denied.', statusCode: 403);
+      }
+      throw ApiError.networkFailure();
+    });
+    await launch(
+      tester,
+      path: '/workspace/employees/new',
+      identity: managementIdentity(capabilities: {'organization.add_employee'}),
+    );
+    await fillEmployeeCreationForm(tester);
+    await tester.scrollUntilVisible(
+      find.text('Create employee'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Create employee'));
+    await tester.pump();
+    expect(
+      find.text('You are not authorized to create employees.'),
+      findsOneWidget,
+    );
+    await tap(tester, 'Create employee');
+    expect(find.textContaining('Network connection failed.'), findsOneWidget);
+    expect(find.byType(EmployeeCreationFormScreen), findsOneWidget);
+  });
+
+  testWidgets(
+    'Employee creation cancels an in-flight request on account switch',
+    (tester) async {
+      final pending = Completer<DirectoryEmployee>();
+      CancelToken? request;
+      when(
+        () => repository.createEmployee(
+          employeeCode: 'NEW-42',
+          displayName: 'New employee',
+          departmentId: 1,
+          jobRoleId: 1,
+          dateJoined: any(named: 'dateJoined'),
+          reportingManagerId: null,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((call) {
+        request = call.namedArguments[#cancelToken] as CancelToken;
+        return pending.future;
+      });
+      await launch(
+        tester,
+        path: '/workspace/employees/new',
+        identity: managementIdentity(
+          username: 'first',
+          capabilities: {'organization.add_employee'},
+        ),
+      );
+      await fillEmployeeCreationForm(tester);
+      await tester.scrollUntilVisible(
+        find.text('Create employee'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Create employee'));
+      await tester.pump();
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            username: 'second',
+            capabilities: {'organization.add_employee'},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(request!.isCancelled, isTrue);
+      pending.complete(DirectoryEmployee.fromJson(employeeDetailJson(42)));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Employee created. No login account was linked.'),
+        findsNothing,
+      );
+      expect(find.byType(EmployeeCreationFormScreen), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'employee edit displays protected fields and submits selected relationship IDs',
@@ -594,9 +943,7 @@ void main() {
     );
   });
 
-  testWidgets('unchanged employee edit cannot be submitted', (
-    tester,
-  ) async {
+  testWidgets('unchanged employee edit cannot be submitted', (tester) async {
     await launch(
       tester,
       path: '/workspace/employees/1',
@@ -655,96 +1002,100 @@ void main() {
     );
   });
 
-  testWidgets('discard confirmation appears when leaving dirty employee edit form', (
-    tester,
-  ) async {
-    await launch(
-      tester,
-      path: '/workspace/employees/1',
-      identity: managementIdentity(
-        capabilities: {
-          'organization.view_employee',
-          'organization.change_employee',
-        },
-      ),
-    );
-    await tester.tap(find.byTooltip('Edit employee'));
-    await tester.pumpAndSettle();
-
-    final nameField = find.byType(TextFormField);
-    await tester.enterText(nameField, 'Changed Name');
-    await tester.pump();
-
-    final cancelButtonFinder = find.widgetWithText(OutlinedButton, 'Cancel');
-    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(cancelButtonFinder);
-    await tester.tap(cancelButtonFinder);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Discard changes?'), findsOneWidget);
-    expect(find.text('Your unsaved changes will be lost.'), findsOneWidget);
-
-    await tester.tap(find.text('Keep editing'));
-    await tester.pumpAndSettle();
-    expect(find.byType(EmployeeProfileFormScreen), findsOneWidget);
-
-    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(cancelButtonFinder);
-    await tester.tap(cancelButtonFinder);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Discard'));
-    await tester.pumpAndSettle();
-    expect(find.byType(EmployeeProfileFormScreen), findsNothing);
-  });
-
-  testWidgets('missing reference view permissions fail safe with liveRegion notice', (
-    tester,
-  ) async {
-    when(
-      () => repository.employeeEditChoices(
-        employeeId: 1,
-        pageSize: any(named: 'pageSize'),
-        cancelToken: any(named: 'cancelToken'),
-      ),
-    ).thenThrow(
-      ApiError(
-        message: 'You do not have permission to view departments.',
-        statusCode: 403,
-      ),
-    );
-
-    await launch(
-      tester,
-      path: '/workspace/employees/1',
-      identity: managementIdentity(
-        capabilities: {
-          'organization.view_employee',
-          'organization.change_employee',
-        },
-      ),
-    );
-    await tester.tap(find.byTooltip('Edit employee'));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text('You do not have permission to view departments.'),
-      findsOneWidget,
-    );
-    expect(find.byType(TextFormField), findsNothing);
-    expect(find.widgetWithText(FilledButton, 'Save'), findsNothing);
-
-    final semantics = tester.widget<Semantics>(
-      find.descendant(
-        of: find.byType(EmployeeProfileFormScreen),
-        matching: find.byWidgetPredicate(
-          (w) => w is Semantics && w.properties.liveRegion == true,
+  testWidgets(
+    'discard confirmation appears when leaving dirty employee edit form',
+    (tester) async {
+      await launch(
+        tester,
+        path: '/workspace/employees/1',
+        identity: managementIdentity(
+          capabilities: {
+            'organization.view_employee',
+            'organization.change_employee',
+          },
         ),
-      ).first,
-    );
-    expect(semantics.properties.liveRegion, isTrue);
-  });
+      );
+      await tester.tap(find.byTooltip('Edit employee'));
+      await tester.pumpAndSettle();
+
+      final nameField = find.byType(TextFormField);
+      await tester.enterText(nameField, 'Changed Name');
+      await tester.pump();
+
+      final cancelButtonFinder = find.widgetWithText(OutlinedButton, 'Cancel');
+      await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(cancelButtonFinder);
+      await tester.tap(cancelButtonFinder);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Discard changes?'), findsOneWidget);
+      expect(find.text('Your unsaved changes will be lost.'), findsOneWidget);
+
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      expect(find.byType(EmployeeProfileFormScreen), findsOneWidget);
+
+      await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(cancelButtonFinder);
+      await tester.tap(cancelButtonFinder);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+      expect(find.byType(EmployeeProfileFormScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'missing reference view permissions fail safe with liveRegion notice',
+    (tester) async {
+      when(
+        () => repository.employeeEditChoices(
+          employeeId: 1,
+          pageSize: any(named: 'pageSize'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(
+        ApiError(
+          message: 'You do not have permission to view departments.',
+          statusCode: 403,
+        ),
+      );
+
+      await launch(
+        tester,
+        path: '/workspace/employees/1',
+        identity: managementIdentity(
+          capabilities: {
+            'organization.view_employee',
+            'organization.change_employee',
+          },
+        ),
+      );
+      await tester.tap(find.byTooltip('Edit employee'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('You do not have permission to view departments.'),
+        findsOneWidget,
+      );
+      expect(find.byType(TextFormField), findsNothing);
+      expect(find.widgetWithText(FilledButton, 'Save'), findsNothing);
+
+      final semantics = tester.widget<Semantics>(
+        find
+            .descendant(
+              of: find.byType(EmployeeProfileFormScreen),
+              matching: find.byWidgetPredicate(
+                (w) => w is Semantics && w.properties.liveRegion == true,
+              ),
+            )
+            .first,
+      );
+      expect(semantics.properties.liveRegion, isTrue);
+    },
+  );
 
   testWidgets(
     'successful employee profile update invalidates directory cache and re-fetches',

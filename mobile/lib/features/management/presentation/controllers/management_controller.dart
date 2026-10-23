@@ -30,6 +30,9 @@ bool canEditOrganizationReference(
 bool canEditEmployee(AuthenticatedIdentity identity) =>
     identity.capabilities.contains('organization.change_employee');
 
+bool canCreateEmployee(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('organization.add_employee');
+
 class EmployeeProfileMutationController {
   final ManagementRepository repository;
   final AuthState Function() readAuth;
@@ -80,6 +83,63 @@ class EmployeeProfileMutationController {
     return saved;
   }
 }
+
+class EmployeeCreationMutationController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  const EmployeeCreationMutationController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<DirectoryEmployee> create({
+    required String employeeCode,
+    required String displayName,
+    required int departmentId,
+    required int jobRoleId,
+    required String dateJoined,
+    int? reportingManagerId,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canCreateEmployee(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot create employees.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final created = await repository.createEmployee(
+      employeeCode: employeeCode,
+      displayName: displayName,
+      departmentId: departmentId,
+      jobRoleId: jobRoleId,
+      dateJoined: dateJoined,
+      reportingManagerId: reportingManagerId,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canCreateEmployee(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before creation completed. Reopen the form to continue.',
+        statusCode: 403,
+      );
+    }
+    return created;
+  }
+}
+
+final employeeCreationMutationProvider =
+    Provider<EmployeeCreationMutationController>(
+      (ref) => EmployeeCreationMutationController(
+        repository: ref.watch(managementRepositoryProvider),
+        readAuth: () => ref.read(authControllerProvider),
+      ),
+    );
 
 final employeeProfileMutationProvider =
     Provider<EmployeeProfileMutationController>(
@@ -214,6 +274,20 @@ final employeeEditChoicesProvider = FutureProvider.autoDispose
       return ref
           .watch(managementRepositoryProvider)
           .employeeEditChoices(employeeId: employeeId, cancelToken: request);
+    }, retry: (_, _) => null);
+
+final employeeCreationChoicesProvider =
+    FutureProvider.autoDispose<EmployeeEditChoices>((ref) {
+      final request = _request(ref, canCreateEmployee);
+      final auth = ref.read(authControllerProvider) as AuthAuthenticated;
+      return ref
+          .watch(managementRepositoryProvider)
+          .employeeCreationChoices(
+            includeReportingManagers: auth.identity.capabilities.contains(
+              'organization.view_employee',
+            ),
+            cancelToken: request,
+          );
     }, retry: (_, _) => null);
 
 typedef ReferencePageRequest = ({ReferenceKind kind, int page});

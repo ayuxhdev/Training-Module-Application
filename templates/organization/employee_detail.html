@@ -19,7 +19,7 @@
       <div><dt>Login account</dt><dd>{% if employee.user %}{% if employee.user.is_active %}Active{% else %}Inactive{% endif %}{% else %}Not linked{% endif %}</dd></div>
     </dl>
   </section>
-  {% if perms.organization.change_employee and employee.is_active %}
+  {% if perms.organization.change_employee and employee.is_active and employee.user_id != user.id %}
     <section class="org-panel org-deactivation" aria-labelledby="employee-deactivation-heading">
       <header class="org-panel-heading"><h2 id="employee-deactivation-heading">Deactivate employee</h2><p>Disables the linked login and preserves employee history.</p></header>
       <form method="post" action="{% url 'organization:employee-deactivate' employee.pk %}" class="form-stack org-form">

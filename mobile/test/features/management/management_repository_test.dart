@@ -202,40 +202,178 @@ void main() {
     },
   );
 
-  test('choice pagination deduplicates records by ID and halts on stagnant loop', () async {
-    for (final kind in ReferenceKind.values) {
-      final path = '/management/${kind.path}/';
+  test(
+    'employee creation choices paginate, deduplicate and retain manager IDs',
+    () async {
+      for (final kind in ReferenceKind.values) {
+        final path = '/management/${kind.path}/';
+        reply(
+          path,
+          pageJson([referenceJson()], count: 3, next: 'next'),
+          pageSize: 100,
+        );
+        reply(
+          path,
+          pageJson([referenceJson(), referenceJson(2)], count: 3, next: 'next'),
+          page: 2,
+          pageSize: 100,
+        );
+        reply(
+          path,
+          pageJson([referenceJson(3)], count: 3),
+          page: 3,
+          pageSize: 100,
+        );
+      }
       reply(
-        path,
-        pageJson([referenceJson(1), referenceJson(2)], count: 3, next: 'next'),
+        '/management/employees/',
+        pageJson([employeeJson(1), employeeJson(2)], count: 4, next: 'next'),
         pageSize: 100,
       );
-      // Page 2 returns duplicate ID 2 and indicates more data is available
       reply(
-        path,
-        pageJson([referenceJson(2)], count: 3, next: 'stagnant-loop'),
+        '/management/employees/',
+        pageJson([employeeJson(2), employeeJson(3)], count: 4, next: 'next'),
         page: 2,
         pageSize: 100,
       );
-    }
-    reply(
-      '/management/employees/',
-      pageJson([employeeJson(1), employeeJson(2)], count: 3, next: 'next'),
-      pageSize: 100,
-    );
-    // Page 2 returns duplicate employee 2 and new employee 3
-    reply(
-      '/management/employees/',
-      pageJson([employeeJson(2), employeeJson(3)]),
-      page: 2,
-      pageSize: 100,
-    );
+      reply(
+        '/management/employees/',
+        pageJson([employeeJson(4)], count: 4),
+        page: 3,
+        pageSize: 100,
+      );
 
-    final choices = await repository.employeeEditChoices(employeeId: 1);
-    expect(choices.departments.map((d) => d.id), [1, 2]);
-    expect(choices.jobRoles.map((r) => r.id), [1, 2]);
-    expect(choices.reportingManagers.map((m) => m.id), [2, 3]);
-  });
+      final choices = await repository.employeeCreationChoices();
+      expect(choices.departments.map((item) => item.id), [1, 2, 3]);
+      expect(choices.jobRoles.map((item) => item.id), [1, 2, 3]);
+      expect(choices.reportingManagers.map((item) => item.id), [1, 2, 3, 4]);
+      verify(
+        () => dio.get(
+          '/management/employees/',
+          queryParameters: {'page': 2, 'page_size': 100},
+          cancelToken: null,
+        ),
+      ).called(1);
+    },
+  );
+
+  test(
+    'employee creation choices omit optional managers without directory access',
+    () async {
+      for (final kind in ReferenceKind.values) {
+        reply(
+          '/management/${kind.path}/',
+          pageJson([referenceJson()]),
+          pageSize: 100,
+        );
+      }
+      final choices = await repository.employeeCreationChoices(
+        includeReportingManagers: false,
+      );
+      expect(choices.departments, hasLength(1));
+      expect(choices.jobRoles, hasLength(1));
+      expect(choices.reportingManagers, isEmpty);
+      verifyNever(
+        () => dio.get(
+          '/management/employees/',
+          queryParameters: any(named: 'queryParameters'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+    },
+  );
+
+  test(
+    'Employee POST sends supported fields and parses created detail',
+    () async {
+      final response = employeeDetailJson(42, 'New employee')
+        ..['employee_code'] = 'NEW-42'
+        ..['reporting_manager'] = null
+        ..['reporting_manager_id'] = null
+        ..['login_status'] = 'NOT_LINKED';
+      when(
+        () => dio.post(
+          '/management/employees/',
+          data: any(named: 'data'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: '/management/employees/'),
+          statusCode: 201,
+          data: response,
+        ),
+      );
+
+      final created = await repository.createEmployee(
+        employeeCode: ' NEW-42 ',
+        displayName: ' New employee ',
+        departmentId: 2,
+        jobRoleId: 3,
+        dateJoined: '2026-10-22',
+      );
+
+      expect(created.id, 42);
+      expect(created.reportingManagerId, isNull);
+      expect(created.loginStatus, 'NOT_LINKED');
+      verify(
+        () => dio.post(
+          '/management/employees/',
+          data: {
+            'employee_code': 'NEW-42',
+            'display_name': 'New employee',
+            'department': 2,
+            'job_role': 3,
+            'date_joined': '2026-10-22',
+            'reporting_manager': null,
+          },
+          cancelToken: null,
+        ),
+      ).called(1);
+    },
+  );
+
+  test(
+    'choice pagination deduplicates records by ID and halts on stagnant loop',
+    () async {
+      for (final kind in ReferenceKind.values) {
+        final path = '/management/${kind.path}/';
+        reply(
+          path,
+          pageJson(
+            [referenceJson(1), referenceJson(2)],
+            count: 3,
+            next: 'next',
+          ),
+          pageSize: 100,
+        );
+        // Page 2 returns duplicate ID 2 and indicates more data is available
+        reply(
+          path,
+          pageJson([referenceJson(2)], count: 3, next: 'stagnant-loop'),
+          page: 2,
+          pageSize: 100,
+        );
+      }
+      reply(
+        '/management/employees/',
+        pageJson([employeeJson(1), employeeJson(2)], count: 3, next: 'next'),
+        pageSize: 100,
+      );
+      // Page 2 returns duplicate employee 2 and new employee 3
+      reply(
+        '/management/employees/',
+        pageJson([employeeJson(2), employeeJson(3)]),
+        page: 2,
+        pageSize: 100,
+      );
+
+      final choices = await repository.employeeEditChoices(employeeId: 1);
+      expect(choices.departments.map((d) => d.id), [1, 2]);
+      expect(choices.jobRoles.map((r) => r.id), [1, 2]);
+      expect(choices.reportingManagers.map((m) => m.id), [2, 3]);
+    },
+  );
 
   test(
     'employee profile PATCH sends changed relationship IDs and explicit null',

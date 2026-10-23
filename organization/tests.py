@@ -5,6 +5,7 @@ from django.db.models.deletion import ProtectedError
 from django.test import Client
 from django.test import TestCase
 
+from audit.models import AuditLog
 from config.model_test_utils import CurriculumTestCase
 from .models import Department, Employee, JobRole
 
@@ -425,16 +426,91 @@ class OrganizationViewTests(TestCase):
         self.assertTrue(staff.is_active)
 
     def test_administrator_can_manage_privileged_employee_account(self):
-        superuser = get_user_model().objects.create_superuser(username="admin-target", password="password", email="target@example.test")
+        admin_target = get_user_model().objects.create_user(username="admin-target")
+        Group.objects.get(name="Administrator").user_set.add(admin_target)
         self.client.force_login(self.admin_user)
-        response = self.client.post("/employees/new/", self.employee_data("GN-ADMIN-TARGET", superuser))
+        response = self.client.post("/employees/new/", self.employee_data("GN-ADMIN-TARGET", admin_target))
         self.assertEqual(response.status_code, 302)
         employee = Employee.objects.get(employee_code="GN-ADMIN-TARGET")
-        self.assertEqual(employee.user_id, superuser.pk)
-        response = self.client.post(f"/employees/{employee.pk}/deactivate/", {"reason": "Approved deactivation"})
+        self.assertEqual(employee.user_id, admin_target.pk)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(f"/employees/{employee.pk}/deactivate/", {"reason": "Approved deactivation"})
         self.assertEqual(response.status_code, 302)
+        admin_target.refresh_from_db()
+        self.assertFalse(admin_target.is_active)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action="organization.employee.deactivated", entity_id=str(employee.pk),
+            ).exists()
+        )
+
+    def test_ordinary_administrator_cannot_manage_or_deactivate_superuser(self):
+        superuser = get_user_model().objects.create_superuser(
+            username="super-target", password="password", email="supertarget@example.test"
+        )
+        self.client.force_login(self.admin_user)
+        response = self.client.post("/employees/new/", self.employee_data("GN-SUPER-TARGET", superuser))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("user", response.context["form"].errors)
+        self.assertFalse(Employee.objects.filter(employee_code="GN-SUPER-TARGET").exists())
+
+        employee = Employee.objects.create(
+            employee_code="GN-SUPER-TARGET", display_name="Super Target",
+            department=self.department, job_role=self.role, date_joined="2026-01-01", user=superuser
+        )
+        audit_count_before = AuditLog.objects.filter(entity_id=str(employee.pk)).count()
+        deact_response = self.client.post(f"/employees/{employee.pk}/deactivate/", {"reason": "Unauthorized attempt"})
+        self.assertEqual(deact_response.status_code, 403)
+        employee.refresh_from_db()
         superuser.refresh_from_db()
-        self.assertFalse(superuser.is_active)
+        self.assertTrue(employee.is_active)
+        self.assertTrue(superuser.is_active)
+        self.assertEqual(AuditLog.objects.filter(entity_id=str(employee.pk)).count(), audit_count_before)
+
+    def test_superuser_can_manage_and_deactivate_superuser(self):
+        actor_superuser = get_user_model().objects.create_superuser(
+            username="super-actor", password="password", email="actor@example.test"
+        )
+        target_superuser = get_user_model().objects.create_superuser(
+            username="super-target-2", password="password", email="target2@example.test"
+        )
+        self.client.force_login(actor_superuser)
+        response = self.client.post("/employees/new/", self.employee_data("GN-SUPER-LINKED", target_superuser))
+        self.assertEqual(response.status_code, 302)
+        employee = Employee.objects.get(employee_code="GN-SUPER-LINKED")
+        self.assertEqual(employee.user_id, target_superuser.pk)
+        with self.captureOnCommitCallbacks(execute=True):
+            deact_response = self.client.post(f"/employees/{employee.pk}/deactivate/", {"reason": "Superuser deactivation"})
+        self.assertEqual(deact_response.status_code, 302)
+        employee.refresh_from_db()
+        target_superuser.refresh_from_db()
+        self.assertFalse(employee.is_active)
+        self.assertFalse(target_superuser.is_active)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action="organization.employee.deactivated", entity_id=str(employee.pk),
+            ).exists()
+        )
+
+    def test_administrator_cannot_deactivate_own_employee_record(self):
+        admin_employee = Employee.objects.create(
+            employee_code="GN-ADMIN-SELF", display_name="Admin Self",
+            department=self.department, job_role=self.role, date_joined="2026-01-01", user=self.admin_user
+        )
+        self.client.force_login(self.admin_user)
+        detail_response = self.client.get(f"/employees/{admin_employee.pk}/")
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertNotContains(detail_response, "Deactivate employee")
+        self.assertNotContains(detail_response, f"/employees/{admin_employee.pk}/deactivate/")
+
+        audit_count_before = AuditLog.objects.filter(entity_id=str(admin_employee.pk)).count()
+        response = self.client.post(f"/employees/{admin_employee.pk}/deactivate/", {"reason": "Self-deactivation attempt"})
+        self.assertEqual(response.status_code, 403)
+        admin_employee.refresh_from_db()
+        self.admin_user.refresh_from_db()
+        self.assertTrue(admin_employee.is_active)
+        self.assertTrue(self.admin_user.is_active)
+        self.assertEqual(AuditLog.objects.filter(entity_id=str(admin_employee.pk)).count(), audit_count_before)
 
     def test_coordinator_can_manage_ordinary_employee_accounts(self):
         ordinary = get_user_model().objects.create_user(username="ordinary")
@@ -444,9 +520,16 @@ class OrganizationViewTests(TestCase):
         self.assertEqual(self.client.post("/employees/new/", self.employee_data("GN-ORDINARY", ordinary)).status_code, 302)
         employee = Employee.objects.get(employee_code="GN-ORDINARY")
         self.assertEqual(employee.user_id, ordinary.pk)
-        self.assertEqual(self.client.post(f"/employees/{employee.pk}/deactivate/", {"reason": "Left company"}).status_code, 302)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(f"/employees/{employee.pk}/deactivate/", {"reason": "Left company"})
+        self.assertEqual(response.status_code, 302)
         ordinary.refresh_from_db()
         self.assertFalse(ordinary.is_active)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action="organization.employee.deactivated", entity_id=str(employee.pk),
+            ).exists()
+        )
 
 
 class EmptyOrganizationPageTests(TestCase):

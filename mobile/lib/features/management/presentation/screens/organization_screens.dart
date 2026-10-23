@@ -75,6 +75,17 @@ class _OrganizationListScreenState
     }
   }
 
+  Future<void> _openEmployeeCreation(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final created = await context.push<bool>('/workspace/employees/new');
+    if (created == true && mounted) {
+      setState(() => _page = 1);
+      ref.invalidate(employeeDirectoryProvider(1));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authControllerProvider);
@@ -92,6 +103,14 @@ class _OrganizationListScreenState
     if (kind == null) {
       return ReadOnlyPage<ManagementPage<DirectoryEmployee>>(
         title: 'Employees',
+        actions: [
+          if (canCreateEmployee(auth.identity))
+            IconButton(
+              tooltip: 'Add employee',
+              onPressed: () => _openEmployeeCreation(context, ref),
+              icon: const Icon(Icons.person_add_alt_1_outlined),
+            ),
+        ],
         value: ref.watch(employeeDirectoryProvider(_page)),
         refresh: () {
           setState(() => _page = 1);

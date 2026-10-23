@@ -192,6 +192,148 @@ void main() {
     },
   );
 
+  test('employee creation requires the server-issued add capability', () async {
+    final mutations = EmployeeCreationMutationController(
+      repository: repository,
+      readAuth: () => AuthAuthenticated.identity(
+        managementIdentity(capabilities: {'organization.view_employee'}),
+      ),
+    );
+    await expectLater(
+      mutations.create(
+        employeeCode: 'NEW-1',
+        displayName: 'New employee',
+        departmentId: 1,
+        jobRoleId: 1,
+        dateJoined: '2026-10-22',
+      ),
+      throwsA(isA<ApiError>()),
+    );
+    verifyZeroInteractions(repository);
+  });
+
+  test(
+    'employee creation returns response only to the initiating account',
+    () async {
+      final response = Completer<DirectoryEmployee>();
+      var currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'first',
+          capabilities: {'organization.add_employee'},
+        ),
+      );
+      when(
+        () => repository.createEmployee(
+          employeeCode: 'NEW-1',
+          displayName: 'New employee',
+          departmentId: 1,
+          jobRoleId: 1,
+          dateJoined: '2026-10-22',
+          reportingManagerId: null,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => response.future);
+      final mutations = EmployeeCreationMutationController(
+        repository: repository,
+        readAuth: () => currentAuth,
+      );
+      final pending = mutations.create(
+        employeeCode: 'NEW-1',
+        displayName: 'New employee',
+        departmentId: 1,
+        jobRoleId: 1,
+        dateJoined: '2026-10-22',
+      );
+      currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'second',
+          capabilities: {'organization.add_employee'},
+        ),
+      );
+      response.complete(DirectoryEmployee.fromJson(employeeDetailJson(42)));
+      await expectLater(pending, throwsA(isA<ApiError>()));
+    },
+  );
+
+  test(
+    'employee creation choices require the server-issued add capability',
+    () async {
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(capabilities: {'organization.view_employee'}),
+        ),
+      );
+      expect(
+        canCreateEmployee(
+          managementIdentity(capabilities: {'organization.add_employee'}),
+        ),
+        isTrue,
+      );
+      expect(
+        canCreateEmployee(
+          managementIdentity(capabilities: {'organization.view_employee'}),
+        ),
+        isFalse,
+      );
+      await expectLater(
+        container.read(employeeCreationChoicesProvider.future),
+        throwsA(isA<ApiError>()),
+      );
+      verifyZeroInteractions(repository);
+    },
+  );
+
+  test(
+    'employee creation choices cancel and discard data after account switch',
+    () async {
+      final oldResponse = Completer<EmployeeEditChoices>();
+      final currentResponse = Completer<EmployeeEditChoices>();
+      final tokens = <CancelToken>[];
+      when(
+        () => repository.employeeCreationChoices(
+          includeReportingManagers: any(named: 'includeReportingManagers'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((call) {
+        expect(call.namedArguments[#includeReportingManagers], isFalse);
+        tokens.add(call.namedArguments[#cancelToken] as CancelToken);
+        return tokens.length == 1 ? oldResponse.future : currentResponse.future;
+      });
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            username: 'first',
+            capabilities: {'organization.add_employee'},
+          ),
+        ),
+      );
+      final sub = container.listen(employeeCreationChoicesProvider, (_, _) {});
+      addTearDown(sub.close);
+      await Future<void>.delayed(Duration.zero);
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            username: 'second',
+            capabilities: {'organization.add_employee'},
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(tokens.first.isCancelled, isTrue);
+      oldResponse.complete(employeeEditChoicesFixture());
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(employeeCreationChoicesProvider).isLoading, isTrue);
+      currentResponse.complete(employeeEditChoicesFixture());
+      expect(
+        (await container.read(employeeCreationChoicesProvider.future))
+            .departments
+            .first
+            .id,
+        1,
+      );
+    },
+  );
+
   test('company, team and paginated directory reads use their repository operations', () async {
     when(() => repository.dashboard(cancelToken: any(named: 'cancelToken')))
         .thenAnswer((_) async => dashboardFixture());

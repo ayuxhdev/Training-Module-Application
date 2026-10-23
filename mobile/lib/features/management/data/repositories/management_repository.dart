@@ -148,10 +148,33 @@ class ManagementRepository {
     if (employeeId <= 0) {
       throw ArgumentError.value(employeeId, 'employeeId');
     }
+    return _employeeFormChoices(
+      excludeEmployeeId: employeeId,
+      pageSize: pageSize,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<EmployeeEditChoices> employeeCreationChoices({
+    int pageSize = 100,
+    bool includeReportingManagers = true,
+    CancelToken? cancelToken,
+  }) => _employeeFormChoices(
+    pageSize: pageSize,
+    includeReportingManagers: includeReportingManagers,
+    cancelToken: cancelToken,
+  );
+
+  Future<EmployeeEditChoices> _employeeFormChoices({
+    int? excludeEmployeeId,
+    required int pageSize,
+    bool includeReportingManagers = true,
+    CancelToken? cancelToken,
+  }) async {
     if (pageSize <= 0 || pageSize > 100) {
       throw ArgumentError.value(pageSize, 'pageSize');
     }
-    final pages = await Future.wait([
+    final referencePages = await Future.wait([
       _allReferencePages(
         ReferenceKind.departments,
         cancelToken,
@@ -162,13 +185,15 @@ class ManagementRepository {
         cancelToken,
         pageSize: pageSize,
       ),
-      _allEmployeePages(cancelToken, pageSize: pageSize),
     ]);
+    final managers = includeReportingManagers
+        ? await _allEmployeePages(cancelToken, pageSize: pageSize)
+        : <DirectoryEmployee>[];
     return EmployeeEditChoices(
-      departments: pages[0] as List<OrganizationReference>,
-      jobRoles: pages[1] as List<OrganizationReference>,
-      reportingManagers: (pages[2] as List<DirectoryEmployee>)
-          .where((employee) => employee.id != employeeId)
+      departments: referencePages[0],
+      jobRoles: referencePages[1],
+      reportingManagers: managers
+          .where((employee) => employee.id != excludeEmployeeId)
           .toList(),
     );
   }
@@ -280,6 +305,54 @@ class ManagementRepository {
         throw const FormatException('Employee identity mismatch.');
       }
       return saved;
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<DirectoryEmployee> createEmployee({
+    required String employeeCode,
+    required String displayName,
+    required int departmentId,
+    required int jobRoleId,
+    required String dateJoined,
+    int? reportingManagerId,
+    CancelToken? cancelToken,
+  }) async {
+    if (departmentId <= 0) {
+      throw ArgumentError.value(departmentId, 'departmentId');
+    }
+    if (jobRoleId <= 0) throw ArgumentError.value(jobRoleId, 'jobRoleId');
+    if (reportingManagerId != null && reportingManagerId <= 0) {
+      throw ArgumentError.value(reportingManagerId, 'reportingManagerId');
+    }
+    final data = <String, Object?>{
+      'employee_code': employeeCode.trim(),
+      'display_name': displayName.trim(),
+      'department': departmentId,
+      'job_role': jobRoleId,
+      'date_joined': dateJoined,
+      'reporting_manager': reportingManagerId,
+    };
+    try {
+      final response = await apiClient.dio.post(
+        '/management/employees/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 201) {
+        throw const FormatException(
+          'Employee creation returned an unexpected status.',
+        );
+      }
+      final json = response.data as Map<String, dynamic>;
+      _validateManagerResponseContract(json);
+      final created = DirectoryEmployee.fromJson(json);
+      if (created.id <= 0) {
+        throw const FormatException('Invalid created employee identity.');
+      }
+      return created;
     } catch (error) {
       throw apiClient.mapExceptionToApiError(error);
     }

@@ -212,8 +212,8 @@ class ManagementReadAPITests(CurriculumTestCase):
         self.authenticate(self.admin)
         for path in ("dashboard/", "employees/", f"employees/{self.employee.pk}/", "departments/", "job-roles/"):
             for method in ("post", "put", "patch", "delete"):
-                if method == "post" and path in ("departments/", "job-roles/"):
-                    continue  # Batch 3A explicitly permits reference creation.
+                if method == "post" and path in ("departments/", "job-roles/", "employees/"):
+                    continue  # Explicitly authorized collection creation.
                 if method == "patch" and path == f"employees/{self.employee.pk}/":
                     continue  # Batch 3B permits profile-only updates with change_employee.
                 with self.subTest(path=path, method=method):

@@ -100,6 +100,8 @@ def deactivate_employee(request, pk):
 		raise Http404
 	with transaction.atomic():
 		employee = get_object_or_404(Employee.objects.select_for_update(), pk=pk)
+		if employee.user_id and employee.user_id == request.user.pk:
+			raise PermissionDenied
 		if employee.user_id and not may_manage_linked_user(request.user, employee.user):
 			raise PermissionDenied
 		if not employee.is_active:

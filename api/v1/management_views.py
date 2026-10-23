@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
@@ -15,6 +16,7 @@ from api.pagination import StandardResultsSetPagination
 from api.permissions import IsMobileAccount
 from audit.services import audit_snapshot, record_event
 from certifications.models import Certificate
+from organization.forms import may_manage_linked_user
 from organization.models import Department, Employee, JobRole
 from organization.views import can_manage, employee_scope
 from reports.queries import (
@@ -24,7 +26,7 @@ from reports.queries import (
 from training.views import assignment_scope
 
 from .management_serializers import (
-    DepartmentWriteSerializer, EmployeeDirectoryDetailSerializer, EmployeeDirectorySerializer,
+    DepartmentWriteSerializer, EmployeeCreateSerializer, EmployeeDirectoryDetailSerializer, EmployeeDirectorySerializer,
     EmployeeProfileWriteSerializer, JobRoleWriteSerializer, ManagementDashboardSerializer, OrganizationReferenceSerializer,
 )
 
@@ -51,8 +53,55 @@ class EmployeeDirectoryMixin(OrganizationReadMixin):
         return employees.order_by("display_name", "pk")
 
 
-class EmployeeDirectoryView(EmployeeDirectoryMixin, generics.ListAPIView):
+class EmployeeDirectoryView(EmployeeDirectoryMixin, generics.ListCreateAPIView):
+    http_method_names = ["get", "post", "head", "options"]
     serializer_class = EmployeeDirectorySerializer
+
+    @property
+    def required_permission(self):
+        return "organization.add_employee" if self.request.method == "POST" else "organization.view_employee"
+
+    def get_serializer_class(self):
+        return EmployeeCreateSerializer if self.request.method == "POST" else self.serializer_class
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                user = serializer.validated_data.get("user")
+                if user is not None:
+                    if serializer.validated_data.get("reporting_manager") is not None:
+                        # Match hierarchy/deactivation ordering: Employee locks before User.
+                        list(Employee.objects.order_by("pk").select_for_update().values_list("pk", flat=True))
+                    user = get_user_model().objects.select_for_update().filter(pk=user.pk).first()
+                    if user is None:
+                        raise serializers.ValidationError({"user": ["This login account is no longer available."]})
+                    if not may_manage_linked_user(request.user, user):
+                        raise serializers.ValidationError({"user": ["You cannot link a privileged login account."]})
+                    serializer.validated_data["user"] = user
+                employee = serializer.save()  # Reuses model validation, uniqueness and hierarchy safeguards.
+                record_event(request.user, "organization.employee.created", employee,
+                    before={}, after={**audit_snapshot(employee), "changed_fields": list(serializer.validated_data)})
+            return Response(EmployeeDirectoryDetailSerializer(employee).data, status=201)
+        except DjangoValidationError as exc:
+            fields = exc.message_dict if hasattr(exc, "message_dict") else {"non_field_errors": exc.messages}
+            raise serializers.ValidationError({"non_field_errors" if key == "__all__" else key: value
+                                               for key, value in fields.items()}) from exc
+        except IntegrityError as exc:
+            # Translate only verified identity/link collisions, never unrelated failures.
+            conflicts = {}
+            if exc.args and exc.args[0] == 1062:
+                for field, message in (
+                    ("employee_code", "This employee code is already in use."),
+                    ("user", "This login account is already linked to an employee."),
+                ):
+                    value = serializer.validated_data.get(field)
+                    if value is not None and Employee.objects.filter(**{field: value}).exists():
+                        conflicts[field] = [message]
+            if conflicts:
+                raise serializers.ValidationError(conflicts) from exc
+            raise
 
 
 class EmployeeDirectoryDetailView(EmployeeDirectoryMixin, generics.RetrieveUpdateAPIView):

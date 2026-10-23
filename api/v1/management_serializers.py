@@ -2,6 +2,7 @@ from collections.abc import Mapping
 
 from rest_framework import serializers
 
+from organization.forms import may_manage_linked_user
 from organization.models import Department, Employee, JobRole
 
 
@@ -72,6 +73,17 @@ class EmployeeProfileWriteSerializer(serializers.ModelSerializer):
             if unexpected:
                 raise serializers.ValidationError({field: ["This field is not writable."] for field in sorted(unexpected)})
         return super().to_internal_value(data)
+
+
+class EmployeeCreateSerializer(EmployeeProfileWriteSerializer):
+    class Meta(EmployeeProfileWriteSerializer.Meta):
+        fields = ("employee_code", "display_name", "user", "department", "job_role", "reporting_manager", "date_joined")
+
+    def validate_user(self, user):
+        actor = getattr(self.context.get("request"), "user", None)
+        if not may_manage_linked_user(actor, user):
+            raise serializers.ValidationError("You cannot link a privileged login account.")
+        return user
 
 
 class ManagementMetricsSerializer(serializers.Serializer):

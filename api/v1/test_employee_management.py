@@ -318,9 +318,9 @@ class EmployeeProfileAPITests(CurriculumTestCase):
             self.assertEqual(row, EmployeeDirectorySerializer(employee).data)
             self.assertNotIn("reporting_manager_id", row)
 
-    def test_creation_deletion_and_full_replacement_remain_unsupported(self):
+    def test_deletion_full_replacement_and_detail_post_remain_unsupported(self):
         self.authenticate(self.admin)
-        for path, methods in (("/api/v1/management/employees/", ("post", "put", "patch", "delete")),
+        for path, methods in (("/api/v1/management/employees/", ("put", "patch", "delete")),
                               (self.url(), ("post", "put", "delete"))):
             for method in methods:
                 self.assert_error(getattr(self.client, method)(path, {}, format="json"), 405)

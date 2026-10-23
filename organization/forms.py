@@ -4,11 +4,13 @@ from .models import Department, Employee, JobRole
 
 
 def may_manage_linked_user(actor, target):
-    if target is None or not (
-        target.is_superuser or target.is_staff or target.groups.filter(name="Administrator").exists()
-    ):
+    if target is None:
         return True
-    return bool(actor and (actor.is_superuser or actor.groups.filter(name="Administrator").exists()))
+    if target.is_superuser:
+        return bool(actor and actor.is_superuser)
+    if target.is_staff or target.groups.filter(name="Administrator").exists():
+        return bool(actor and (actor.is_superuser or actor.groups.filter(name="Administrator").exists()))
+    return True
 
 
 class EmployeeForm(forms.ModelForm):
