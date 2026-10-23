@@ -86,6 +86,19 @@ class EmployeeCreateSerializer(EmployeeProfileWriteSerializer):
         return user
 
 
+class EmployeeDeactivationSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=1000, trim_whitespace=True)
+
+    def to_internal_value(self, data):
+        if isinstance(data, Mapping):
+            unexpected = set(data) - {"reason"}
+            if unexpected:
+                raise serializers.ValidationError({field: ["This field is not writable."] for field in sorted(unexpected)})
+            if "reason" in data and not isinstance(data["reason"], str):
+                raise serializers.ValidationError({"reason": ["Enter a deactivation reason."]})
+        return super().to_internal_value(data)
+
+
 class ManagementMetricsSerializer(serializers.Serializer):
     total = serializers.IntegerField()
     assigned = serializers.IntegerField()

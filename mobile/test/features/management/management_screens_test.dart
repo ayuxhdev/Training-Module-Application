@@ -21,6 +21,7 @@ import 'package:training_app/features/management/presentation/screens/organizati
 import 'package:training_app/features/management/presentation/screens/organization_reference_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/employee_profile_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/employee_creation_form_screen.dart';
+import 'package:training_app/features/management/presentation/widgets/employee_deactivation_dialog.dart';
 import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
 
 import 'management_fixtures.dart';
@@ -309,6 +310,481 @@ void main() {
       expect(find.text('Not found.'), findsOneWidget);
       expect(find.text('Employee 1'), findsNothing);
       expect(find.text('Edit employee'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'deactivation action requires active employee and change capability',
+    (tester) async {
+      await launch(
+        tester,
+        path: '/workspace/employees/1',
+        identity: managementIdentity(
+          capabilities: {'organization.view_employee'},
+        ),
+      );
+      expect(find.byTooltip('Deactivate employee'), findsNothing);
+
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            capabilities: {
+              'organization.view_employee',
+              'organization.change_employee',
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Deactivate employee'), findsOneWidget);
+    },
+  );
+
+  testWidgets('deactivation action is hidden for inactive employees', (
+    tester,
+  ) async {
+    when(() => repository.employee(1, cancelToken: any(named: 'cancelToken')))
+        .thenAnswer(
+          (_) async => DirectoryEmployee.fromJson(
+            employeeDetailJson()..['is_active'] = false,
+          ),
+        );
+    await launch(
+      tester,
+      path: '/workspace/employees/1',
+      identity: managementIdentity(
+        capabilities: {
+          'organization.view_employee',
+          'organization.change_employee',
+        },
+      ),
+    );
+    expect(find.text('Inactive'), findsOneWidget);
+    expect(find.byTooltip('Deactivate employee'), findsNothing);
+  });
+
+  testWidgets(
+    'deactivation confirmation validates reason and explains consequences',
+    (tester) async {
+      when(
+        () => repository.deactivateEmployee(
+          1,
+          reason: 'Employment ended',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => DirectoryEmployee.fromJson(
+          employeeDetailJson()..['is_active'] = false,
+        ),
+      );
+      await launch(
+        tester,
+        path: '/workspace/employees/1',
+        identity: managementIdentity(
+          capabilities: {
+            'organization.view_employee',
+            'organization.change_employee',
+          },
+        ),
+      );
+      await tester.tap(find.byTooltip('Deactivate employee'));
+      await tester.pumpAndSettle();
+      expect(find.byType(EmployeeDeactivationDialog), findsOneWidget);
+      expect(
+        find.textContaining('disables this employee’s login access'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Historical training records are preserved'),
+        findsOneWidget,
+      );
+      final reasonField = tester.widget<TextField>(find.byType(TextField));
+      expect(reasonField.maxLength, 1000);
+
+      await tester.tap(find.text('Deactivate'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter a reason.'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextFormField), 'Employment ended');
+      await tester.tap(find.text('Deactivate'));
+      await tester.pumpAndSettle();
+      expect(find.byType(EmployeeDeactivationDialog), findsNothing);
+      expect(
+        find.textContaining('Any linked login is disabled'),
+        findsOneWidget,
+      );
+      verify(
+        () => repository.deactivateEmployee(
+          1,
+          reason: 'Employment ended',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      verify(
+        () => repository.employee(1, cancelToken: any(named: 'cancelToken')),
+      ).called(2);
+    },
+  );
+
+  testWidgets('deactivation displays server, conflict and network errors', (
+    tester,
+  ) async {
+    var nextError = ApiError(
+      message: 'Reason rejected.',
+      statusCode: 400,
+      details: {
+        'reason': ['Reason rejected.'],
+      },
+    );
+    when(
+      () => repository.deactivateEmployee(
+        1,
+        reason: 'Employment ended',
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) async => throw nextError);
+    await launch(
+      tester,
+      path: '/workspace/employees/1',
+      identity: managementIdentity(
+        capabilities: {
+          'organization.view_employee',
+          'organization.change_employee',
+        },
+      ),
+    );
+
+    Future<void> submitReason() async {
+      await tester.tap(find.byTooltip('Deactivate employee'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField), 'Employment ended');
+      await tester.tap(find.text('Deactivate'));
+      await tester.pumpAndSettle();
+    }
+
+    await submitReason();
+    expect(find.text('Reason rejected.'), findsOneWidget);
+
+    nextError = ApiError(message: 'Forbidden.', statusCode: 403);
+    await submitReason();
+    expect(
+      find.text('You are not authorized to deactivate this employee.'),
+      findsOneWidget,
+    );
+
+    nextError = ApiError(
+      message: 'This employee is already inactive.',
+      statusCode: 409,
+    );
+    await submitReason();
+    expect(find.text('This employee is already inactive.'), findsOneWidget);
+
+    nextError = ApiError.networkFailure();
+    await submitReason();
+    expect(find.textContaining('Network connection failed.'), findsOneWidget);
+    expect(find.byTooltip('Deactivate employee'), findsOneWidget);
+  });
+
+  testWidgets(
+    'deactivation prevents duplicate saves and cancels on account switch',
+    (tester) async {
+      final pending = Completer<DirectoryEmployee>();
+      CancelToken? request;
+      when(
+        () => repository.deactivateEmployee(
+          1,
+          reason: 'Employment ended',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((call) {
+        request = call.namedArguments[#cancelToken] as CancelToken;
+        return pending.future;
+      });
+      await launch(
+        tester,
+        path: '/workspace/employees/1',
+        identity: managementIdentity(
+          username: 'first',
+          capabilities: {
+            'organization.view_employee',
+            'organization.change_employee',
+          },
+        ),
+      );
+      await tester.tap(find.byTooltip('Deactivate employee'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField), 'Employment ended');
+      await tester.tap(find.text('Deactivate'));
+      await tester.pump();
+      expect(find.byTooltip('Deactivating employee'), findsOneWidget);
+      await tester.tap(find.byTooltip('Deactivating employee'));
+      await tester.pump();
+      verify(
+        () => repository.deactivateEmployee(
+          1,
+          reason: 'Employment ended',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            username: 'second',
+            capabilities: {
+              'organization.view_employee',
+              'organization.change_employee',
+            },
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(request!.isCancelled, isTrue);
+      pending.complete(
+        DirectoryEmployee.fromJson(employeeDetailJson()..['is_active'] = false),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Any linked login is disabled'), findsNothing);
+    },
+  );
+
+  testWidgets('deactivation action is hidden for the current employee', (
+    tester,
+  ) async {
+    when(() => repository.employee(1, cancelToken: any(named: 'cancelToken')))
+        .thenAnswer(
+          (_) async => DirectoryEmployee.fromJson(
+            employeeDetailJson()
+              ..['employee_code'] = 'MGR'
+              ..['display_name'] = 'Current user',
+          ),
+        );
+    await launch(
+      tester,
+      path: '/workspace/employees/1',
+      identity: managementIdentity(
+        team: true,
+        capabilities: {
+          'organization.view_employee',
+          'organization.change_employee',
+        },
+      ),
+    );
+    expect(find.text('Current user'), findsOneWidget);
+    expect(find.byTooltip('Deactivate employee'), findsNothing);
+  });
+
+  testWidgets(
+    'HTTP 409 employee_inactive invalidates detail and directory caches without success banner',
+    (tester) async {
+      var employeeFetchCount = 0;
+      var directoryFetchCount = 0;
+      when(() => repository.employee(1, cancelToken: any(named: 'cancelToken')))
+          .thenAnswer((_) async {
+            employeeFetchCount++;
+            return DirectoryEmployee.fromJson(
+              employeeDetailJson()..['is_active'] = employeeFetchCount == 1,
+            );
+          });
+      when(
+        () => repository.employees(
+          page: 1,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async {
+        directoryFetchCount++;
+        return employeePage();
+      });
+      when(
+        () => repository.deactivateEmployee(
+          1,
+          reason: 'Employment ended',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => throw ApiError(
+          message: 'This employee is already inactive.',
+          statusCode: 409,
+          code: 'employee_inactive',
+        ),
+      );
+
+      await launch(
+        tester,
+        path: '/workspace/employees',
+        identity: managementIdentity(
+          capabilities: {
+            'organization.view_employee',
+            'organization.change_employee',
+          },
+        ),
+      );
+      expect(directoryFetchCount, 1);
+      await tap(tester, 'Employee 1');
+      expect(employeeFetchCount, 1);
+      expect(find.byTooltip('Deactivate employee'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Deactivate employee'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField), 'Employment ended');
+      await tester.tap(find.text('Deactivate'));
+      await tester.pumpAndSettle();
+
+      // Error message is displayed; no success message is displayed.
+      expect(find.text('This employee is already inactive.'), findsOneWidget);
+      expect(find.textContaining('Any linked login is disabled'), findsNothing);
+
+      // Detail cache was invalidated immediately because it is actively watched.
+      expect(employeeFetchCount, 2);
+
+      // With re-fetched detail indicating is_active: false, button is gone and Inactive is shown.
+      expect(find.text('Inactive'), findsOneWidget);
+      expect(find.byTooltip('Deactivate employee'), findsNothing);
+
+      // Returning to directory re-fetches the invalidated directory cache.
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(directoryFetchCount, 2);
+    },
+  );
+
+  testWidgets(
+    'non-409 errors or different 409 codes do not invalidate detail or directory caches',
+    (tester) async {
+      var employeeFetchCount = 0;
+      var directoryFetchCount = 0;
+      when(
+        () => repository.employees(
+          page: any(named: 'page'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async {
+        directoryFetchCount++;
+        return employeePage();
+      });
+      when(() => repository.employee(1, cancelToken: any(named: 'cancelToken')))
+          .thenAnswer((_) async {
+            employeeFetchCount++;
+            return DirectoryEmployee.fromJson(employeeDetailJson());
+          });
+      when(
+        () => repository.deactivateEmployee(
+          1,
+          reason: 'Employment ended',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => throw ApiError(
+          message: 'Another conflict occurred.',
+          statusCode: 409,
+          code: 'other_conflict',
+        ),
+      );
+
+      await launch(
+        tester,
+        path: '/workspace/employees',
+        identity: managementIdentity(
+          capabilities: {
+            'organization.view_employee',
+            'organization.change_employee',
+          },
+        ),
+      );
+
+      expect(directoryFetchCount, 1);
+      await tap(tester, 'Employee 1');
+      expect(employeeFetchCount, 1);
+      await tester.tap(find.byTooltip('Deactivate employee'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField), 'Employment ended');
+      await tester.tap(find.text('Deactivate'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Another conflict occurred.'), findsOneWidget);
+      // Detail cache was NOT invalidated.
+      expect(employeeFetchCount, 1);
+      expect(find.byTooltip('Deactivate employee'), findsOneWidget);
+
+      // Returning to directory confirms directory cache was NOT invalidated.
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(directoryFetchCount, 1);
+    },
+  );
+
+  testWidgets(
+    'stale 409 response after account switch does not trigger cache invalidation',
+    (tester) async {
+      final pending = Completer<DirectoryEmployee>();
+      CancelToken? request;
+      var employeeFetchCount = 0;
+      when(() => repository.employee(1, cancelToken: any(named: 'cancelToken')))
+          .thenAnswer((_) async {
+            employeeFetchCount++;
+            return DirectoryEmployee.fromJson(employeeDetailJson());
+          });
+      when(
+        () => repository.deactivateEmployee(
+          1,
+          reason: 'Employment ended',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((call) {
+        request = call.namedArguments[#cancelToken] as CancelToken;
+        return pending.future;
+      });
+
+      await launch(
+        tester,
+        path: '/workspace/employees/1',
+        identity: managementIdentity(
+          username: 'first',
+          capabilities: {
+            'organization.view_employee',
+            'organization.change_employee',
+          },
+        ),
+      );
+
+      expect(employeeFetchCount, 1);
+      await tester.tap(find.byTooltip('Deactivate employee'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField), 'Employment ended');
+      await tester.tap(find.text('Deactivate'));
+      await tester.pump();
+
+      // Switch authenticated account while request is in-flight.
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            username: 'second',
+            capabilities: {
+              'organization.view_employee',
+              'organization.change_employee',
+            },
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(request!.isCancelled, isTrue);
+
+      final countAfterSwitch = employeeFetchCount;
+      expect(countAfterSwitch, 2);
+
+      // Stale 409 arrives from previous account.
+      pending.completeError(
+        ApiError(
+          message: 'This employee is already inactive.',
+          statusCode: 409,
+          code: 'employee_inactive',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Ensure no error message for the new account and no extra fetch of detail.
+      expect(find.text('This employee is already inactive.'), findsNothing);
+      expect(employeeFetchCount, countAfterSwitch);
     },
   );
 

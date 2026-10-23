@@ -133,6 +133,71 @@ class EmployeeCreationMutationController {
   }
 }
 
+class EmployeeDeactivationMutationController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  const EmployeeDeactivationMutationController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<DirectoryEmployee> deactivate({
+    required DirectoryEmployee employee,
+    required String reason,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canEditEmployee(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot deactivate employees.',
+        statusCode: 403,
+      );
+    }
+    if (!employee.isActive) {
+      throw ApiError(
+        message: 'This employee is already inactive.',
+        statusCode: 409,
+      );
+    }
+    final currentEmployeeCode = initialAuth.identity.employee?.employeeCode
+        .trim();
+    if (currentEmployeeCode != null &&
+        currentEmployeeCode.isNotEmpty &&
+        currentEmployeeCode == employee.employeeCode) {
+      throw ApiError(
+        message: 'You cannot deactivate your own employee record.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final deactivated = await repository.deactivateEmployee(
+      employee.id,
+      reason: reason,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canEditEmployee(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before deactivation completed. Reopen the employee to continue.',
+        statusCode: 403,
+      );
+    }
+    return deactivated;
+  }
+}
+
+final employeeDeactivationMutationProvider =
+    Provider<EmployeeDeactivationMutationController>(
+      (ref) => EmployeeDeactivationMutationController(
+        repository: ref.watch(managementRepositoryProvider),
+        readAuth: () => ref.read(authControllerProvider),
+      ),
+    );
+
 final employeeCreationMutationProvider =
     Provider<EmployeeCreationMutationController>(
       (ref) => EmployeeCreationMutationController(

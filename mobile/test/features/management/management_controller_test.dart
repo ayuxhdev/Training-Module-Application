@@ -256,6 +256,83 @@ void main() {
   );
 
   test(
+    'employee deactivation requires change permission and blocks self',
+    () async {
+      final employee = DirectoryEmployee.fromJson(employeeDetailJson());
+      final denied = EmployeeDeactivationMutationController(
+        repository: repository,
+        readAuth: () => AuthAuthenticated.identity(
+          managementIdentity(capabilities: {'organization.view_employee'}),
+        ),
+      );
+      await expectLater(
+        denied.deactivate(employee: employee, reason: 'Reason'),
+        throwsA(isA<ApiError>()),
+      );
+
+      final self = EmployeeDeactivationMutationController(
+        repository: repository,
+        readAuth: () => AuthAuthenticated.identity(
+          managementIdentity(
+            team: true,
+            capabilities: {
+              'organization.view_employee',
+              'organization.change_employee',
+            },
+          ),
+        ),
+      );
+      final currentEmployee = DirectoryEmployee.fromJson(
+        employeeDetailJson()..['employee_code'] = 'MGR',
+      );
+      await expectLater(
+        self.deactivate(employee: currentEmployee, reason: 'Reason'),
+        throwsA(isA<ApiError>()),
+      );
+      verifyZeroInteractions(repository);
+    },
+  );
+
+  test(
+    'employee deactivation discards a response after account switching',
+    () async {
+      final response = Completer<DirectoryEmployee>();
+      var currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'first',
+          capabilities: {'organization.change_employee'},
+        ),
+      );
+      final employee = DirectoryEmployee.fromJson(employeeDetailJson());
+      when(
+        () => repository.deactivateEmployee(
+          employee.id,
+          reason: 'Employment ended',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => response.future);
+      final mutation = EmployeeDeactivationMutationController(
+        repository: repository,
+        readAuth: () => currentAuth,
+      );
+      final pending = mutation.deactivate(
+        employee: employee,
+        reason: 'Employment ended',
+      );
+      currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'second',
+          capabilities: {'organization.change_employee'},
+        ),
+      );
+      response.complete(
+        DirectoryEmployee.fromJson(employeeDetailJson()..['is_active'] = false),
+      );
+      await expectLater(pending, throwsA(isA<ApiError>()));
+    },
+  );
+
+  test(
     'employee creation choices require the server-issued add capability',
     () async {
       auth.setAuth(

@@ -6,7 +6,7 @@ from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, serializers
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -26,7 +26,8 @@ from reports.queries import (
 from training.views import assignment_scope
 
 from .management_serializers import (
-    DepartmentWriteSerializer, EmployeeCreateSerializer, EmployeeDirectoryDetailSerializer, EmployeeDirectorySerializer,
+    DepartmentWriteSerializer, EmployeeCreateSerializer, EmployeeDeactivationSerializer,
+    EmployeeDirectoryDetailSerializer, EmployeeDirectorySerializer,
     EmployeeProfileWriteSerializer, JobRoleWriteSerializer, ManagementDashboardSerializer, OrganizationReferenceSerializer,
 )
 
@@ -139,6 +140,51 @@ class EmployeeDirectoryDetailView(EmployeeDirectoryMixin, generics.RetrieveUpdat
                     record_event(request.user, "organization.employee.updated", employee,
                         before=before, after={**audit_snapshot(employee), "changed_fields": changed})
                 return Response(EmployeeDirectoryDetailSerializer(employee).data)
+        except DjangoValidationError as exc:
+            fields = exc.message_dict if hasattr(exc, "message_dict") else {"non_field_errors": exc.messages}
+            raise serializers.ValidationError({"non_field_errors" if key == "__all__" else key: value
+                                               for key, value in fields.items()}) from exc
+
+
+class EmployeeDeactivationConflict(APIException):
+    status_code = 409
+    default_code = "employee_inactive"
+    default_detail = "This employee is already inactive."
+
+
+class EmployeeDeactivationView(EmployeeDirectoryMixin, generics.GenericAPIView):
+    http_method_names = ["post", "options"]
+    required_permission = "organization.change_employee"
+    serializer_class = EmployeeDeactivationSerializer
+
+    def get_queryset(self):
+        # Keep Employee -> User lock ordering, without locking joined rows.
+        return super().get_queryset().select_related(None).select_for_update()
+
+    def post(self, request, *args, **kwargs):
+        try:
+            with transaction.atomic():
+                employee = self.get_object()
+                if employee.user_id == request.user.pk:
+                    raise PermissionDenied("You cannot deactivate your own employee record.")
+                if employee.user_id:
+                    user = get_user_model().objects.select_for_update().get(pk=employee.user_id)
+                    if not may_manage_linked_user(request.user, user):
+                        raise PermissionDenied("You cannot deactivate this privileged account.")
+                    employee.user = user
+                if not employee.is_active:
+                    raise EmployeeDeactivationConflict()
+                serializer = self.get_serializer(data=request.data)
+                serializer.is_valid(raise_exception=True)
+                before = audit_snapshot(employee)
+                employee.is_active = False
+                employee.deactivation_reason = serializer.validated_data["reason"]
+                employee.save()  # Sets deactivated_at and disables the linked User.
+                record_event(request.user, "organization.employee.deactivated", employee,
+                    before=before, after=audit_snapshot(employee), reason=employee.deactivation_reason)
+            # Reload the linked login status changed by Employee.save().
+            employee.refresh_from_db()
+            return Response(EmployeeDirectoryDetailSerializer(employee).data)
         except DjangoValidationError as exc:
             fields = exc.message_dict if hasattr(exc, "message_dict") else {"non_field_errors": exc.messages}
             raise serializers.ValidationError({"non_field_errors" if key == "__all__" else key: value

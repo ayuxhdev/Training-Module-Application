@@ -4,7 +4,8 @@ from .views import APINotFoundView, APIStatusView
 from .auth_views import EmployeeLoginView, EmployeeRefreshView, EmployeeLogoutView, EmployeeMeView
 from .dashboard_views import EmployeeDashboardView
 from .management_views import (
-    DepartmentReferenceUpdateView, DepartmentReferenceView, EmployeeDirectoryDetailView, EmployeeDirectoryView,
+    DepartmentReferenceUpdateView, DepartmentReferenceView, EmployeeDeactivationView,
+    EmployeeDirectoryDetailView, EmployeeDirectoryView,
     JobRoleReferenceUpdateView, JobRoleReferenceView, ManagementDashboardView,
 )
 from .certificate_views import CertificateDetailView, CertificateListView
@@ -27,7 +28,7 @@ from .learning_views import (
 	TextLessonCompletionView,
 	VideoSessionEndView,
 	VideoSessionMediaView,
-    
+
 	VideoSessionStartView,
 	VideoReplayMediaView,
 )
@@ -44,6 +45,7 @@ urlpatterns = [
     path("management/dashboard/", ManagementDashboardView.as_view(), name="management-dashboard"),
     path("management/employees/", EmployeeDirectoryView.as_view(), name="management-employees"),
     path("management/employees/<int:pk>/", EmployeeDirectoryDetailView.as_view(), name="management-employee-detail"),
+    path("management/employees/<int:pk>/deactivate/", EmployeeDeactivationView.as_view(), name="management-employee-deactivate"),
     path("management/departments/", DepartmentReferenceView.as_view(), name="management-departments"),
     path("management/departments/<int:pk>/", DepartmentReferenceUpdateView.as_view(), name="management-department-update"),
     path("management/job-roles/", JobRoleReferenceView.as_view(), name="management-job-roles"),

@@ -358,6 +358,43 @@ class ManagementRepository {
     }
   }
 
+  Future<DirectoryEmployee> deactivateEmployee(
+    int employeeId, {
+    required String reason,
+    CancelToken? cancelToken,
+  }) async {
+    if (employeeId <= 0) throw ArgumentError.value(employeeId, 'employeeId');
+    final normalizedReason = reason.trim();
+    if (normalizedReason.isEmpty || normalizedReason.length > 1000) {
+      throw ArgumentError.value(reason, 'reason');
+    }
+    final path = '/management/employees/$employeeId/deactivate/';
+    try {
+      final response = await apiClient.dio.post(
+        path,
+        data: {'reason': normalizedReason},
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 200) {
+        throw const FormatException(
+          'Employee deactivation returned an unexpected status.',
+        );
+      }
+      final json = response.data as Map<String, dynamic>;
+      _validateManagerResponseContract(json);
+      final deactivated = DirectoryEmployee.fromJson(json);
+      if (deactivated.id != employeeId || deactivated.isActive) {
+        throw const FormatException(
+          'Employee deactivation response did not confirm the requested employee.',
+        );
+      }
+      return deactivated;
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
   void _validateManagerResponseContract(Map<String, dynamic> json) {
     if (!json.containsKey('reporting_manager_id') ||
         !json.containsKey('reporting_manager')) {

@@ -1,9 +1,9 @@
 # Mobile Employee management API — Batch 3B
 
-Implemented backend contract for Employee creation and profile editing. Requests
+Implemented backend contract for Employee creation, profile editing and deactivation. Requests
 use existing JWT bearer authentication and mobile-account eligibility checks.
 There is no credential provisioning, Group/permission administration, Employee
-activation/deactivation or deletion API in this batch.
+reactivation or deletion API in this batch.
 
 ## Endpoints and authorization
 
@@ -13,6 +13,7 @@ activation/deactivation or deletion API in this batch.
 | `/api/v1/management/employees/` | POST | `organization.add_employee` | 201, created Employee detail |
 | `/api/v1/management/employees/{id}/` | GET | `organization.view_employee` | 200, Employee detail |
 | `/api/v1/management/employees/{id}/` | PATCH | `organization.change_employee` | 200, Employee detail |
+| `/api/v1/management/employees/{id}/deactivate/` | POST | `organization.change_employee` | 200, inactive Employee detail |
 
 Permissions are checked server-side, not inferred from a client role label.
 Existing read scope is unchanged: effective `change_employee` authority permits
@@ -86,6 +87,56 @@ implement that future UI workflow. PATCH still cannot add or change a User link.
 
 POST is not an upsert or an idempotent success protocol. A repeated code/account
 link returns 400 rather than creating a second Employee or duplicate audit event.
+
+## POST deactivation contract
+
+`POST /api/v1/management/employees/{id}/deactivate/` accepts exactly:
+
+```json
+{"reason":"Employee left the organization"}
+```
+
+`reason` is a required string, trimmed, nonblank and at most 1000 characters,
+matching the existing web form. Unknown fields are rejected. The server derives
+the target from the route and the actor from the JWT; clients cannot supply
+activation flags, timestamps, account IDs or audit metadata.
+
+Authorization requires mobile eligibility and effective `change_employee`,
+independently of `view_employee` or a linked Employee. The approved company-wide
+effective-permission policy also applies to Managers explicitly granted change
+authority. Ordinary Managers and Employees cannot deactivate any record.
+
+- Self-deactivation is forbidden, including for superusers.
+- A superuser target requires a superuser actor. Administrator-group membership
+  alone cannot bypass this rule.
+- Staff and Administrator-group targets require an Administrator-group or
+  superuser actor, reusing the web privileged-account protection.
+- Existing inactive targets return **409** with code `employee_inactive`.
+  Repeated requests preserve the original reason/timestamp and create no new audit.
+- **403** covers missing permission, mobile ineligibility, self-deactivation or
+  protected-account denial. Permission checks precede target lookup; authorized
+  unknown IDs return **404**. JWT failures return **401**. Invalid payloads return
+  **400**, normally with `fields.reason` for reason errors. Errors use the standard
+  envelope. Only POST and OPTIONS are supported on this action route.
+
+The transaction locks the Employee before its linked User, consistent with the
+existing hierarchy/lifecycle lock order. It reads current state and privileges
+under these locks. `Employee.save()` supplies the deactivation timestamp and
+disables the linked login. A record without a login is also supported. Successful
+commit schedules `organization.employee.deactivated` through the existing audit
+service, with the server actor, before/after snapshots and validated reason.
+Rejected or rolled-back writes create no success event.
+
+Success returns the same Employee detail shape below, with `is_active: false`
+and `login_status: "INACTIVE"` (or `"NOT_LINKED"`). It does not delete or rewrite
+assignments, progress, assessment history, certificates or reporting relationships,
+and does not reassign or deactivate subordinates. PATCH still rejects deactivation
+fields. Reactivation is not implemented.
+
+After an uncertain timeout, reconcile using authorized GET before an explicit
+retry; 409 on retry means already inactive, not a new successful transition.
+Do not automatically retry this mutation. No Flutter/device behavior is added
+by this backend phase.
 
 ## Detail response: GET and successful POST/PATCH
 

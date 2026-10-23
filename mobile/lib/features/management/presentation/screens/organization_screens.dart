@@ -9,6 +9,7 @@ import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
+import 'package:training_app/features/management/presentation/widgets/employee_deactivation_action.dart';
 import 'package:training_app/features/management/presentation/widgets/read_only_page.dart';
 
 class OrganizationListScreen extends ConsumerStatefulWidget {
@@ -220,6 +221,10 @@ class DirectoryEmployeeScreen extends ConsumerWidget {
       return const SizedBox.shrink();
     }
     final employee = ref.watch(directoryEmployeeProvider(employeeId));
+    final currentDetail = employee.asData?.value;
+    final isCurrentEmployee =
+        auth.identity.employee != null &&
+        auth.identity.employee!.employeeCode == currentDetail?.employeeCode;
     return ReadOnlyPage<DirectoryEmployee>(
       title: 'Employee details',
       actions: [
@@ -237,6 +242,13 @@ class DirectoryEmployeeScreen extends ConsumerWidget {
               }
             },
             icon: const Icon(Icons.edit_outlined),
+          ),
+        if (canEditEmployee(auth.identity) &&
+            currentDetail?.isActive == true &&
+            !isCurrentEmployee)
+          EmployeeDeactivationAction(
+            key: ValueKey('deactivate-$employeeId'),
+            employee: currentDetail!,
           ),
       ],
       value: employee,

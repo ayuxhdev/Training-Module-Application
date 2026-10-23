@@ -334,6 +334,62 @@ void main() {
   );
 
   test(
+    'Employee deactivation posts reason and parses confirmed detail',
+    () async {
+      final response = employeeDetailJson()
+        ..['is_active'] = false
+        ..['login_status'] = 'INACTIVE';
+      when(
+        () => dio.post(
+          '/management/employees/1/deactivate/',
+          data: any(named: 'data'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(
+            path: '/management/employees/1/deactivate/',
+          ),
+          statusCode: 200,
+          data: response,
+        ),
+      );
+
+      final saved = await repository.deactivateEmployee(
+        1,
+        reason: '  Employment ended  ',
+      );
+
+      expect(saved.id, 1);
+      expect(saved.isActive, isFalse);
+      expect(saved.loginStatus, 'INACTIVE');
+      verify(
+        () => dio.post(
+          '/management/employees/1/deactivate/',
+          data: {'reason': 'Employment ended'},
+          cancelToken: null,
+        ),
+      ).called(1);
+    },
+  );
+
+  test('invalid deactivation input is rejected before networking', () async {
+    await expectLater(
+      repository.deactivateEmployee(0, reason: 'Reason'),
+      throwsA(isA<ArgumentError>()),
+    );
+    await expectLater(
+      repository.deactivateEmployee(1, reason: '  '),
+      throwsA(isA<ArgumentError>()),
+    );
+    await expectLater(
+      repository.deactivateEmployee(1, reason: 'x' * 1001),
+      throwsA(isA<ArgumentError>()),
+    );
+    verifyZeroInteractions(dio);
+  });
+
+  test(
     'choice pagination deduplicates records by ID and halts on stagnant loop',
     () async {
       for (final kind in ReferenceKind.values) {
