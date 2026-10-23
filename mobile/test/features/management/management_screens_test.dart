@@ -882,6 +882,7 @@ void main() {
           ..['login_status'] = 'NOT_LINKED',
       );
       final pending = Completer<DirectoryEmployee>();
+      late CancelToken request;
       when(
         () => repository.createEmployee(
           employeeCode: 'NEW-42',
@@ -892,7 +893,10 @@ void main() {
           reportingManagerId: null,
           cancelToken: any(named: 'cancelToken'),
         ),
-      ).thenAnswer((_) => pending.future);
+      ).thenAnswer((call) {
+        request = call.namedArguments[#cancelToken] as CancelToken;
+        return pending.future;
+      });
       await launch(
         tester,
         path: '/workspace/employees',
@@ -916,6 +920,14 @@ void main() {
       expect(find.text('Creating…'), findsOneWidget);
       await tester.tap(find.text('Creating…'));
       await tester.pump();
+      final cancelButton = tester.widget<OutlinedButton>(
+        find.widgetWithText(OutlinedButton, 'Cancel'),
+      );
+      expect(cancelButton.onPressed, isNull);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(find.byType(EmployeeCreationFormScreen), findsOneWidget);
+      expect(request.isCancelled, isFalse);
       pending.complete(response);
       await tester.pumpAndSettle();
 
@@ -1363,6 +1375,11 @@ void main() {
     await tester.ensureVisible(saveButton);
     await tester.tap(saveButton);
     await tester.pump();
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.byType(EmployeeProfileFormScreen), findsOneWidget);
+    expect(request.isCancelled, isFalse);
 
     auth.setAuth(
       AuthAuthenticated.identity(
@@ -1847,6 +1864,7 @@ void main() {
     'Department creation prevents duplicate submits and refreshes the list',
     (tester) async {
       final request = Completer<OrganizationReference>();
+      late CancelToken token;
       var listReads = 0;
       when(
         () => repository.references(
@@ -1878,7 +1896,10 @@ void main() {
           isActive: true,
           cancelToken: any(named: 'cancelToken'),
         ),
-      ).thenAnswer((_) => request.future);
+      ).thenAnswer((call) {
+        token = call.namedArguments[#cancelToken] as CancelToken;
+        return request.future;
+      });
       await launch(
         tester,
         path: '/workspace/departments',
@@ -1899,6 +1920,10 @@ void main() {
       await tester.tap(saveButton);
       await tester.pump();
       expect(find.text('Saving…'), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(find.byType(OrganizationReferenceFormScreen), findsOneWidget);
+      expect(token.isCancelled, isFalse);
       expect(
         tester
             .widget<FilledButton>(find.widgetWithText(FilledButton, 'Saving…'))

@@ -20,35 +20,38 @@ class CinematicNotice extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final foreground = isError ? colors.onErrorContainer : colors.onSurface;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: isError ? colors.errorContainer : colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colors.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(icon, color: foreground, size: 22),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    message,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: foreground,
-                      height: 1.5,
+    return Semantics(
+      liveRegion: isError,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isError ? colors.errorContainer : colors.surfaceContainer,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: colors.outlineVariant),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(icon, color: foreground, size: 22),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      message,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: foreground,
+                        height: 1.5,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            if (child != null) ...[const SizedBox(height: 12), child!],
-          ],
+                ],
+              ),
+              if (child != null) ...[const SizedBox(height: 12), child!],
+            ],
+          ),
         ),
       ),
     );

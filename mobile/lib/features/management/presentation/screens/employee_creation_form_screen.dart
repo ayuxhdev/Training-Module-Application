@@ -30,6 +30,7 @@ class _EmployeeCreationFormScreenState
   int _managerId = _noManager;
   DateTime? _dateJoined;
   bool _isSaving = false;
+  bool _saveCompleted = false;
   CancelToken? _activeRequest;
   String? _serverError;
   String? _serverValidationError;
@@ -77,6 +78,7 @@ class _EmployeeCreationFormScreenState
   }
 
   Future<void> _leave() async {
+    if (_isSaving) return;
     if (!_isDirty) {
       context.pop();
       return;
@@ -182,6 +184,7 @@ class _EmployeeCreationFormScreenState
       }
       ref.invalidate(employeeDirectoryProvider(1));
       ref.invalidate(managementDashboardProvider);
+      setState(() => _saveCompleted = true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Employee created. No login account was linked.'),
@@ -240,7 +243,7 @@ class _EmployeeCreationFormScreenState
     final choices = ref.watch(employeeCreationChoicesProvider);
 
     return PopScope<Object?>(
-      canPop: !_isDirty || _isSaving,
+      canPop: _saveCompleted || (!_isDirty && !_isSaving),
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && !_isSaving) _leave();
       },
@@ -437,7 +440,10 @@ class _EmployeeCreationFormScreenState
                   : const Icon(Icons.person_add_alt_1_outlined),
               label: Text(_isSaving ? 'Creating…' : 'Create employee'),
             ),
-            OutlinedButton(onPressed: _leave, child: const Text('Cancel')),
+            OutlinedButton(
+              onPressed: _isSaving ? null : _leave,
+              child: const Text('Cancel'),
+            ),
           ],
         ),
       ],

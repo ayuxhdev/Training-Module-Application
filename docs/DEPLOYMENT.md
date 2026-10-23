@@ -1,5 +1,14 @@
 # Deployment
 
+## M20 operational implementation
+
+The current production profile, read-only preflight/health checks, safe logging,
+backup tooling, reminder configuration and executable operator procedures are in
+[M20 operations](M20_OPERATIONS.md). Application hardening is implemented; actual
+infrastructure deployment, backup/restore and proxy/media rehearsal remain pending.
+Use `config.production` explicitly for staging/production processes. The older
+milestone snapshots below are retained as historical context, not current test counts.
+
 ## 1. Purpose
 
 This document defines deployment requirements for the Garden's Need Training Module Application.
@@ -16,7 +25,7 @@ Current state:
 
 ```text
 Production deployment: not completed
-Production hardening: planned
+Production hardening: application implementation in progress; deployment rehearsal pending
 ```
 
 The current roadmap schedules production and deployment hardening in:
@@ -299,7 +308,9 @@ Before activating every production release, run with its production settings:
 python manage.py collectstatic --noinput
 ```
 
-The configured destination is `BASE_DIR / 'staticfiles'` (`STATIC_ROOT`). Collection
+Base settings use `BASE_DIR / 'staticfiles'`; `config.production` requires an
+explicit absolute `STATIC_ROOT` for the selected release. Follow the M20 runbook
+and leave shared developer output untouched. Collection
 writes content-hashed filenames and `staticfiles.json`. Deploy that manifest with
 the matching application release, and configure the selected static server to
 serve this directory at `/static/`. Django does not serve it in production.
@@ -426,7 +437,8 @@ A valid TLS certificate must be maintained.
 
 ## 22. HTTPS Redirect
 
-HTTP-to-HTTPS redirect may be enabled after the production proxy configuration is verified.
+The `config.production` profile mandates HTTP-to-HTTPS redirects. Verify trusted
+proxy handling before activation; base development settings retain their opt-in behavior.
 
 Test for:
 
@@ -602,7 +614,7 @@ Do not blindly suppress warnings.
 
 The latest verified automated baseline must pass before release.
 
-Current baseline:
+Historical pre-M16 baseline (retained as evidence, not the current release gate):
 
 ```text
 Django/MySQL: 348 / 348
@@ -1165,7 +1177,7 @@ Do not leave deployment-specific guesses in the final production documentation.
 
 ---
 
-## 63. Current Deployment Readiness
+## 63. Historical Pre-M16 Deployment Readiness Snapshot
 
 Current state:
 

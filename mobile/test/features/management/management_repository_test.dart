@@ -389,47 +389,228 @@ void main() {
     verifyZeroInteractions(dio);
   });
 
+  test('choice pagination rejects a stagnant page instead of returning partial choices', () async {
+    for (final kind in ReferenceKind.values) {
+      final path = '/management/${kind.path}/';
+      reply(
+        path,
+        pageJson([referenceJson(1), referenceJson(2)], count: 3, next: 'next'),
+        pageSize: 100,
+      );
+      // Page 2 returns duplicate ID 2 and indicates more data is available
+      reply(
+        path,
+        pageJson([referenceJson(2)], count: 3, next: 'stagnant-loop'),
+        page: 2,
+        pageSize: 100,
+      );
+    }
+
+    await expectLater(
+      repository.employeeEditChoices(employeeId: 1),
+      throwsA(
+        isA<ApiError>().having(
+          (error) => error.code,
+          'code',
+          'incomplete_pagination',
+        ),
+      ),
+    );
+    verify(
+      () => dio.get(
+        '/management/departments/',
+        queryParameters: {'page': 2, 'page_size': 100},
+        cancelToken: null,
+      ),
+    ).called(1);
+    verifyNever(
+      () => dio.get(
+        '/management/employees/',
+        queryParameters: any(named: 'queryParameters'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+  });
+
   test(
-    'choice pagination deduplicates records by ID and halts on stagnant loop',
+    'employee choice pagination rejects an empty continuation page',
     () async {
       for (final kind in ReferenceKind.values) {
-        final path = '/management/${kind.path}/';
         reply(
-          path,
-          pageJson(
-            [referenceJson(1), referenceJson(2)],
-            count: 3,
-            next: 'next',
-          ),
-          pageSize: 100,
-        );
-        // Page 2 returns duplicate ID 2 and indicates more data is available
-        reply(
-          path,
-          pageJson([referenceJson(2)], count: 3, next: 'stagnant-loop'),
-          page: 2,
+          '/management/${kind.path}/',
+          pageJson([referenceJson()], count: 1),
           pageSize: 100,
         );
       }
       reply(
         '/management/employees/',
-        pageJson([employeeJson(1), employeeJson(2)], count: 3, next: 'next'),
+        pageJson([employeeJson(1)], count: 2, next: 'next'),
         pageSize: 100,
       );
-      // Page 2 returns duplicate employee 2 and new employee 3
       reply(
         '/management/employees/',
-        pageJson([employeeJson(2), employeeJson(3)]),
+        pageJson([], count: 2),
         page: 2,
         pageSize: 100,
       );
 
-      final choices = await repository.employeeEditChoices(employeeId: 1);
-      expect(choices.departments.map((d) => d.id), [1, 2]);
-      expect(choices.jobRoles.map((r) => r.id), [1, 2]);
-      expect(choices.reportingManagers.map((m) => m.id), [2, 3]);
+      await expectLater(
+        repository.employeeEditChoices(employeeId: 1),
+        throwsA(
+          isA<ApiError>().having(
+            (error) => error.code,
+            'code',
+            'incomplete_pagination',
+          ),
+        ),
+      );
     },
   );
+
+  test(
+    'reference choice pagination reports the maximum-page safety cap',
+    () async {
+      for (var page = 1; page <= 50; page++) {
+        reply(
+          '/management/departments/',
+          pageJson([referenceJson(page)], count: 5001, next: 'next'),
+          page: page,
+          pageSize: 100,
+        );
+      }
+      reply(
+        '/management/job-roles/',
+        pageJson([referenceJson()], count: 1),
+        pageSize: 100,
+      );
+
+      await expectLater(
+        repository.employeeCreationChoices(includeReportingManagers: false),
+        throwsA(
+          isA<ApiError>().having(
+            (error) => error.code,
+            'code',
+            'incomplete_pagination',
+          ),
+        ),
+      );
+      verify(
+        () => dio.get(
+          '/management/departments/',
+          queryParameters: {'page': 50, 'page_size': 100},
+          cancelToken: null,
+        ),
+      ).called(1);
+      verifyNever(
+        () => dio.get(
+          '/management/departments/',
+          queryParameters: {'page': 51, 'page_size': 100},
+          cancelToken: null,
+        ),
+      );
+    },
+  );
+
+  test('choice pagination accepts empty first page with count 0 and no continuation', () async {
+    reply('/management/departments/', pageJson([], count: 0), pageSize: 100);
+    reply('/management/job-roles/', pageJson([], count: 0), pageSize: 100);
+    reply('/management/employees/', pageJson([], count: 0), pageSize: 100);
+
+    final choices = await repository.employeeCreationChoices();
+    expect(choices.departments, isEmpty);
+    expect(choices.jobRoles, isEmpty);
+    expect(choices.reportingManagers, isEmpty);
+  });
+
+  test('choice pagination accepts terminal page containing previously seen IDs when expected count is met', () async {
+    reply(
+      '/management/departments/',
+      pageJson([referenceJson(1), referenceJson(2)], count: 2, next: 'page-2'),
+      pageSize: 100,
+    );
+    reply(
+      '/management/departments/',
+      pageJson([referenceJson(2)], count: 2),
+      page: 2,
+      pageSize: 100,
+    );
+    reply(
+      '/management/job-roles/',
+      pageJson([referenceJson(10)], count: 1),
+      pageSize: 100,
+    );
+    reply(
+      '/management/employees/',
+      pageJson([employeeJson(1), employeeJson(2)], count: 2, next: 'page-2'),
+      pageSize: 100,
+    );
+    reply(
+      '/management/employees/',
+      pageJson([employeeJson(2)], count: 2),
+      page: 2,
+      pageSize: 100,
+    );
+
+    final choices = await repository.employeeCreationChoices();
+    expect(choices.departments.map((d) => d.id).toList(), [1, 2]);
+    expect(choices.reportingManagers.map((m) => m.id).toList(), [1, 2]);
+  });
+
+  test('choice pagination throws incomplete_pagination when terminal page has duplicate IDs and missing records', () async {
+    reply(
+      '/management/departments/',
+      pageJson([referenceJson(1)], count: 3, next: 'page-2'),
+      pageSize: 100,
+    );
+    reply(
+      '/management/departments/',
+      pageJson([referenceJson(1)], count: 3),
+      page: 2,
+      pageSize: 100,
+    );
+    reply(
+      '/management/job-roles/',
+      pageJson([referenceJson(10)], count: 1),
+      pageSize: 100,
+    );
+    reply('/management/employees/', pageJson([], count: 0), pageSize: 100);
+
+    await expectLater(
+      repository.employeeCreationChoices(),
+      throwsA(
+        isA<ApiError>().having(
+          (error) => error.code,
+          'code',
+          'incomplete_pagination',
+        ),
+      ),
+    );
+  });
+
+  test('choice pagination throws incomplete_pagination when records are missing from count', () async {
+    reply(
+      '/management/departments/',
+      pageJson([referenceJson(1)], count: 5),
+      pageSize: 100,
+    );
+    reply(
+      '/management/job-roles/',
+      pageJson([referenceJson(10)], count: 1),
+      pageSize: 100,
+    );
+    reply('/management/employees/', pageJson([], count: 0), pageSize: 100);
+
+    await expectLater(
+      repository.employeeCreationChoices(),
+      throwsA(
+        isA<ApiError>().having(
+          (error) => error.code,
+          'code',
+          'incomplete_pagination',
+        ),
+      ),
+    );
+  });
 
   test(
     'employee profile PATCH sends changed relationship IDs and explicit null',

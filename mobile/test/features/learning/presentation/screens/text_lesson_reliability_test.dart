@@ -335,7 +335,11 @@ void main() {
     () async {
       prepare(disposeAfterTest: false);
       final pending = container.read(
-        textLessonCompletionProvider((assignmentId: 1, lessonId: 10)).future,
+        textLessonCompletionProvider((
+          account: 'QA:QA',
+          assignmentId: 1,
+          lessonId: 10,
+        )).future,
       );
       container.dispose();
       repository.responses[10]!.complete(progress(true));

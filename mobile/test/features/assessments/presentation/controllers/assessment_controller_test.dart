@@ -11,10 +11,20 @@ import 'package:training_app/features/assessments/presentation/controllers/asses
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/domain/models/employee.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:training_app/features/certificates/data/repositories/certificate_repository.dart';
+import 'package:training_app/features/certificates/domain/models/certificate_detail.dart';
+import 'package:training_app/features/certificates/presentation/controllers/certificate_controller.dart';
+import 'package:training_app/features/notifications/data/repositories/notification_repository.dart';
+import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
 
 import '../../assessment_fixtures.dart';
 
 class MockRepository extends Mock implements AssessmentRepository {}
+
+class MockNotificationRepository extends Mock
+    implements NotificationRepository {}
+
+class MockCertificateRepository extends Mock implements CertificateRepository {}
 
 class TestAuth extends AuthController {
   @override
@@ -550,4 +560,116 @@ void main() {
       expect(container.read(overview).value, isNull);
     },
   );
+
+  test('submission of closed attempt invalidates notification and certificate detail caches', () async {
+    final notificationRepo = MockNotificationRepository();
+    final certificateRepo = MockCertificateRepository();
+    when(
+      () => notificationRepo.getUnreadCount(
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) async => 2);
+    when(
+      () => certificateRepo.getCertificateDetail(
+        8,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => CertificateDetail(
+        id: 8,
+        certificateNumber: 'GN-008',
+        trainingTitle: 'Safety',
+        versionNumber: 1,
+        employeeName: 'A',
+        employeeCode: 'A',
+        issuedAt: DateTime(2026, 1, 1),
+        isRevoked: false,
+        revokedAt: null,
+        assignmentId: 1,
+        hasDocument: true,
+      ),
+    );
+    when(
+      () => certificateRepo.getCertificates(
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) async => []);
+
+    final localContainer = ProviderContainer(
+      overrides: [
+        assessmentRepositoryProvider.overrideWithValue(repository),
+        notificationRepositoryProvider.overrideWithValue(notificationRepo),
+        certificateRepositoryProvider.overrideWithValue(certificateRepo),
+        authControllerProvider.overrideWith(() => TestAuth()),
+      ],
+    );
+    addTearDown(localContainer.dispose);
+
+    final localSubscription = localContainer.listen(provider, (_, _) {});
+    addTearDown(localSubscription.close);
+
+    final localController = localContainer.read(provider.notifier);
+    localContainer.listen(notificationUnreadCountProvider, (_, _) {});
+    localContainer.listen(certificateDetailProvider(8), (_, _) {});
+    localContainer.listen(certificateListProvider, (_, _) {});
+
+    await localContainer.read(notificationUnreadCountProvider.future);
+    await localContainer.read(certificateDetailProvider(8).future);
+    await localContainer.read(certificateListProvider.future);
+
+    verify(
+      () => notificationRepo.getUnreadCount(
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+    verify(
+      () => certificateRepo.getCertificateDetail(
+        8,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+    verify(
+      () => certificateRepo.getCertificates(
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+
+    await localController.startOrResume();
+    localController.selectAnswer(11, 21);
+    when(
+      () => repository.submitAttempt(
+        7,
+        any(),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) async => attempt(status: 'SUBMITTED'));
+
+    await localController.submit();
+    await tick();
+
+    verify(
+      () => repository.submitAttempt(
+        7,
+        any(),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+
+    verify(
+      () => notificationRepo.getUnreadCount(
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+    verify(
+      () => certificateRepo.getCertificateDetail(
+        8,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+    verify(
+      () => certificateRepo.getCertificates(
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+  });
 }

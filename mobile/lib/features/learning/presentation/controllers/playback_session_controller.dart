@@ -5,10 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:training_app/features/certificates/presentation/controllers/certificate_controller.dart';
+import 'package:training_app/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:training_app/features/learning/data/repositories/learning_repository.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
 import 'package:training_app/features/learning/domain/models/protected_media_request.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
+import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
 
 typedef PlaybackLesson = ({int assignmentId, int lessonId});
 
@@ -62,9 +65,7 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
   PlaybackSessionController(this.lesson);
 
   String? _account(AuthState auth) =>
-      auth is AuthAuthenticated
-      ? auth.personalAccount
-      : null;
+      auth is AuthAuthenticated ? auth.personalAccount : null;
 
   @override
   PlaybackSessionState build() {
@@ -352,6 +353,12 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
       );
       // A retained Learning page must reload the server-confirmed summary on return.
       ref.invalidate(assignmentListProvider);
+      if (progress.completed) {
+        ref.invalidate(dashboardDataProvider);
+        ref.invalidate(certificateListProvider);
+        ref.invalidate(notificationUnreadCountProvider);
+        ref.invalidate(notificationListProvider);
+      }
     } catch (error) {
       if (!_current(generation)) return;
       final failure = _error(error);

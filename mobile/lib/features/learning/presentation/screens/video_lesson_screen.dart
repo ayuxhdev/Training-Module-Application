@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:training_app/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
 import 'package:training_app/features/learning/data/repositories/learning_repository.dart';
 import 'package:training_app/features/learning/domain/models/protected_media_request.dart';
@@ -449,6 +450,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
           !(readError is ApiError &&
               [401, 403].contains(readError.statusCode))) {
         ref.invalidate(assignmentDetailProvider(assignmentId));
+        ref.invalidate(dashboardDataProvider);
       }
     }
   }
@@ -589,9 +591,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
       final oldOwner = previous is AuthAuthenticated
           ? previous.personalAccount
           : null;
-      final owner = next is AuthAuthenticated
-          ? next.personalAccount
-          : null;
+      final owner = next is AuthAuthenticated ? next.personalAccount : null;
       if (owner != oldOwner) {
         _accountChanged = true;
         ++_generation;
@@ -638,9 +638,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
             .firstOrNull;
     LessonLearning? lesson;
     String? moduleTitle;
-    if (!_accountChanged &&
-        auth is AuthAuthenticated &&
-        auth.canLearn) {
+    if (!_accountChanged && auth is AuthAuthenticated && auth.canLearn) {
       for (final module in detail.asData?.value.modules ?? <ModuleLearning>[]) {
         if (module.id != widget.moduleId) continue;
         for (final entry in module.lessons) {

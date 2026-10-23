@@ -87,7 +87,7 @@ iOS is intentionally outside the current Android V1 completion target. It will b
 | M17 | Assessment + Certificates | Complete | Assessment/certificate APIs, Flutter data/state/screens, navigation and system themes completed and pushed at `afdadb4`; CI green per user confirmation. The missing revoked-certificate runtime fixture remains a recorded QA limitation. |
 | M18 | Notifications + Resilience | Complete | Learner recovery, all four in-app notification events, employee-owned APIs, Flutter Notification Center and deadline reminders implemented. Core populated Android QA passed; specialized live-QA limitations remain recorded. Production rollout/scheduling belongs to M20. Committed/pushed at `88a4cda`; CI green per user confirmation. |
 | M19 | Android Release Candidate | In progress | Feature freeze and comprehensive security, architecture, data, playback, performance, device, UX, and regression validation, followed by pilot testing and release preparation. |
-| M20 | Production + Deployment Hardening | Planned | Production deployment readiness, infrastructure/configuration hardening, secrets/environment management, backups, monitoring, rollback procedures, release automation, and operational readiness. |
+| M20 | Production + Deployment Hardening | In progress | Application production profile, preflight/health diagnostics, safe logging, backup verification tooling and persisted reminder cutoff implemented. Infrastructure activation, HTTPS/media serving and isolated restore rehearsal remain pending; see docs/M20_OPERATIONS.md. |
 | M21 | Final Bug Hunt + Security + Repository Review | Planned | Final cross-system defect hunt, security review, permission/IDOR review, dependency review, repository hygiene, documentation verification, and release-blocker elimination. |
 | M22 | Final Readability + Refactor + Garden’s Need Visual Polish | Planned | Targeted maintainability improvements, removal of unnecessary technical debt, final UI/UX refinement, animation, interaction polish, accessibility refinement, and Garden’s Need visual identity integration. |
 | M23 | Final Acceptance + Android V1 Release | Planned | Final acceptance testing, release gate verification, production approval, Android V1 release, post-release verification, and final project checkpoint. |
@@ -441,6 +441,11 @@ Release-candidate readiness requires:
 # M20: Production + Deployment Hardening
 
 M20 focuses on making the application and its supporting infrastructure safe to operate in production.
+
+Application safeguards and operator procedures are implemented in the M20
+hardening batch; validation is recorded in its execution report. Deployment,
+restore rehearsal and infrastructure gates remain outstanding. See
+`docs/M20_OPERATIONS.md`; this is not a production release or CI-clearance claim.
 
 ## Scope
 

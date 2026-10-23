@@ -3,18 +3,18 @@ import 'package:dio/dio.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:training_app/features/certificates/presentation/controllers/certificate_controller.dart';
+import 'package:training_app/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:training_app/features/learning/data/repositories/learning_repository.dart';
 import 'package:training_app/features/learning/domain/models/assignment.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
+import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
+
+String? _account(AuthState auth) =>
+    auth is AuthAuthenticated ? auth.personalAccount : null;
 
 CancelToken _employeeRequest(Ref ref) {
-  final account = ref.watch(
-    authControllerProvider.select(
-      (auth) => auth is AuthAuthenticated
-          ? auth.personalAccount
-          : null,
-    ),
-  );
+  final account = ref.watch(authControllerProvider.select(_account));
   if (account == null) {
     throw ApiError(message: 'Sign in to view your training.', statusCode: 401);
   }
@@ -41,23 +41,35 @@ final assignmentDetailProvider = FutureProvider.autoDispose
       );
     }, retry: (_, _) => null);
 
-final textLessonCompletionProvider = FutureProvider.autoDispose.family<
-    LessonProgress, ({int assignmentId, int lessonId})>((ref, lesson) async {
-  // Share pending requests and refresh caches even after the screen is gone.
-  final pending = ref.keepAlive();
-  try {
-    final repository = ref.watch(learningRepositoryProvider);
-    final progress = await repository.completeTextLesson(
-      lesson.assignmentId,
-      lesson.lessonId,
-    );
-    if (ref.mounted && progress.completed) {
-      ref.invalidate(assignmentDetailProvider(lesson.assignmentId));
-      ref.invalidate(assignmentListProvider);
-    }
-    return progress;
-  } finally {
-    pending.close();
-  }
-}, retry: (_, _) => null);
-
+final textLessonCompletionProvider = FutureProvider.autoDispose
+    .family<
+      LessonProgress,
+      ({String? account, int assignmentId, int lessonId})
+    >((ref, target) async {
+      final initialOwner =
+          target.account ?? _account(ref.read(authControllerProvider));
+      // Share pending requests and refresh caches even after the screen is gone.
+      final pending = ref.keepAlive();
+      try {
+        final repository = ref.watch(learningRepositoryProvider);
+        final progress = await repository.completeTextLesson(
+          target.assignmentId,
+          target.lessonId,
+        );
+        if (!ref.mounted) return progress;
+        final currentOwner = _account(ref.read(authControllerProvider));
+        final ownerPreserved =
+            initialOwner == null || currentOwner == initialOwner;
+        if (ref.mounted && ownerPreserved && progress.completed) {
+          ref.invalidate(assignmentDetailProvider(target.assignmentId));
+          ref.invalidate(assignmentListProvider);
+          ref.invalidate(dashboardDataProvider);
+          ref.invalidate(certificateListProvider);
+          ref.invalidate(notificationUnreadCountProvider);
+          ref.invalidate(notificationListProvider);
+        }
+        return progress;
+      } finally {
+        pending.close();
+      }
+    }, retry: (_, _) => null);

@@ -38,6 +38,7 @@ class _OrganizationReferenceFormScreenState
   late final bool _originalActive;
   bool _isActive = true;
   bool _isSaving = false;
+  bool _saveCompleted = false;
   CancelToken? _activeRequest;
   String? _serverError;
   String? _serverValidationError;
@@ -194,6 +195,7 @@ class _OrganizationReferenceFormScreenState
           managementAccount(ref.read(authControllerProvider)) != _account) {
         return;
       }
+      setState(() => _saveCompleted = true);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -248,7 +250,7 @@ class _OrganizationReferenceFormScreenState
             widget.initialReference!.id == widget.referenceId);
 
     return PopScope<Object?>(
-      canPop: !_isDirty || _isSaving,
+      canPop: _saveCompleted || (!_isDirty && !_isSaving),
       onPopInvokedWithResult: _onPopInvoked,
       child: Scaffold(
         appBar: AppBar(

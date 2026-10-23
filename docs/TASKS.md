@@ -115,7 +115,7 @@ M16    - Learning + Secure Video              COMPLETE
 M17    - Assessment + Certificates             COMPLETE
 M18    - Notifications + Resilience            COMPLETE
 M19    - Android Release Candidate             IN PROGRESS
-M20    - Production + Deployment Hardening     PLANNED
+M20    - Production + Deployment Hardening     IN PROGRESS
 M21    - Final Bug Hunt + Security Review      PLANNED
 M22    - Readability + Refactor + Visual Polish PLANNED
 M23    - Final Acceptance + Android V1 Release PLANNED
@@ -933,8 +933,21 @@ obligations.
 Status:
 
 ```text
-PLANNED
+IN PROGRESS — application hardening implemented; deployment/restore rehearsal pending
 ```
+
+## Implemented application/operations batch
+
+- Fail-closed opt-in `config.production`, explicit proxy/HTTPS/CSRF and private-media configuration.
+- Read-only production preflight, minimal liveness/restricted readiness and safe structured logs.
+- Non-destructive MySQL backup/verification tooling; no restore or retention deletion executed.
+- Persisted `NOTIFICATIONS_ACTIVATED_AT`, explicit cutoff consistency and reminder operation events.
+- Focused configuration, privacy, backup failure and interrupted-reminder recovery tests.
+- Operator runbook: `docs/M20_OPERATIONS.md`; validation totals belong to the actual execution report.
+
+Infrastructure, secrets, actual serving/restore rehearsal, scheduler activation,
+monitoring, release/device checks and production approval remain open. This batch
+does not mark M20 deployed, committed or CI-cleared.
 
 ## Tasks
 

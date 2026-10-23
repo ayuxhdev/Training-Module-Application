@@ -35,6 +35,7 @@ class _EmployeeProfileFormScreenState
   late DateTime? _dateJoined;
   late int _managerChoice;
   bool _isSaving = false;
+  bool _saveCompleted = false;
   CancelToken? _activeRequest;
   String? _serverError;
   String? _serverValidationError;
@@ -224,6 +225,7 @@ class _EmployeeProfileFormScreenState
           managementAccount(ref.read(authControllerProvider)) != _account) {
         return;
       }
+      setState(() => _saveCompleted = true);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Employee profile saved.')));
@@ -281,7 +283,7 @@ class _EmployeeProfileFormScreenState
     final choices = ref.watch(employeeEditChoicesProvider(widget.employeeId));
 
     return PopScope<Object?>(
-      canPop: !_isDirty || _isSaving,
+      canPop: _saveCompleted || (!_isDirty && !_isSaving),
       onPopInvokedWithResult: _onPopInvoked,
       child: Scaffold(
         appBar: AppBar(title: const Text('Edit employee')),

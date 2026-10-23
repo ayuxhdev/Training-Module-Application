@@ -12,6 +12,8 @@ import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
+import 'package:training_app/features/auth/domain/models/auth_state.dart';
+import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 
 class _LessonLocation {
@@ -60,6 +62,11 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
 
     _generation++;
     final capturedGeneration = _generation;
+    final initialAccount = ref.read(authControllerProvider) is AuthAuthenticated
+        ? (ref.read(
+            authControllerProvider,
+          ) as AuthAuthenticated).personalAccount
+        : null;
     final requestedAssignmentId = widget.assignmentId;
     final requestedLessonId = widget.lessonId;
 
@@ -70,6 +77,7 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
     try {
       final result = await ref.read(
         textLessonCompletionProvider((
+          account: initialAccount,
           assignmentId: requestedAssignmentId,
           lessonId: requestedLessonId,
         )).future,
@@ -77,12 +85,20 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
 
       if (!mounted) return;
 
+      final currentAccount =
+          ref.read(authControllerProvider) is AuthAuthenticated
+          ? (ref.read(
+              authControllerProvider,
+            ) as AuthAuthenticated).personalAccount
+          : null;
+      final bool isCurrentOwner =
+          initialAccount == null || currentAccount == initialAccount;
       final bool isCurrentLesson =
           widget.assignmentId == requestedAssignmentId &&
           widget.lessonId == requestedLessonId;
       final bool isGenerationMatch = _generation == capturedGeneration;
 
-      if (isCurrentLesson && isGenerationMatch) {
+      if (isCurrentOwner && isCurrentLesson && isGenerationMatch) {
         if (result.completed) {
           _isCompletedLocally = true;
         }
@@ -102,12 +118,20 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
     } catch (e) {
       if (!mounted) return;
 
+      final currentAccount =
+          ref.read(authControllerProvider) is AuthAuthenticated
+          ? (ref.read(
+              authControllerProvider,
+            ) as AuthAuthenticated).personalAccount
+          : null;
+      final bool isCurrentOwner =
+          initialAccount == null || currentAccount == initialAccount;
       final bool isCurrentLesson =
           widget.assignmentId == requestedAssignmentId &&
           widget.lessonId == requestedLessonId;
       final bool isGenerationMatch = _generation == capturedGeneration;
 
-      if (isCurrentLesson && isGenerationMatch) {
+      if (isCurrentOwner && isCurrentLesson && isGenerationMatch) {
         setState(() {
           _isSubmitting = false;
         });
@@ -138,6 +162,23 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
     final detailAsync = ref.watch(
       assignmentDetailProvider(widget.assignmentId),
     );
+
+    ref.listen(authControllerProvider, (previous, next) {
+      final oldAccount = previous is AuthAuthenticated
+          ? previous.personalAccount
+          : null;
+      final newAccount = next is AuthAuthenticated
+          ? next.personalAccount
+          : null;
+      if (newAccount != oldAccount) {
+        setState(() {
+          _generation++;
+          _isSubmitting = false;
+          _isCompletedLocally = false;
+          _completionError = null;
+        });
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(title: const Text('Lesson')),
@@ -196,13 +237,16 @@ class _TextLessonScreenState extends ConsumerState<TextLessonScreen> {
                         icon: Icons.article_outlined,
                       ),
                       AppSpacing.gapMd,
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: StatusBadge(
-                          text: isCompleted ? 'COMPLETED' : 'INCOMPLETE',
-                          status: isCompleted
-                              ? BadgeStatus.success
-                              : BadgeStatus.info,
+                      Semantics(
+                        liveRegion: true,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: StatusBadge(
+                            text: isCompleted ? 'COMPLETED' : 'INCOMPLETE',
+                            status: isCompleted
+                                ? BadgeStatus.success
+                                : BadgeStatus.info,
+                          ),
                         ),
                       ),
                       AppSpacing.gapLg,

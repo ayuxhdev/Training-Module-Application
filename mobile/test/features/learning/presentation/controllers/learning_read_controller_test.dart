@@ -232,4 +232,158 @@ void main() {
       },
     );
   }
+
+  test('textLessonCompletionProvider invalidates all completion-dependent caches on completion', () async {
+    when(() => repository.completeTextLesson(1, 2)).thenAnswer(
+      (_) async => LessonProgress(
+        resumePosition: 0,
+        watchedSeconds: 0,
+        progressPercent: 100,
+        completed: true,
+        completedAt: DateTime.now(),
+      ),
+    );
+
+    var detailFetches = 0;
+    var listFetches = 0;
+    when(
+      () => repository.getAssignmentDetail(
+        1,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) async {
+      detailFetches++;
+      return detail('Safety');
+    });
+    when(
+      () => repository.getAssignments(cancelToken: any(named: 'cancelToken')),
+    ).thenAnswer((_) async {
+      listFetches++;
+      return <Assignment>[];
+    });
+
+    container.listen(assignmentDetailProvider(1), (_, _) {});
+    container.listen(assignmentListProvider, (_, _) {});
+    await Future<void>.delayed(Duration.zero);
+    expect(detailFetches, 1);
+    expect(listFetches, 1);
+
+    final progress = await container.read(
+      textLessonCompletionProvider((
+        account: 'A:A',
+        assignmentId: 1,
+        lessonId: 2,
+      )).future,
+    );
+    expect(progress.completed, isTrue);
+
+    await Future<void>.delayed(Duration.zero);
+    expect(detailFetches, 2);
+    expect(listFetches, 2);
+  });
+
+  test('textLessonCompletionProvider discards response and does not invalidate after account switch', () async {
+    final completer = Completer<LessonProgress>();
+    when(() => repository.completeTextLesson(1, 2))
+        .thenAnswer((_) => completer.future);
+
+    var detailFetches = 0;
+    when(
+      () => repository.getAssignmentDetail(
+        1,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) async {
+      detailFetches++;
+      return detail('Safety');
+    });
+
+    container.listen(assignmentDetailProvider(1), (_, _) {});
+    await Future<void>.delayed(Duration.zero);
+    expect(detailFetches, 1);
+
+    final future = container.read(
+      textLessonCompletionProvider((
+        account: 'A:A',
+        assignmentId: 1,
+        lessonId: 2,
+      )).future,
+    );
+
+    auth.change(AuthAuthenticated(employee('B')));
+    await Future<void>.delayed(Duration.zero);
+    final countAfterSwitch = detailFetches;
+
+    completer.complete(
+      LessonProgress(
+        resumePosition: 0,
+        watchedSeconds: 0,
+        progressPercent: 100,
+        completed: true,
+        completedAt: DateTime.now(),
+      ),
+    );
+    await future;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(detailFetches, countAfterSwitch);
+  });
+
+  test('textLessonCompletionProvider separates requests across different accounts for the same assignment and lesson', () async {
+    final completerA = Completer<LessonProgress>();
+    final completerB = Completer<LessonProgress>();
+    var callCount = 0;
+    when(() => repository.completeTextLesson(1, 2)).thenAnswer((_) {
+      callCount++;
+      return callCount == 1 ? completerA.future : completerB.future;
+    });
+
+    auth.change(AuthAuthenticated(employee('A')));
+    final futureA = container.read(
+      textLessonCompletionProvider((
+        account: 'A:A',
+        assignmentId: 1,
+        lessonId: 2,
+      )).future,
+    );
+
+    // Account B starts completion for the same assignment and lesson while Account A is in flight
+    auth.change(AuthAuthenticated(employee('B')));
+    final futureB = container.read(
+      textLessonCompletionProvider((
+        account: 'B:B',
+        assignmentId: 1,
+        lessonId: 2,
+      )).future,
+    );
+
+    // Verify that two distinct requests were initiated
+    expect(callCount, 2);
+    expect(identical(futureA, futureB), isFalse);
+
+    // Complete A with incomplete result and B with completed result
+    completerA.complete(
+      LessonProgress(
+        resumePosition: 0,
+        watchedSeconds: 0,
+        progressPercent: 50,
+        completed: false,
+      ),
+    );
+    completerB.complete(
+      LessonProgress(
+        resumePosition: 0,
+        watchedSeconds: 0,
+        progressPercent: 100,
+        completed: true,
+        completedAt: DateTime.now(),
+      ),
+    );
+
+    final resultA = await futureA;
+    final resultB = await futureB;
+
+    expect(resultA.completed, isFalse);
+    expect(resultB.completed, isTrue);
+  });
 }

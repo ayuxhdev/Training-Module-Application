@@ -36,7 +36,9 @@ class LessonProgress {
       final start = number(range[0]);
       final end = number(range[1]);
       if (end <= start || (ranges.isNotEmpty && start <= ranges.last[1])) {
-        throw const FormatException('Watched ranges must be ordered and merged.');
+        throw const FormatException(
+          'Watched ranges must be ordered and merged.',
+        );
       }
       ranges.add([start, end]);
     }
@@ -45,13 +47,17 @@ class LessonProgress {
       throw const FormatException('Invalid playback session ID.');
     }
     final percent = number(json['progress_percent']);
-    if (percent > 100) throw const FormatException('Invalid progress percentage.');
+    if (percent > 100) {
+      throw const FormatException('Invalid progress percentage.');
+    }
     return LessonProgress(
       resumePosition: number(json['resume_position']),
       watchedSeconds: number(json['watched_seconds']),
       progressPercent: percent,
       completed: json['completed'] as bool? ?? false,
-      completedAt: json['completed_at'] != null ? DateTime.tryParse(json['completed_at']) : null,
+      completedAt: json['completed_at'] != null
+          ? DateTime.tryParse(json['completed_at'])
+          : null,
       watchedRanges: ranges,
       sessionId: sessionId,
     );
@@ -92,7 +98,9 @@ class LessonLearning {
       isRequired: json['is_required'] as bool? ?? false,
       body: json['body'] as String? ?? '',
       videoDurationSeconds: json['video_duration_seconds'] as int?,
-      minimumWatchPercent: json['minimum_watch_percent'] != null ? double.tryParse(json['minimum_watch_percent'].toString()) : null,
+      minimumWatchPercent: json['minimum_watch_percent'] != null
+          ? double.tryParse(json['minimum_watch_percent'].toString())
+          : null,
       progress: LessonProgress.fromJson(json['progress'] ?? {}),
       playbackMode: !json.containsKey('playback_mode')
           ? 'tracked'
@@ -124,7 +132,8 @@ class ModuleLearning {
       title: json['title'] as String? ?? '',
       description: json['description'] as String? ?? '',
       position: json['position'] as int? ?? 0,
-      lessons: (json['lessons'] as List<dynamic>?)
+      lessons:
+          (json['lessons'] as List<dynamic>?)
               ?.map((e) => LessonLearning.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
@@ -166,24 +175,33 @@ class AssignmentDetail {
       trainingTitle: json['training_title'] as String? ?? '',
       versionNumber: json['version_number'] as int? ?? 1,
       status: json['status'] as String? ?? '',
-      assignedAt: json['assigned_at'] != null ? DateTime.tryParse(json['assigned_at']) : null,
+      assignedAt: json['assigned_at'] != null
+          ? DateTime.tryParse(json['assigned_at'])
+          : null,
       dueAt: json['due_at'] != null ? DateTime.tryParse(json['due_at']) : null,
-      startedAt: json['started_at'] != null ? DateTime.tryParse(json['started_at']) : null,
-      completedAt: json['completed_at'] != null ? DateTime.tryParse(json['completed_at']) : null,
+      startedAt: json['started_at'] != null
+          ? DateTime.tryParse(json['started_at'])
+          : null,
+      completedAt: json['completed_at'] != null
+          ? DateTime.tryParse(json['completed_at'])
+          : null,
       isOverdue: json['is_overdue'] as bool? ?? false,
-      modules: (json['modules'] as List<dynamic>?)
+      modules:
+          (json['modules'] as List<dynamic>?)
               ?.map((e) => ModuleLearning.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
     );
   }
-  
+
   int get requiredLessonsCompleted {
-    return modules.expand((m) => m.lessons).where((l) => l.isRequired && l.progress.completed).length;
+    return modules
+        .expand((m) => m.lessons)
+        .where((l) => l.isRequired && l.progress.completed)
+        .length;
   }
-  
+
   int get requiredLessonsTotal {
     return modules.expand((m) => m.lessons).where((l) => l.isRequired).length;
   }
 }
-

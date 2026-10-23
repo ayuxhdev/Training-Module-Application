@@ -10,13 +10,12 @@ import 'package:training_app/features/auth/presentation/controllers/auth_control
 import 'package:training_app/features/certificates/presentation/controllers/certificate_controller.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 import 'package:training_app/features/dashboard/presentation/controllers/dashboard_controller.dart';
+import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
 
 typedef AssessmentTarget = ({int assignmentId, int assessmentId});
 
 String? _account(AuthState auth) =>
-    auth is AuthAuthenticated
-    ? auth.personalAccount
-    : null;
+    auth is AuthAuthenticated ? auth.personalAccount : null;
 
 final assessmentOverviewProvider = AsyncNotifierProvider.autoDispose
     .family<AssessmentOverviewController, AssignmentAssessments?, int>(
@@ -193,7 +192,12 @@ class AssessmentController extends Notifier<AssessmentState> {
       ref.invalidate(assignmentDetailProvider(target.assignmentId));
       ref.invalidate(assignmentListProvider);
       ref.invalidate(certificateListProvider);
+      if (result.certificateId != null) {
+        ref.invalidate(certificateDetailProvider(result.certificateId!));
+      }
       ref.invalidate(dashboardDataProvider);
+      ref.invalidate(notificationUnreadCountProvider);
+      ref.invalidate(notificationListProvider);
     }
   }
 
@@ -244,6 +248,7 @@ class AssessmentController extends Notifier<AssessmentState> {
       if (_current(generation) && !attempt.summary.isClosed) {
         ref.invalidate(assignmentDetailProvider(target.assignmentId));
         ref.invalidate(assignmentListProvider);
+        ref.invalidate(dashboardDataProvider);
       }
     });
   }

@@ -49,13 +49,18 @@ class Assignment {
       trainingTitle: json['training_title'] as String? ?? '',
       versionNumber: json['version_number'] as int? ?? 1,
       status: json['status'] as String? ?? '',
-      assignedAt: json['assigned_at'] != null ? DateTime.tryParse(json['assigned_at']) : null,
+      assignedAt: json['assigned_at'] != null
+          ? DateTime.tryParse(json['assigned_at'])
+          : null,
       dueAt: json['due_at'] != null ? DateTime.tryParse(json['due_at']) : null,
-      startedAt: json['started_at'] != null ? DateTime.tryParse(json['started_at']) : null,
-      completedAt: json['completed_at'] != null ? DateTime.tryParse(json['completed_at']) : null,
+      startedAt: json['started_at'] != null
+          ? DateTime.tryParse(json['started_at'])
+          : null,
+      completedAt: json['completed_at'] != null
+          ? DateTime.tryParse(json['completed_at'])
+          : null,
       isOverdue: json['is_overdue'] as bool? ?? false,
       progressSummary: ProgressSummary.fromJson(json['progress_summary'] ?? {}),
     );
   }
 }
-

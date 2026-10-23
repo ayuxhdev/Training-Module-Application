@@ -43,7 +43,11 @@ class LearningRepository {
     try {
       final response = data == null
           ? await apiClient.dio.get(path, cancelToken: cancelToken)
-          : await apiClient.dio.post(path, data: data, cancelToken: cancelToken);
+          : await apiClient.dio.post(
+              path,
+              data: data,
+              cancelToken: cancelToken,
+            );
       return LessonProgress.fromJson(response.data as Map<String, dynamic>);
     } catch (error) {
       throw apiClient.mapExceptionToApiError(error);
@@ -51,14 +55,20 @@ class LearningRepository {
   }
 
   Future<LessonProgress> getLessonProgress(
-    int assignmentId, int lessonId, {CancelToken? cancelToken}
-  ) => _playbackRequest(
-    '${_lessonPath(assignmentId, lessonId)}/progress/', cancelToken: cancelToken,
+    int assignmentId,
+    int lessonId, {
+    CancelToken? cancelToken,
+  }) => _playbackRequest(
+    '${_lessonPath(assignmentId, lessonId)}/progress/',
+    cancelToken: cancelToken,
   );
 
   Future<LessonProgress> startPlaybackSession(
-    int assignmentId, int lessonId, {double? position, CancelToken? cancelToken}
-  ) {
+    int assignmentId,
+    int lessonId, {
+    double? position,
+    CancelToken? cancelToken,
+  }) {
     if (position != null && (!position.isFinite || position < 0)) {
       throw ArgumentError('Invalid playback position.');
     }
@@ -70,11 +80,15 @@ class LearningRepository {
   }
 
   Future<LessonProgress> submitPlaybackHeartbeat(
-    int assignmentId, int lessonId, int sessionId, double position,
-    {CancelToken? cancelToken}
-  ) => _playbackRequest(
+    int assignmentId,
+    int lessonId,
+    int sessionId,
+    double position, {
+    CancelToken? cancelToken,
+  }) => _playbackRequest(
     '${_lessonPath(assignmentId, lessonId)}/progress/',
-    data: _positionData(sessionId, position), cancelToken: cancelToken,
+    data: _positionData(sessionId, position),
+    cancelToken: cancelToken,
   );
 
   Map<String, dynamic> _positionData(int sessionId, double position) {
@@ -85,30 +99,44 @@ class LearningRepository {
   }
 
   Future<LessonProgress> endPlaybackSession(
-    int assignmentId, int lessonId, int sessionId, double position,
-    {bool completedNormally = false, CancelToken? cancelToken}
-  ) => _playbackRequest(
+    int assignmentId,
+    int lessonId,
+    int sessionId,
+    double position, {
+    bool completedNormally = false,
+    CancelToken? cancelToken,
+  }) => _playbackRequest(
     '${_sessionPath(assignmentId, lessonId, sessionId)}/end/',
-    data: {'position': _positionData(sessionId, position)['position'],
-           'completed_normally': completedNormally},
+    data: {
+      'position': _positionData(sessionId, position)['position'],
+      'completed_normally': completedNormally,
+    },
     cancelToken: cancelToken,
   );
 
   Future<ProtectedMediaRequest> protectedMediaRequest(
-    int assignmentId, int lessonId, int sessionId,
+    int assignmentId,
+    int lessonId,
+    int sessionId,
   ) async {
     final path = '${_sessionPath(assignmentId, lessonId, sessionId)}/media/';
     return _protectedMediaRequest(path);
   }
 
   Future<ProtectedMediaRequest> protectedReplayMediaRequest(
-    int assignmentId, int lessonId,
-  ) async => _protectedMediaRequest('${_lessonPath(assignmentId, lessonId)}/replay/media/');
+    int assignmentId,
+    int lessonId,
+  ) async => _protectedMediaRequest(
+    '${_lessonPath(assignmentId, lessonId)}/replay/media/',
+  );
 
   Future<ProtectedMediaRequest> _protectedMediaRequest(String path) async {
     final base = Uri.parse(apiClient.dio.options.baseUrl);
-    if (!base.hasAuthority || base.userInfo.isNotEmpty || base.hasQuery ||
-        base.hasFragment || !['http', 'https'].contains(base.scheme) ||
+    if (!base.hasAuthority ||
+        base.userInfo.isNotEmpty ||
+        base.hasQuery ||
+        base.hasFragment ||
+        !['http', 'https'].contains(base.scheme) ||
         (!kDebugMode && base.scheme != 'https')) {
       throw StateError('Invalid protected media API origin.');
     }
@@ -181,13 +209,17 @@ class LearningRepository {
     }
   }
 
-  Future<LessonProgress> completeTextLesson(int assignmentId, int lessonId) async {
+  Future<LessonProgress> completeTextLesson(
+    int assignmentId,
+    int lessonId,
+  ) async {
     try {
-      final response = await apiClient.dio.post('/assignments/$assignmentId/lessons/$lessonId/complete/');
+      final response = await apiClient.dio.post(
+        '/assignments/$assignmentId/lessons/$lessonId/complete/',
+      );
       return LessonProgress.fromJson(response.data as Map<String, dynamic>);
     } catch (e) {
       throw apiClient.mapExceptionToApiError(e);
     }
   }
 }
-

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/network/dio_client.dart';
 import 'package:training_app/core/providers/core_providers.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
@@ -208,6 +209,7 @@ class ManagementRepository {
     final seenIds = <int>{};
     var pageNumber = 1;
     var hasMore = true;
+    var expectedCount = 0;
     while (hasMore && pageNumber <= maxPages) {
       final page = await references(
         kind,
@@ -215,7 +217,14 @@ class ManagementRepository {
         pageSize: pageSize,
         cancelToken: cancelToken,
       );
-      if (page.items.isEmpty) break;
+      expectedCount = page.count;
+      hasMore = page.hasMore;
+      if (page.items.isEmpty) {
+        if (hasMore) {
+          throw _incompleteChoicesError('organization references');
+        }
+        break;
+      }
       var newCount = 0;
       for (final item in page.items) {
         if (seenIds.add(item.id)) {
@@ -223,9 +232,16 @@ class ManagementRepository {
           newCount++;
         }
       }
-      if (newCount == 0) break;
-      hasMore = page.hasMore;
+      if (newCount == 0) {
+        if (hasMore) {
+          throw _incompleteChoicesError('organization references');
+        }
+        break;
+      }
       pageNumber++;
+    }
+    if (hasMore || items.length < expectedCount) {
+      throw _incompleteChoicesError('organization references');
     }
     return items;
   }
@@ -239,13 +255,21 @@ class ManagementRepository {
     final seenIds = <int>{};
     var pageNumber = 1;
     var hasMore = true;
+    var expectedCount = 0;
     while (hasMore && pageNumber <= maxPages) {
       final page = await employees(
         page: pageNumber,
         pageSize: pageSize,
         cancelToken: cancelToken,
       );
-      if (page.items.isEmpty) break;
+      expectedCount = page.count;
+      hasMore = page.hasMore;
+      if (page.items.isEmpty) {
+        if (hasMore) {
+          throw _incompleteChoicesError('employee choices');
+        }
+        break;
+      }
       var newCount = 0;
       for (final item in page.items) {
         if (seenIds.add(item.id)) {
@@ -253,12 +277,24 @@ class ManagementRepository {
           newCount++;
         }
       }
-      if (newCount == 0) break;
-      hasMore = page.hasMore;
+      if (newCount == 0) {
+        if (hasMore) {
+          throw _incompleteChoicesError('employee choices');
+        }
+        break;
+      }
       pageNumber++;
+    }
+    if (hasMore || items.length < expectedCount) {
+      throw _incompleteChoicesError('employee choices');
     }
     return items;
   }
+
+  ApiError _incompleteChoicesError(String choices) => ApiError(
+    message: 'Could not load all $choices. Refresh and try again.',
+    code: 'incomplete_pagination',
+  );
 
   Future<DirectoryEmployee> updateEmployeeProfile(
     DirectoryEmployee original, {

@@ -8,8 +8,20 @@ import 'package:training_app/core/presentation/components/primary_button.dart';
 import 'package:training_app/features/learning/data/repositories/learning_repository.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
+import 'package:training_app/features/auth/domain/models/auth_state.dart';
+import 'package:training_app/features/auth/domain/models/employee.dart';
+import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/learning/presentation/screens/text_lesson_screen.dart';
 import 'dart:async';
+
+
+class _TestAuthController extends AuthController {
+  final AuthState _initial;
+  _TestAuthController(this._initial);
+  @override
+  AuthState build() => _initial;
+  void setAuth(AuthState auth) => state = auth;
+}
 
 class MockLearningRepository implements LearningRepository {
   bool completeCalled = false;
@@ -668,6 +680,196 @@ void main() {
     // Verify provider was fetched again due to invalidation
     expect(detailProviderFetchCount, 2);
   });
+
+  testWidgets(
+    'account switch while completing cancels local update and does not show success banner',
+    (tester) async {
+      final completer = Completer<LessonProgress>();
+      final mockDelayedRepo = _MockDelayedLearningRepository(completer);
+      final mockDetail = AssignmentDetail(
+        id: 1,
+        trainingId: 101,
+        trainingTitle: 'Safety Basics',
+        versionNumber: 1,
+        status: 'IN_PROGRESS',
+        isOverdue: false,
+        modules: [
+          ModuleLearning(
+            id: 1,
+            title: 'Module 1',
+            description: '',
+            position: 1,
+            lessons: [
+              LessonLearning(
+                id: 10,
+                title: 'Text Lesson',
+                position: 1,
+                type: 'TEXT',
+                isRequired: true,
+                body: 'Content',
+                progress: LessonProgress(
+                  resumePosition: 0,
+                  watchedSeconds: 0,
+                  progressPercent: 0,
+                  completed: false,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final authNotifier = _TestAuthController(
+        AuthAuthenticated(
+          Employee(
+            username: 'user_a',
+            employeeCode: 'A01',
+            displayName: 'User A',
+            department: 'Eng',
+            jobRole: 'Dev',
+            isActive: true,
+          ),
+        ),
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          authControllerProvider.overrideWith(() => authNotifier),
+          learningRepositoryProvider.overrideWithValue(mockDelayedRepo as LearningRepository),
+          assignmentDetailProvider(1).overrideWith((ref) async => mockDetail),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: TextLessonScreen(assignmentId: 1, lessonId: 10),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('INCOMPLETE'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(PrimaryButton, 'Complete Lesson'));
+      await tester.pump();
+
+      authNotifier.setAuth(
+        AuthAuthenticated(
+          Employee(
+            username: 'user_b',
+            employeeCode: 'B01',
+            displayName: 'User B',
+            department: 'Sales',
+            jobRole: 'Rep',
+            isActive: true,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      completer.complete(
+        LessonProgress(
+          resumePosition: 0,
+          watchedSeconds: 0,
+          progressPercent: 100,
+          completed: true,
+          completedAt: DateTime.now(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Lesson completed successfully'), findsNothing);
+      expect(find.text('COMPLETED'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'completion status badge and submitting button have live region and loading semantics',
+    (tester) async {
+      final completer = Completer<LessonProgress>();
+      final mockDelayedRepo = _MockDelayedLearningRepository(completer);
+      final mockDetail = AssignmentDetail(
+        id: 1,
+        trainingId: 101,
+        trainingTitle: 'Safety Basics',
+        versionNumber: 1,
+        status: 'IN_PROGRESS',
+        isOverdue: false,
+        modules: [
+          ModuleLearning(
+            id: 1,
+            title: 'Module 1',
+            description: '',
+            position: 1,
+            lessons: [
+              LessonLearning(
+                id: 10,
+                title: 'Text Lesson',
+                position: 1,
+                type: 'TEXT',
+                isRequired: true,
+                body: 'Content',
+                progress: LessonProgress(
+                  resumePosition: 0,
+                  watchedSeconds: 0,
+                  progressPercent: 0,
+                  completed: false,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          learningRepositoryProvider.overrideWithValue(mockDelayedRepo as LearningRepository),
+          assignmentDetailProvider(1).overrideWith((ref) async => mockDetail),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: TextLessonScreen(assignmentId: 1, lessonId: 10),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final statusBadgeSemantics = tester.widget<Semantics>(
+        find.ancestor(
+          of: find.text('INCOMPLETE'),
+          matching: find.byType(Semantics),
+        ).first,
+      );
+      expect(statusBadgeSemantics.properties.liveRegion, isTrue);
+
+      await tester.tap(find.widgetWithText(PrimaryButton, 'Complete Lesson'));
+      await tester.pump();
+
+      final primaryButton = tester.widget<PrimaryButton>(find.byType(PrimaryButton));
+      expect(primaryButton.onPressed, isNull);
+      expect(find.text('Submitting...'), findsOneWidget);
+
+      completer.complete(
+        LessonProgress(
+          resumePosition: 0,
+          watchedSeconds: 0,
+          progressPercent: 100,
+          completed: true,
+          completedAt: DateTime.now(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('COMPLETED'), findsOneWidget);
+    },
+  );
 }
 
 class _QueueMockRepo implements LearningRepository {

@@ -66,11 +66,14 @@ class AssignmentDetailScreen extends ConsumerWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: StatusBadge(
-                                  text: detail.status.replaceAll('_', ' '),
-                                  status: _getStatusBadge(detail.status),
+                              Semantics(
+                                liveRegion: true,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: StatusBadge(
+                                    text: detail.status.replaceAll('_', ' '),
+                                    status: _getStatusBadge(detail.status),
+                                  ),
                                 ),
                               ),
                               AppSpacing.gapLg,

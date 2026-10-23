@@ -45,7 +45,10 @@ if DEBUG and not ALLOWED_HOSTS:
 SESSION_COOKIE_SECURE = not DEBUG or _environment_flag("SESSION_COOKIE_SECURE")
 CSRF_COOKIE_SECURE = not DEBUG or _environment_flag("CSRF_COOKIE_SECURE")
 SECURE_SSL_REDIRECT = _environment_flag("SECURE_SSL_REDIRECT")
-SECURE_HSTS_SECONDS = max(0, int(os.getenv("SECURE_HSTS_SECONDS", "0")))
+try:
+    SECURE_HSTS_SECONDS = max(0, int(os.getenv("SECURE_HSTS_SECONDS", "0")))
+except ValueError:
+    raise ImproperlyConfigured("SECURE_HSTS_SECONDS must be an integer.") from None
 SECURE_HSTS_INCLUDE_SUBDOMAINS = _environment_flag("SECURE_HSTS_INCLUDE_SUBDOMAINS")
 SECURE_HSTS_PRELOAD = _environment_flag("SECURE_HSTS_PRELOAD")
 SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -210,3 +213,6 @@ SIMPLE_JWT = {
 
 # Server-managed media inspector. Never supplied by a request or an uploaded filename.
 VIDEO_FFPROBE_PATH = os.getenv("VIDEO_FFPROBE_PATH", "ffprobe")
+
+# Explicit rollout configuration only; an empty value leaves reminders unactivated.
+NOTIFICATIONS_ACTIVATED_AT = os.getenv("NOTIFICATIONS_ACTIVATED_AT", "")
