@@ -34,7 +34,9 @@ class MySQLConcurrencyFixtures(SimpleTestCase):
         self.department_id = self.role_id = None
         self.grants = list(Group.permissions.through.objects.order_by("pk").values_list())
         self.groups = list(Group.objects.order_by("pk").values_list("pk", "name"))
-        self.assertIn("Administrator", {name for _, name in self.groups}, "Canonical test bootstrap is missing")
+        # TransactionTestCase teardown can flush migration-created groups before
+        # this class runs. These fixtures use their own learner and superuser,
+        # so preserve the current group baseline without requiring seeded roles.
         self.marker = "m21-" + uuid4().hex[:16]
         self.addCleanup(self.cleanup_fixtures)
         self.user = self.create_user("learner")
