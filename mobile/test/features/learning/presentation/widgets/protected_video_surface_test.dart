@@ -26,6 +26,7 @@ void main() {
   int reveals = 0;
   final seeks = <double>[];
   final scrubbing = <bool>[];
+  final playbackRequests = <bool>[];
 
   setUp(() {
     player = SurfacePlayer();
@@ -33,6 +34,7 @@ void main() {
     reveals = 0;
     seeks.clear();
     scrubbing.clear();
+    playbackRequests.clear();
   });
   tearDown(() => player.dispose());
 
@@ -80,6 +82,7 @@ void main() {
                     onToggleControls: () => toggles++,
                     onRevealControls: () => reveals++,
                     onPlaybackRequested: (playing) {
+                      playbackRequests.add(playing);
                       player.value = player.value.copyWith(isPlaying: playing);
                     },
                     onSeek: seeks.add,
@@ -108,6 +111,8 @@ void main() {
         expect(action.tooltip, playing ? 'Pause' : 'Resume video');
         player.value = player.value.copyWith(isPlaying: !playing);
         action.onPressed!();
+        expect(playbackRequests, hasLength(1));
+        expect(playbackRequests.single, !playing);
         expect(player.value.isPlaying, !playing);
       },
     );

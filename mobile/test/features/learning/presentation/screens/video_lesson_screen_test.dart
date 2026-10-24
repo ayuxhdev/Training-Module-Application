@@ -47,6 +47,7 @@ class Player extends VideoPlayerController {
   final Duration mediaDuration;
   bool disposed = false;
   bool rejectSeeks = false;
+  int pauseRequests = 0;
   Player({
     this.initialization,
     this.mediaDuration = const Duration(seconds: 100),
@@ -66,6 +67,7 @@ class Player extends VideoPlayerController {
   Future<void> play() async => value = value.copyWith(isPlaying: true);
   @override
   Future<void> pause() async {
+    pauseRequests++;
     if (!disposed) value = value.copyWith(isPlaying: false);
   }
 
@@ -755,6 +757,7 @@ void main() {
         find.byKey(const ValueKey('video-playback-action')),
       );
       expect(pause.tooltip, 'Pause');
+      final pausesBefore = player.pauseRequests;
 
       // Native events can arrive before the next Flutter frame updates the button.
       player.value = player.value.copyWith(
@@ -765,6 +768,7 @@ void main() {
       pause.onPressed!();
       await tester.pump();
       await tester.pump();
+      expect(player.pauseRequests, pausesBefore + 1);
       expect(players, hasLength(1));
       expect(player.disposed, isFalse);
       expect(player.value.isPlaying, isFalse);
@@ -787,10 +791,12 @@ void main() {
         find.byKey(const ValueKey('video-playback-action')),
       );
       expect(pause.tooltip, 'Pause');
+      final pausesBefore = player.pauseRequests;
       player.value = player.value.copyWith(isPlaying: false, isBuffering: true);
       pause.onPressed!();
       await tester.pump();
       await tester.pump();
+      expect(player.pauseRequests, pausesBefore + 1);
       expect(players, hasLength(1));
       expect(player.disposed, isFalse);
       expect(player.value.isPlaying, isFalse);
@@ -802,7 +808,6 @@ void main() {
           cancelToken: any(named: 'cancelToken'),
         ),
       ).called(1);
-      await remove(tester);
       verify(
         () => repository.endPlaybackSession(
           1,
@@ -813,6 +818,17 @@ void main() {
           cancelToken: any(named: 'cancelToken'),
         ),
       ).called(1);
+      await remove(tester);
+      verifyNever(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          any(),
+          completedNormally: any(named: 'completedNormally'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
       verifyNever(
         () => repository.submitPlaybackHeartbeat(
           1,
