@@ -162,3 +162,203 @@ test("both shared palettes retain readable foreground/background token pairs", (
     }
   }
 });
+
+function extractMediaBlock(source, query) {
+  const queryIndex = source.indexOf(query);
+  if (queryIndex === -1) return null;
+  const openBrace = source.indexOf("{", queryIndex);
+  if (openBrace === -1) return null;
+
+  let depth = 0;
+  for (let i = openBrace; i < source.length; i++) {
+    const char = source[i];
+    if (char === "{") {
+      depth++;
+    } else if (char === "}") {
+      depth--;
+      if (depth === 0) {
+        return source.slice(openBrace + 1, i);
+      }
+    }
+  }
+  return null;
+}
+
+function parseRules(block) {
+  if (!block) return [];
+  const rules = [];
+  const regex = /([^{]+)\{([^}]*)\}/g;
+  let match;
+  while ((match = regex.exec(block)) !== null) {
+    const rawHeader = match[1].trim();
+    const declarations = match[2];
+    const selectors = rawHeader
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean);
+    rules.push({ header: rawHeader, selectors, declarations });
+  }
+  return rules;
+}
+
+function findRuleWithExactSelector(block, targetSelector) {
+  const rules = parseRules(block);
+  return rules.find(rule => rule.selectors.includes(targetSelector)) || null;
+}
+
+function extractRuleDeclarations(block, exactSelector) {
+  const rule = findRuleWithExactSelector(block, exactSelector);
+  return rule ? rule.declarations : null;
+}
+
+test("primary action-link buttons retain readable on-primary text color at rest and hover", () => {
+  const css = fs.readFileSync(path.join(__dirname, "static/accounts/shell.css"), "utf8");
+
+  // Extract declaration block for .action-link.btn-primary at rest (not :hover, :focus, etc.)
+  const atRestMatch = css.match(/\.action-link\.btn-primary(?![a-zA-Z0-9_:.-])[^{]*\{([^}]*)\}/);
+  assert.ok(atRestMatch, "at-rest .action-link.btn-primary rule must exist");
+  assert.match(
+    atRestMatch[1],
+    /color:\s*var\(--color-on-primary\)/,
+    "at-rest .action-link.btn-primary must declare color: var(--color-on-primary)",
+  );
+
+  // Extract declaration block for .action-link.btn-primary:hover
+  const hoverMatch = css.match(/\.action-link\.btn-primary:hover(?![a-zA-Z0-9_:.-])[^{]*\{([^}]*)\}/);
+  assert.ok(hoverMatch, ":hover .action-link.btn-primary rule must exist");
+  assert.match(
+    hoverMatch[1],
+    /color:\s*var\(--color-on-primary\)/,
+    ":hover .action-link.btn-primary must declare color: var(--color-on-primary)",
+  );
+
+  assert.match(css, /\.action-link:not\(\.btn-primary\)/);
+});
+
+test("brace-aware reduced-motion extraction verifies transitions and preserves sidebar positioning", () => {
+  const css = fs.readFileSync(path.join(__dirname, "static/accounts/shell.css"), "utf8");
+  const rmBlock = extractMediaBlock(css, "@media (prefers-reduced-motion: reduce)");
+  assert.ok(rmBlock, "prefers-reduced-motion block must be extracted in full");
+
+  // 1. Sidebar in reduced motion: transitions disabled, but positioning transforms preserved
+  const sidebarRule = findRuleWithExactSelector(rmBlock, ".app-sidebar");
+  assert.ok(sidebarRule, ".app-sidebar rule must exist inside prefers-reduced-motion");
+  assert.match(sidebarRule.declarations, /transition:\s*none\s*!important/);
+  assert.doesNotMatch(sidebarRule.declarations, /transform:\s*none/);
+
+  // 2. Buttons and inputs in reduced motion: transitions AND active transforms disabled
+  const buttonRule = findRuleWithExactSelector(rmBlock, 'input[type="submit"]');
+  assert.ok(buttonRule, "input[type='submit'] rule must exist inside prefers-reduced-motion");
+  assert.match(buttonRule.declarations, /transition:\s*none\s*!important/);
+  assert.match(buttonRule.declarations, /transform:\s*none\s*!important/);
+
+  // Check all required selectors are present as exact selectors in the button/input rule
+  const requiredSelectors = [
+    "button",
+    'input[type="submit"]',
+    'input[type="button"]',
+    'input[type="reset"]',
+    ".btn",
+    ".action-link",
+    ".primary-nav .nav-link",
+  ];
+  for (const selector of requiredSelectors) {
+    assert.ok(
+      buttonRule.selectors.includes(selector),
+      `Reduced motion must cover exact selector "${selector}"`,
+    );
+  }
+
+  // 3. Mobile sidebar positioning transforms remain intact in mobile media query
+  const mobileBlock = extractMediaBlock(css, "@media (max-width: 56rem)");
+  assert.ok(mobileBlock, "Mobile media query block must be extracted");
+  const closedSidebarRule = findRuleWithExactSelector(mobileBlock, ".app-sidebar");
+  assert.ok(closedSidebarRule, "Closed mobile sidebar rule must exist");
+  assert.match(closedSidebarRule.declarations, /transform:\s*translateX\(-105%\)/);
+
+  const openSidebarRule = findRuleWithExactSelector(mobileBlock, ".app-sidebar.is-open");
+  assert.ok(openSidebarRule, "Open mobile sidebar rule must exist");
+  assert.match(openSidebarRule.declarations, /transform:\s*translateX\(0\)/);
+});
+
+test("reduced-motion regression checks prove assertions fail if declarations are removed or broken", () => {
+  function validateReducedMotion(cssText) {
+    const block = extractMediaBlock(cssText, "@media (prefers-reduced-motion: reduce)");
+    if (!block) throw new Error("Missing media block");
+
+    const sidebarRule = findRuleWithExactSelector(block, ".app-sidebar");
+    if (!sidebarRule) {
+      throw new Error("Base .app-sidebar selector missing from reduced motion");
+    }
+    if (!/transition:\s*none\s*!important/.test(sidebarRule.declarations)) {
+      throw new Error("Sidebar transition not disabled");
+    }
+    if (/transform:\s*none/.test(sidebarRule.declarations)) {
+      throw new Error("Sidebar positioning transform broken by transform: none");
+    }
+
+    const buttonRule = findRuleWithExactSelector(block, ".btn");
+    if (!buttonRule) {
+      throw new Error("Button/input rule missing from reduced motion");
+    }
+    for (const selector of [
+      "button",
+      'input[type="submit"]',
+      'input[type="button"]',
+      'input[type="reset"]',
+      ".btn",
+      ".action-link",
+      ".primary-nav .nav-link",
+    ]) {
+      if (!buttonRule.selectors.includes(selector)) {
+        throw new Error(`Missing exact selector in reduced motion: ${selector}`);
+      }
+    }
+    if (!/transition:\s*none\s*!important/.test(buttonRule.declarations)) {
+      throw new Error("Input transitions not disabled");
+    }
+    if (!/transform:\s*none\s*!important/.test(buttonRule.declarations)) {
+      throw new Error("Input transforms not disabled");
+    }
+    return true;
+  }
+
+  const validCss = fs.readFileSync(path.join(__dirname, "static/accounts/shell.css"), "utf8");
+  assert.ok(validateReducedMotion(validCss));
+
+  // Removing standalone button while keeping input[type="button"] causes failure
+  assert.throws(
+    () => validateReducedMotion(validCss.replace("  button,\n", "")),
+    /Missing exact selector in reduced motion: button/,
+  );
+
+  // Removing base .app-sidebar while keeping .app-sidebar.is-open causes failure
+  assert.throws(
+    () => validateReducedMotion(validCss.replace("  .app-sidebar,\n", "")),
+    /Base \.app-sidebar selector missing from reduced motion/,
+  );
+
+  // Removing sidebar transition: none causes failure
+  assert.throws(
+    () => validateReducedMotion(validCss.replace("  .app-sidebar,\n  .app-sidebar.is-open {\n    transition: none !important;", "  .app-sidebar,\n  .app-sidebar.is-open {\n    /* removed */")),
+    /Sidebar transition not disabled/,
+  );
+
+  // Adding transform: none to sidebar causes failure
+  assert.throws(
+    () => validateReducedMotion(validCss.replace("  .app-sidebar,\n  .app-sidebar.is-open {\n    transition: none !important;", "  .app-sidebar,\n  .app-sidebar.is-open {\n    transition: none !important;\n    transform: none !important;")),
+    /Sidebar positioning transform broken/,
+  );
+
+  // Removing input[type="submit"] from reduced motion causes failure
+  assert.throws(
+    () => validateReducedMotion(validCss.replace("  button,\n  input[type=\"submit\"],\n", "  button,\n")),
+    /Missing exact selector in reduced motion: input\[type="submit"\]/,
+  );
+
+  // Removing transform: none !important from inputs causes failure
+  assert.throws(
+    () => validateReducedMotion(validCss.replace("    transition: none !important;\n    transform: none !important;", "    transition: none !important;")),
+    /Input transforms not disabled/,
+  );
+});

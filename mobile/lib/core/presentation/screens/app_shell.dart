@@ -72,26 +72,43 @@ class AppShell extends ConsumerWidget {
               : 0
         : matched;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       body: child,
       bottomNavigationBar: destinations.length < 2
           ? null
-          : Container(
-              margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.outlineVariant,
+          : SafeArea(
+              top: false,
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: colorScheme.outlineVariant,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(
+                        alpha: isDark ? 0.28 : 0.06,
+                      ),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-              ),
-              child: NavigationBar(
-                selectedIndex: currentIndex,
-                onDestinationSelected: (index) {
-                  context.go(paths[index]);
-                },
-                destinations: destinations,
+                child: NavigationBar(
+                  backgroundColor: colorScheme.surfaceContainerLow,
+                  elevation: 0,
+                  selectedIndex: currentIndex,
+                  onDestinationSelected: (index) {
+                    context.go(paths[index]);
+                  },
+                  destinations: destinations,
+                ),
               ),
             ),
     );

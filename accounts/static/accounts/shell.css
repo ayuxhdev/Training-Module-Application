@@ -212,23 +212,50 @@ button, input[type="submit"], input[type="button"], input[type="reset"], .btn, .
   text-align: center;
   text-decoration: none;
   cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 100ms ease;
 }
-button:hover:not(:disabled), input[type="submit"]:hover:not(:disabled), input[type="button"]:hover:not(:disabled), input[type="reset"]:hover:not(:disabled), .btn-secondary:hover, .action-link:hover {
+
+/* Secondary & standalone outline action links */
+.btn-secondary, .action-link:not(.btn-primary) {
+  border-color: var(--color-brand-primary);
+  background: var(--color-surface);
+  color: var(--color-brand-primary);
+}
+button:hover:not(:disabled), input[type="submit"]:hover:not(:disabled), input[type="button"]:hover:not(:disabled), input[type="reset"]:hover:not(:disabled), .btn-secondary:hover:not(:disabled), .action-link:not(.btn-primary):hover {
   border-color: var(--color-brand-primary);
   background: var(--color-surface-subtle);
   color: var(--color-brand-primary-dark);
 }
-.btn-primary, button.btn-primary, input[type="submit"].btn-primary {
+
+/* Primary buttons (filled) - guaranteed readable on-primary text at rest, hover, focus, and active */
+.btn-primary, button.btn-primary, a.btn-primary, input[type="submit"].btn-primary, .action-link.btn-primary {
   border-color: var(--color-brand-primary);
   background: var(--color-brand-primary);
-  color: var(--color-on-primary);
+  color: var(--color-on-primary) !important;
 }
-.btn-primary:hover:not(:disabled), button.btn-primary:hover:not(:disabled), input[type="submit"].btn-primary:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled), button.btn-primary:hover:not(:disabled), a.btn-primary:hover, input[type="submit"].btn-primary:hover:not(:disabled), .action-link.btn-primary:hover {
   border-color: var(--color-brand-primary-dark);
   background: var(--color-brand-primary-dark);
-  color: var(--color-on-primary);
+  color: var(--color-on-primary) !important;
 }
-.btn-secondary, .action-link { border-color: var(--color-brand-primary); color: var(--color-brand-primary); }
+.btn-primary:focus-visible, button.btn-primary:focus-visible, a.btn-primary:focus-visible, .action-link.btn-primary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  color: var(--color-on-primary) !important;
+}
+.btn-primary:active:not(:disabled), button.btn-primary:active:not(:disabled), a.btn-primary:active, .action-link.btn-primary:active {
+  border-color: var(--color-brand-primary-dark);
+  background: var(--color-brand-primary-dark);
+  color: var(--color-on-primary) !important;
+}
+
+button:focus-visible, input[type="submit"]:focus-visible, input[type="button"]:focus-visible, input[type="reset"]:focus-visible, .btn:focus-visible, .action-link:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+button:active:not(:disabled), input[type="submit"]:active:not(:disabled), input[type="button"]:active:not(:disabled), input[type="reset"]:active:not(:disabled), .btn:active:not(:disabled), .action-link:active {
+  transform: translateY(1px);
+}
 .btn-danger { border-color: var(--color-danger-foreground); background: var(--color-danger-background); color: var(--color-danger-foreground); }
 .btn-danger:hover:not(:disabled) { border-color: var(--color-danger-foreground); background: var(--color-danger-background); color: var(--color-danger-foreground); }
 .btn-ghost { border-color: transparent; background: transparent; color: var(--color-brand-primary); }
@@ -382,6 +409,7 @@ tbody tr:nth-child(even) { background: var(--color-surface-subtle); }
   background: var(--color-surface);
   color: var(--color-text);
   box-shadow: var(--shadow-sm);
+  border-bottom: var(--border-subtle);
 }
 
 .app-topbar a { color: var(--color-text); }
@@ -390,8 +418,17 @@ tbody tr:nth-child(even) { background: var(--color-surface-subtle); }
 .app-topbar .account-controls { flex-wrap: nowrap; gap: var(--space-4); min-width: 0; }
 .signed-in-user { overflow: hidden; max-width: min(26rem, 42vw); text-overflow: ellipsis; white-space: nowrap; }
 .app-topbar .account-controls form { flex: none; }
-.app-topbar .btn-secondary { border-color: var(--color-surface); background: var(--color-surface); color: var(--color-brand-primary); }
-.app-topbar .btn-secondary:hover { border-color: var(--color-surface-subtle); background: var(--color-surface-subtle); color: var(--color-brand-primary-dark); }
+.app-topbar .btn-secondary {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-brand-primary);
+  font-size: var(--font-size-sm);
+}
+.app-topbar .btn-secondary:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-subtle);
+  color: var(--color-brand-primary-dark);
+}
 button.sidebar-toggle { display: none; }
 
 .app-sidebar {
@@ -431,15 +468,25 @@ button.sidebar-toggle { display: none; }
   border-radius: var(--radius-sm);
   color: var(--color-text);
   text-decoration: none;
+  font-weight: 500;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }
-.primary-nav .nav-link:hover { background: var(--color-surface-subtle); color: var(--color-brand-primary-dark); }
+.primary-nav .nav-link:hover {
+  background: var(--color-surface-subtle);
+  color: var(--color-brand-primary-dark);
+}
 .primary-nav .nav-link.is-active, .primary-nav .nav-link[aria-current="page"] {
-  border-left-color: var(--color-brand-brass);
+  border-left-color: var(--color-brand-primary);
   background: var(--color-accent-surface);
   color: var(--color-brand-primary-dark);
   font-weight: 700;
 }
-.primary-nav .nav-link:focus-visible { position: relative; z-index: 1; }
+.primary-nav .nav-link:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
 .app-main { grid-area: main; min-width: 0; }
 .app-main > .page-content { max-width: 80rem; }
 button.sidebar-backdrop { display: none; }
@@ -502,7 +549,21 @@ button.sidebar-backdrop { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-sidebar, .app-sidebar.is-open { transition: none; }
+  .app-sidebar,
+  .app-sidebar.is-open {
+    transition: none !important;
+  }
+
+  .primary-nav .nav-link,
+  button,
+  input[type="submit"],
+  input[type="button"],
+  input[type="reset"],
+  .btn,
+  .action-link {
+    transition: none !important;
+    transform: none !important;
+  }
 }
 
 .login-page {

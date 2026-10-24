@@ -1,3 +1,4 @@
+import 'package:training_app/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,7 +24,28 @@ void main() {
     ));
     expect(tester.takeException(), isNull);
     expect(find.text('Content'), findsOneWidget);
-    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, index);
+    final navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+    expect(navBar.selectedIndex, index);
+    expect(navBar.elevation, 0);
+    expect(navBar.backgroundColor, Theme.of(tester.element(find.byType(AppShell))).colorScheme.surfaceContainerLow);
   });
   }
+
+  testWidgets('NavigationBar uses surfaceContainerLow background and zero elevation in both themes', (tester) async {
+    for (final theme in [AppTheme.lightTheme, AppTheme.darkTheme]) {
+      await tester.pumpWidget(ProviderScope(
+        overrides: [authControllerProvider.overrideWith(() => ShellAuthController())],
+        child: MaterialApp(
+          theme: theme,
+          home: Theme(
+            data: theme,
+            child: const AppShell(location: '/dashboard', child: Text('Content')),
+          ),
+        ),
+      ));
+      final navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.backgroundColor, theme.colorScheme.surfaceContainerLow);
+      expect(navBar.elevation, 0);
+    }
+  });
 }
