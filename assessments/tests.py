@@ -10,6 +10,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, models, transaction
+from django.templatetags.static import static
 from django.test import Client, TransactionTestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -798,8 +799,8 @@ class AssessmentEndpointTests(CurriculumTestCase):
         self.assertContains(resp, 'id="assessment-timer"')
         self.assertContains(resp, 'role="timer"')
         self.assertContains(resp, 'id="assessment-deadline-time"')
-        self.assertContains(resp, "assessments/timer.js")
-        self.assertContains(resp, "assessments/timer.css")
+        self.assertContains(resp, f'src="{static("assessments/timer.js")}"')
+        self.assertContains(resp, f'href="{static("assessments/timer.css")}"')
 
     def test_untimed_attempt_screen_omits_timer(self):
         CurriculumTestCase.complete_lessons(self)
@@ -813,7 +814,7 @@ class AssessmentEndpointTests(CurriculumTestCase):
         resp = client.get(f"/attempts/{attempt.pk}/")
         self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, 'id="assessment-timer-banner"')
-        self.assertNotContains(resp, "assessments/timer.js")
+        self.assertNotContains(resp, f'src="{static("assessments/timer.js")}"')
 
     def test_learner_overview_shows_deadline_when_attempt_is_ongoing(self):
         CurriculumTestCase.complete_lessons(self)

@@ -192,6 +192,9 @@ and deterministic deadline/event keys preserve earlier successful events and
 create only missing ones. Existing tests cover UTC boundaries, retirement,
 eligibility changes, rollback and duplicates; added tests cover persisted cutoff
 and interrupted-scan recovery. Restarts/redeployments must not change the cutoff.
+Catch-up reevaluates current eligibility: once a deadline is overdue, it creates
+an OVERDUE event rather than reconstructing a missed APPROACHING event. Alert on
+missed runs; rerunning is not a guarantee of every historical reminder window.
 No historical backfill, delivery channels or retention cleanup is introduced.
 
 ## 6. Non-destructive backup tooling
@@ -344,14 +347,151 @@ After rollback, verify HTTPS, roles, ownership, protected ranges, immutable vers
 links, assessment/certificate consistency and scheduler/backup health before
 resuming service. Document the incident and the chosen recovery point.
 
+## 9. Test-database safety and permission-group incident
+
+The normal backend profile is MySQL (`config.settings`). The explicit
+`config.test_settings` fallback uses in-memory SQLite; it does not verify MySQL
+row locks. CI uses a disposable MySQL 8 service and runs the complete Django suite.
+Database-free checks can run without either database. Do not select SQLite to
+claim that a MySQL concurrency regression passed.
+
+Django `TestCase` normally rolls its fixtures back. `TransactionTestCase` instead
+commits test writes and flushes database data during teardown. `--keepdb` preserves
+the database/schema between runs; it does **not** prevent these teardown flushes.
+The application groups are created by data migrations, not a `post_migrate`
+receiver. Django's auth receiver recreates permission definitions after a flush,
+but does not replay application migrations or restore their group/grant data.
+
+This explains the fresh-CI failure corrected in `eea613b`: discovery placed the
+two assessment API transaction tests immediately before the six M21 tests, whose
+fixture unnecessarily required a seeded Administrator group. The M21 fixture now
+creates its own learner/superuser, accepts an empty group baseline, and still
+checks that its exact cleanup preserves the groups/grants present at entry.
+Production role bootstrap was not changed.
+
+The same flush mechanism is **strongly supported**, not forensically confirmed,
+as the explanation of the earlier local loss of six groups and 96 grants. The
+preserved test database, `--keepdb`, and migration history remaining applied fit
+that mechanism. Available records do not identify the exact earlier command or
+exclude another actor. They do not establish a development/production incident.
+Never restore roles in any existing database without target verification and
+explicit authorization.
+
+Before a local database run, check both OS test processes and MySQL connections;
+coordinate exclusive ownership. Inspect the effective test database name, host,
+server identity and migration state without printing credentials. Django normally
+derives a `test_` name unless `DATABASES["default"]["TEST"]["NAME"]` overrides it;
+a prefix alone is not proof that a database is disposable. Do not use the ordinary
+full-suite command on a preserved/shared test database. A guarded local run must
+reject database creation/drop, TRUNCATE and flush, use only the verified test
+target, and compare groups, grants, permission definitions and migration history
+before/after. Do not repair schema or bootstrap state automatically.
+
+### Current flush-based exclusions for a preserved local test database
+
+All eight methods below inherit `TransactionTestCase` and therefore flush the
+effective test database on teardown. They must run on disposable, independently
+verified MySQL infrastructure; the CI full-suite command includes them. Their
+local exclusion is an infrastructure limitation, not equivalent coverage.
+
+| File / class | Method | Coverage requiring disposable MySQL |
+|---|---|---|
+| `api/v1/test_assessments.py` / `AssessmentAPIConcurrencyTests` | `test_concurrent_starts_resume_one_sequential_attempt` | Concurrent start/resume and sequential attempt uniqueness |
+| Same | `test_concurrent_final_submissions_grade_once_and_issue_one_certificate` | Single grading/completion/certificate under concurrent submission |
+| `api/v1/test_notifications.py` / `NotificationReadConcurrencyTests` | `test_simultaneous_individual_and_read_all_preserve_one_read_timestamp` | Concurrent read-one/read-all preserve first-read time |
+| `assessments/tests.py` / `AssessmentLockingTests` | `test_revision_creations_serialize_on_question` | Question revision numbering under concurrent creation |
+| Same | `test_submission_waits_for_employee_before_locking_assignment` | Submission Employee-before-Assignment lock order |
+| Same | `test_start_attempt_waits_for_employee_before_locking_assignment` | Attempt-start Employee-before-Assignment lock order |
+| `notifications/test_reminders.py` / `DeadlineReminderConcurrencyTests` | `test_concurrent_commands_create_one_notification` | Concurrent deadline scans deduplicate events |
+| `notifications/tests.py` / `NotificationConcurrencyTests` | `test_concurrent_events_pass_validation_then_database_deduplicates_the_insert` | Event insertion race and database-enforced uniqueness |
+
+Earlier reports referring to six exclusions are not the current inventory.
+Committed source already contained these eight methods at `88a4cda`, before M21;
+the six-to-eight discrepancy cannot be attributed to two new M21 tests. The exact
+older selection is not recorded here. Derive exclusions from current discovery
+and report each method rather than carrying forward an unsupported count. The six
+M21 cases use exact fixture cleanup without flush and are a separate set.
+
+If another disposable MySQL database cannot be provisioned with approved
+credentials, do not broaden grants or reuse development data. Leave those eight
+cases to the isolated CI service. To reproduce the group lifecycle separately,
+an operator can provision a new empty test database, run migrations, record the
+canonical groups, run the assessment API transaction tests, then inspect the
+groups and migration history before running the M21 cases. This experiment is not
+authorized against the preserved test database. No such destructive local
+experiment is claimed by this document.
+
+## 10. Manifest and infrastructure signoff evidence
+
+Static assertions must use Django's active static storage URL, not a literal
+unhashed path. The timed assessment template uses `{% static %}` for both
+`assessments/timer.js` and `assessments/timer.css`; the corresponding tests resolve
+the expected URLs with `django.templatetags.static.static`. Deadline, scoring and
+timeout enforcement remain server-side and unchanged.
+
+To validate a candidate release without changing shared collected files, use an
+isolated process with `DEBUG=False`, manifest storage, and a new temporary
+`STATIC_ROOT`; collect there and run the timed/untimed rendering checks against
+the verified test database. This is a static-storage test, not a live deployment.
+For actual deployment, preserve the release manifest and request the exact hashed
+URLs from authenticated rendered HTML at the real HTTPS proxy. Check HTTP 200,
+CSS/JavaScript content types and the actual release content, including assessment
+timer assets. Preflight's six-asset allowlist does not replace this complete-page
+asset check. Browser cache refresh alone does not fix an outdated deployment.
+
+Release signoff must attach actual evidence for the following infrastructure
+gates; source tests or the reported green CI do not satisfy them:
+
+- Approved host/service definitions, protected identities/environments, startup
+  ordering, graceful worker restart, and rollback to the prior compatible release.
+- Real HTTPS/host/proxy/CSRF checks, trusted forwarded headers, secure cookies,
+  private storage ACLs and denial of public private-media aliases.
+- Runtime/migration/backup account grants, remote MySQL certificate verification,
+  actual ffprobe version/execution, and reviewed dependency vulnerabilities.
+- Cross-worker API and web-login rate limiting. Current in-process throttles and
+  absence of a web-login throttle require edge/shared enforcement before exposure.
+- Authorized protected-media range/HEAD/error checks, certificate access and
+  revocation checks, and sustained worker/network/decoder capacity measurements.
+- Completed off-host encrypted DB/media recovery pairs, independently checked
+  object inventory, an authorized isolated restore rehearsal and approved RPO/RTO.
+- Fixed reminder activation cutoff, installed hourly job under the correct
+  profile, observed completion/failure/missed-run alerts, and restart recovery.
+- Monitoring ownership, reviewed thresholds, TLS/backup-age/capacity alerts and a
+  safe authentication plan for restricted readiness (currently active superuser
+  only). Do not distribute privileged probe credentials to public monitors.
+
+Numeric alert thresholds, provider-specific service units, production grants,
+retention targets and capacity acceptance criteria still require operator
+selection/signoff; this guide does not invent them. Final CSP/header policy and
+dependency-vulnerability review also remain security release gates. No deployment,
+restore, scheduler activation, privileged-account change or M20/M21 closure is
+implied by these procedures.
+
 ## Validation and remaining release gates
 
 Automated checks exercise production settings isolation/fail-closed behavior,
 health access/failure privacy, log redaction, static preflight gates, mocked
 consistent backup/verification/failure paths, cutoff persistence and interrupted
-reminder recovery. The established safe MySQL suite retains its six destructive
-exclusions; no existing database is reset or recreated. See the actual execution
-report for totals and limitations; no live deployment result is implied.
+reminder recovery. Preserved local MySQL validation excludes the eight flush-based
+cases listed above; disposable CI runs them. No existing database is reset or
+recreated. See the actual execution report for totals and limitations; no live
+deployment result is implied.
+
+Local follow-up evidence, 24 October 2026 (not a full-suite or CI result):
+
+- 165 focused MySQL tests passed, zero failures/errors/skips, including all six
+  M21 concurrency cases, authentication/identity, Employee lifecycle, assessment
+  endpoints, operations and reminder-recovery checks. Flush, TRUNCATE and
+  database creation, database drops and table drops were blocked; group/grant,
+  permission-definition and migration-history snapshots were preserved.
+- Timed/untimed rendering with a temporary manifest collection: 2 passed after
+  reproducing the old timed-page assertion failure. No shared static output changed.
+- Database-free operations rerun: 24 passed with database access blocked.
+  SQLite verification: all six MySQL-only cases skipped without fixture setup.
+- Discovery found 730 tests and the eight flush-based cases above; these eight
+  were not executed locally. The preceding groups are overlapping checks and must
+  not be added into a claimed distinct full-suite total. The reported green CI
+  checkpoint predates these test/documentation edits.
 
 Still required: selected infrastructure/application server, service secrets and
 least privilege, actual HTTPS/proxy/static/range rehearsal, off-host encrypted
