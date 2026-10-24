@@ -743,6 +743,89 @@ void main() {
   });
 
   testWidgets(
+    'rendered Pause still pauses replay when native playback starts buffering',
+    (tester) async {
+      assignmentStatus = 'COMPLETED';
+      playbackMode = 'read_only_replay';
+      lessonProgress = progress(watched: 80, completed: true);
+      await show(tester);
+      await play(tester);
+      final player = players.single;
+      final pause = tester.widget<IconButton>(
+        find.byKey(const ValueKey('video-playback-action')),
+      );
+      expect(pause.tooltip, 'Pause');
+
+      // Native events can arrive before the next Flutter frame updates the button.
+      player.value = player.value.copyWith(
+        position: const Duration(seconds: 9),
+        isPlaying: false,
+        isBuffering: true,
+      );
+      pause.onPressed!();
+      await tester.pump();
+      await tester.pump();
+      expect(players, hasLength(1));
+      expect(player.disposed, isFalse);
+      expect(player.value.isPlaying, isFalse);
+      player.value = player.value.copyWith(isBuffering: false);
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Resume video'), findsOneWidget);
+      await remove(tester);
+      verify(() => repository.protectedReplayMediaRequest(1, 2)).called(1);
+      verifyNoMoreInteractions(repository);
+    },
+  );
+
+  testWidgets(
+    'rendered Pause closes tracked playback once without restarting during buffering',
+    (tester) async {
+      await show(tester);
+      await play(tester);
+      final player = players.single;
+      final pause = tester.widget<IconButton>(
+        find.byKey(const ValueKey('video-playback-action')),
+      );
+      expect(pause.tooltip, 'Pause');
+      player.value = player.value.copyWith(isPlaying: false, isBuffering: true);
+      pause.onPressed!();
+      await tester.pump();
+      await tester.pump();
+      expect(players, hasLength(1));
+      expect(player.disposed, isFalse);
+      expect(player.value.isPlaying, isFalse);
+      expect(find.text('Watched coverage: 0%'), findsOneWidget);
+      verify(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      await remove(tester);
+      verify(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          any(),
+          completedNormally: false,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      verifyNever(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+    },
+  );
+
+  testWidgets(
     'completed assignment replay has no sessions, heartbeat or credit writes',
     (tester) async {
       assignmentStatus = 'COMPLETED';

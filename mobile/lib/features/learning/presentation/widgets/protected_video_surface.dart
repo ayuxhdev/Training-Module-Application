@@ -8,7 +8,8 @@ import 'package:video_player/video_player.dart';
 class ProtectedVideoSurface extends StatefulWidget {
   final VideoPlayerController? controller;
   final bool busy, controlsVisible, canPlay, canSeek, fullscreen;
-  final VoidCallback onToggleControls, onTogglePlayback;
+  final VoidCallback onToggleControls;
+  final ValueChanged<bool> onPlaybackRequested;
   final VoidCallback? onFullscreen, onBack;
   final ValueChanged<double> onSeek;
   final ValueChanged<bool> onScrubbingChanged;
@@ -30,7 +31,7 @@ class ProtectedVideoSurface extends StatefulWidget {
     required this.canSeek,
     required this.fullscreen,
     required this.onToggleControls,
-    required this.onTogglePlayback,
+    required this.onPlaybackRequested,
     required this.onSeek,
     required this.onScrubbingChanged,
     this.onControlsFocusChanged,
@@ -416,7 +417,9 @@ class _ProtectedVideoSurfaceState extends State<ProtectedVideoSurface> {
                             focusNode: _playbackFocus,
                             tooltip: action,
                             onPressed: !widget.busy && widget.canPlay
-                                ? widget.onTogglePlayback
+                                ? () => widget.onPlaybackRequested(
+                                    !value.isPlaying,
+                                  )
                                 : null,
                             style: ButtonStyle(
                               animationDuration: motion,

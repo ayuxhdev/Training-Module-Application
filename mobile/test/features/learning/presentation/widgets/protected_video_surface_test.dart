@@ -79,10 +79,8 @@ void main() {
                     title: fullscreen ? 'Safe sprayer calibration' : null,
                     onToggleControls: () => toggles++,
                     onRevealControls: () => reveals++,
-                    onTogglePlayback: () {
-                      player.value = player.value.copyWith(
-                        isPlaying: !player.value.isPlaying,
-                      );
+                    onPlaybackRequested: (playing) {
+                      player.value = player.value.copyWith(isPlaying: playing);
                     },
                     onSeek: seeks.add,
                     onScrubbingChanged: scrubbing.add,
@@ -96,6 +94,23 @@ void main() {
       ),
     );
     await tester.pump();
+  }
+
+  for (final playing in [true, false]) {
+    testWidgets(
+      'playback action follows rendered intent when native state changes ($playing)',
+      (tester) async {
+        player.value = player.value.copyWith(isPlaying: playing);
+        await show(tester);
+        final action = tester.widget<IconButton>(
+          find.byKey(const ValueKey('video-playback-action')),
+        );
+        expect(action.tooltip, playing ? 'Pause' : 'Resume video');
+        player.value = player.value.copyWith(isPlaying: !playing);
+        action.onPressed!();
+        expect(player.value.isPlaying, !playing);
+      },
+    );
   }
 
   testWidgets(

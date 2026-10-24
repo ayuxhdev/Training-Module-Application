@@ -700,8 +700,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
           _reveal();
         }
       },
-      onTogglePlayback: () =>
-          unawaited(_video?.value.isPlaying == true ? _pause() : _play()),
+      onPlaybackRequested: (playing) => unawaited(playing ? _play() : _pause()),
       onSeek: (position) => unawaited(_seek(position)),
       onScrubbingChanged: (scrubbing) {
         _scrubbing = scrubbing;
