@@ -92,6 +92,19 @@ class EmployeeUpdateView(ManageEmployeeMixin, UpdateView):
 	template_name = "organization/employee_form.html"
 	success_url = reverse_lazy("organization:employee-list")
 
+	def post(self, request, *args, **kwargs):
+		with transaction.atomic():
+			if request.POST.get("reporting_manager"):
+				# Match Employee.lock_parents(): hierarchy before target, before User.
+				list(Employee.objects.order_by("pk").select_for_update().values_list("pk", flat=True))
+			return super().post(request, *args, **kwargs)
+
+	def get_queryset(self):
+		queryset = super().get_queryset()
+		# Build and validate the form from the current locked state, not a stale
+		# instance that could overwrite a concurrent deactivation or profile edit.
+		return queryset.select_for_update() if self.request.method == "POST" else queryset
+
 
 @login_required
 @permission_required(MANAGE_EMPLOYEES, raise_exception=True)

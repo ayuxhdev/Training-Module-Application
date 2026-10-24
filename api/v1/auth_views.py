@@ -1,4 +1,7 @@
-from rest_framework import status
+from collections.abc import Mapping
+
+from django.db import transaction
+from rest_framework import serializers, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -9,7 +12,10 @@ from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from api.capabilities import mobile_capabilities
 from api.permissions import IsMobileAccount
-from .auth_serializers import EmployeeTokenObtainPairSerializer, EmployeeMeSerializer, EmployeeTokenRefreshSerializer
+from .auth_serializers import (
+    EmployeeTokenObtainPairSerializer, EmployeeMeSerializer, EmployeeTokenRefreshSerializer,
+    _lock_refresh_token,
+)
 
 class LoginThrottle(AnonRateThrottle):
     rate = '5/min'
@@ -29,7 +35,10 @@ class EmployeeLogoutView(APIView):
     # Revocation must remain possible after losing Employee/management eligibility.
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, *args, **kwargs):
+        if not isinstance(request.data, Mapping):
+            raise serializers.ValidationError("Request body must be an object containing a refresh token.")
         refresh_token = request.data.get("refresh")
 
         if not refresh_token:
@@ -54,6 +63,7 @@ class EmployeeLogoutView(APIView):
             )
 
         try:
+            _lock_refresh_token(token)
             token.blacklist()
         except TokenError:
             pass

@@ -1,5 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import update_last_login
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.exceptions import InvalidToken
@@ -10,12 +12,22 @@ from rest_framework_simplejwt.serializers import (
 )
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 
 from api.capabilities import can_use_mobile
 
 
 class InactiveEmployeeError(AuthenticationFailed):
     default_code = "inactive_employee"
+
+
+def _lock_refresh_token(token):
+    """Serialize consumption of a verified parent inside the caller's transaction."""
+    token.outstand()
+    OutstandingToken.objects.select_for_update().get(jti=token[api_settings.JTI_CLAIM])
+    # Another consumer may have revoked/rotated it while we waited for the row.
+    token.check_blacklist()
+    token.check_exp(current_time=timezone.now())
 
 
 class EmployeeTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -62,6 +74,7 @@ class EmployeeMeSerializer(serializers.Serializer):
 
 
 class EmployeeTokenRefreshSerializer(TokenRefreshSerializer):
+    @transaction.atomic
     def validate(self, attrs):
         # 1. Parse and validate the refresh token safely
         refresh = RefreshToken(attrs["refresh"])
@@ -75,6 +88,8 @@ class EmployeeTokenRefreshSerializer(TokenRefreshSerializer):
         User = get_user_model()
         try:
             user = User.objects.get(**{api_settings.USER_ID_FIELD: user_id})
+            _lock_refresh_token(refresh)
+            user.refresh_from_db()
         except (User.DoesNotExist, ValueError, TypeError):
             raise AuthenticationFailed("User not found.", code="user_not_found")
 

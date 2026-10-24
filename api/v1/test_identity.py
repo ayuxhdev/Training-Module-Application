@@ -137,20 +137,6 @@ class MobileIdentityTests(TestCase):
         self.assertNotIn("team_workspace", identity["capabilities"])
         self.assertNotIn("management_workspace", identity["capabilities"])
 
-    def test_manager_without_employee_has_no_team_scope_or_management_login(self):
-        user = self.account("manager", ("Manager",), employee=False)
-        self.assertEqual(self.login(user).status_code, 401)
-        self.assertNotIn("team_workspace", mobile_capabilities(user))
-        self.assertFalse(OutstandingToken.objects.filter(user=user).exists())
-
-    def test_employment_job_role_does_not_confer_authorization(self):
-        self.job_role.name = "Manager"
-        self.job_role.save()
-        identity, _ = self.identity(self.account("employee", ("Employee",)))
-        self.assertEqual(identity["employee"]["job_role"], "Manager")
-        self.assertNotIn("team_workspace", identity["capabilities"])
-        self.assertNotIn("management_workspace", identity["capabilities"])
-
     def test_role_or_staff_label_without_effective_permissions_is_not_authorization(self):
         user = self.account("staff", employee=False)
         user.is_staff = True

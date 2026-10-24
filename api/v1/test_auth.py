@@ -1,5 +1,6 @@
 from datetime import timedelta
 import time
+from unittest.mock import patch
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -193,6 +194,31 @@ class MobileAuthTests(TestCase):
         response = self.client.post(self.refresh_url, {"refresh": refresh})
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_refresh_registers_a_valid_parent_before_serializing_consumption(self):
+        token = RefreshToken()
+        token["user_id"] = str(self.active_user.pk)
+        self.assertFalse(OutstandingToken.objects.filter(jti=token["jti"]).exists())
+        response = self.client.post(self.refresh_url, {"refresh": str(token)})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(BlacklistedToken.objects.filter(token__jti=token["jti"]).exists())
+
+    def test_failed_successor_creation_rolls_back_parent_consumption(self):
+        _, encoded = self.get_tokens()
+        parent = RefreshToken(encoded)
+        outstand = RefreshToken.outstand
+
+        def fail_successor(token):
+            if token["jti"] != parent["jti"]:
+                raise RuntimeError("Isolated successor persistence failure")
+            return outstand(token)
+
+        with patch.object(RefreshToken, "outstand", fail_successor):
+            with self.assertRaisesMessage(RuntimeError, "Isolated successor persistence failure"):
+                self.client.post(self.refresh_url, {"refresh": encoded})
+        self.assertFalse(BlacklistedToken.objects.filter(token__jti=parent["jti"]).exists())
+        self.assertEqual(OutstandingToken.objects.filter(user=self.active_user).count(), 1)
+        self.assertEqual(self.client.post(self.refresh_url, {"refresh": encoded}).status_code, 200)
+
     def test_invalid_refresh_rejected(self):
         response = self.client.post(self.refresh_url, {"refresh": "bad_token"})
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -274,6 +300,23 @@ class MobileAuthTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data["error"]["code"], "validation_error")
         self.assertIn("refresh", response.data["error"]["fields"])
+
+    def test_logout_rejects_non_object_and_malformed_json_bodies(self):
+        access, _ = self.get_tokens()
+        self.client.credentials(HTTP_AUTHORIZATION="Bearer " + access)
+        before = BlacklistedToken.objects.count()
+        for body in ('[1]', '"text"', '1', 'true', 'null', '{broken'):
+            with self.subTest(body=body):
+                response = self.client.post(self.logout_url, body, content_type="application/json")
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("error", response.data)
+        self.assertEqual(BlacklistedToken.objects.count(), before)
+
+    def test_logout_keeps_invalid_token_idempotency(self):
+        access, _ = self.get_tokens()
+        self.client.credentials(HTTP_AUTHORIZATION="Bearer " + access)
+        response = self.client.post(self.logout_url, {"refresh": "invalid"}, format="json")
+        self.assertEqual(response.status_code, 204)
 
     def test_cross_user_refresh_token_cannot_be_revoked(self):
         # Create second active employee (Employee B)
