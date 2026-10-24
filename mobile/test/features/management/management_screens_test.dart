@@ -144,13 +144,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> tap(WidgetTester tester, String label) async {
+  Future<void> tap(WidgetTester tester, Object target) async {
+    final finder = target is Finder ? target : find.text(target as String);
     await tester.scrollUntilVisible(
-      find.text(label),
+      finder,
       150,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text(label));
+    await tester.tap(finder);
     await tester.pumpAndSettle();
   }
 
@@ -225,7 +226,7 @@ void main() {
       await launch(tester, identity: managementIdentity(team: true));
       expect(find.text('Company dashboard'), findsNothing);
       await tap(tester, 'Team dashboard');
-      await tap(tester, 'Employee 1');
+      await tap(tester, find.widgetWithText(ListTile, 'Employee 1'));
       expect(find.byType(DirectoryEmployeeScreen), findsOneWidget);
       expect(find.text('Employee 1'), findsOneWidget);
     },

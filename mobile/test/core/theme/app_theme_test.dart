@@ -99,12 +99,29 @@ void main() {
     );
   }
 
-  test('light theme uses layered daylight surfaces and cinematic geometry', () {
+  test('light theme uses Architectural Botanica surfaces and verified geometry', () {
     final theme = AppTheme.lightTheme;
-    expect(theme.scaffoldBackgroundColor, const Color(0xfff3f6f5));
+    expect(theme.scaffoldBackgroundColor, const Color(0xfff6f8f7));
     expect(theme.colorScheme.surface, Colors.white);
-    expect(theme.colorScheme.primary, const Color(0xff006b5b));
-    expect(theme.inputDecorationTheme.fillColor, const Color(0xffedf2ef));
+    expect(theme.colorScheme.primary, const Color(0xff006252));
+    expect(theme.inputDecorationTheme.fillColor, const Color(0xffedf3f0));
     expect(theme.textTheme.titleLarge!.fontSize, 26);
+    final inputBorder = theme.inputDecorationTheme.enabledBorder as OutlineInputBorder;
+    expect(inputBorder.borderSide.color, theme.colorScheme.outlineVariant);
+  });
+
+  test('dark theme uses Architectural Botanica midnight surfaces', () {
+    final theme = AppTheme.darkTheme;
+    expect(theme.scaffoldBackgroundColor, const Color(0xff080e15));
+    expect(theme.colorScheme.surface, const Color(0xff080e15));
+    expect(theme.colorScheme.primary, const Color(0xff34d399));
+    expect(theme.colorScheme.outline, const Color(0xff607c8b));
+    final inputBorder = theme.inputDecorationTheme.enabledBorder as OutlineInputBorder;
+    expect(inputBorder.borderSide.color, theme.colorScheme.outline);
+    expect(
+      _contrast(inputBorder.borderSide.color, theme.inputDecorationTheme.fillColor!),
+      greaterThanOrEqualTo(3.0),
+      reason: 'Dark input border must meet WCAG 2.2 non-text contrast against input fill',
+    );
   });
 }
