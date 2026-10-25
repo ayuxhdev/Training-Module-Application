@@ -118,12 +118,23 @@ class DashboardScreen extends ConsumerWidget {
                     child: CustomCard(
                       child: Row(
                         children: [
-                          Icon(metric.$3, color: colors.primary),
-                          const SizedBox(width: 16),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: colors.primary.withValues(alpha: .10),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Icon(metric.$3, color: colors.primary, size: 20),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
                           Expanded(
                             child: Text(
                               metric.$1,
-                              style: Theme.of(context).textTheme.bodyMedium,
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w500,
+                                  ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -199,6 +210,7 @@ class DashboardScreen extends ConsumerWidget {
     BuildContext context,
     List<DashboardCertificate> certificates,
   ) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -217,15 +229,27 @@ class DashboardScreen extends ConsumerWidget {
             (cert) => Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
               child: InkWell(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 onTap: () => context.push('/profile/certificates/${cert.id}'),
                 child: CustomCard(
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.workspace_premium,
-                        color: Theme.of(context).colorScheme.secondary,
-                        size: 32,
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: colors.secondary.withValues(alpha: .12),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: colors.secondary.withValues(alpha: .24),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Icon(
+                            Icons.workspace_premium,
+                            color: colors.secondary,
+                            size: 26,
+                          ),
+                        ),
                       ),
                       const SizedBox(width: AppSpacing.md),
                       Expanded(
@@ -234,16 +258,33 @@ class DashboardScreen extends ConsumerWidget {
                           children: [
                             Text(
                               cert.trainingTitle,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                             ),
                             const SizedBox(height: 4),
-                            Text('Cert #: ${cert.certificateNumber}'),
+                            Text(
+                              'Cert #: ${cert.certificateNumber}',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                            ),
                             if (cert.issuedAt != null)
-                              Text('Issued: ${localDateLabel(cert.issuedAt!)}'),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  'Issued: ${localDateLabel(cert.issuedAt!)}',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: colors.onSurfaceVariant,
+                                      ),
+                                ),
+                              ),
                           ],
                         ),
+                      ),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: colors.onSurfaceVariant,
                       ),
                     ],
                   ),

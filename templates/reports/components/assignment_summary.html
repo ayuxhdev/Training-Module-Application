@@ -5,7 +5,13 @@
   <div class="dashboard-panel-body">
     <dl class="dashboard-primary-metrics">
       <div><dt>Total assignments</dt><dd>{{ metrics.total }}</dd></div>
-      <div class="dashboard-completion"><dt>Completion (%)</dt><dd>{{ metrics.completion_percent }}<span aria-hidden="true">%</span></dd></div>
+      <div class="dashboard-completion">
+        <dt>Completion (%)</dt>
+        <dd>{{ metrics.completion_percent }}<span aria-hidden="true">%</span></dd>
+        <div class="dashboard-progress-track" aria-hidden="true">
+          <div class="dashboard-progress-fill" style="width: {{ metrics.completion_percent }}%;"></div>
+        </div>
+      </div>
     </dl>
     <p class="dashboard-metric-note">Completion is based on eligible assignments; cancelled assignments are excluded. Overdue assignments are also counted in Assigned or In progress.</p>
     <dl class="dashboard-assignment-states">

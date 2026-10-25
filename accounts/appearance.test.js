@@ -362,3 +362,39 @@ test("reduced-motion regression checks prove assertions fail if declarations are
     /Input transforms not disabled/,
   );
 });
+
+test("reduced-motion covers Batch 3 dashboard and curriculum elements", () => {
+  const css = fs.readFileSync(path.join(__dirname, "static/accounts/shell.css"), "utf8");
+  const rmBlock = extractMediaBlock(css, "@media (prefers-reduced-motion: reduce)");
+  assert.ok(rmBlock, "prefers-reduced-motion block must exist");
+
+  const dashboardRule = findRuleWithExactSelector(rmBlock, ".dashboard-task");
+  assert.ok(dashboardRule, ".dashboard-task rule must exist inside prefers-reduced-motion");
+  assert.match(dashboardRule.declarations, /transition:\s*none\s*!important/);
+  assert.match(dashboardRule.declarations, /transform:\s*none\s*!important/);
+
+  for (const selector of [
+    ".dashboard-task",
+    ".dashboard-record-card",
+    ".dashboard-progress-fill",
+    ".learning-curriculum li",
+  ]) {
+    assert.ok(
+      dashboardRule.selectors.includes(selector),
+      `Reduced motion must cover exact selector "${selector}"`,
+    );
+  }
+});
+
+test("visually-hidden helper provides accessible clip and dimensions", () => {
+  const css = fs.readFileSync(path.join(__dirname, "static/accounts/shell.css"), "utf8");
+  const vhMatch = css.match(/\.visually-hidden\s*\{([^}]*)\}/);
+  assert.ok(vhMatch, ".visually-hidden class must exist in shell.css");
+  assert.match(vhMatch[1], /position:\s*absolute\s*!important/);
+  assert.match(vhMatch[1], /width:\s*1px\s*!important/);
+  assert.match(vhMatch[1], /height:\s*1px\s*!important/);
+  assert.match(vhMatch[1], /overflow:\s*hidden\s*!important/);
+  assert.match(vhMatch[1], /clip:\s*rect\(0,\s*0,\s*0,\s*0\)\s*!important/);
+  assert.match(vhMatch[1], /white-space:\s*nowrap\s*!important/);
+  assert.match(vhMatch[1], /border:\s*0\s*!important/);
+});

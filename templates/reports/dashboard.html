@@ -65,6 +65,18 @@
     </section>
   {% endif %}
 {% else %}
+  <div class="dashboard-hero-greeting">
+    <div>
+      <h2>Welcome back, {{ user.get_full_name|default:user.username }}</h2>
+      <p>Your assigned training and learning progress</p>
+    </div>
+    {% if metrics.total > 0 %}
+      <div class="hero-badge">
+        <span>{{ metrics.completed }}/{{ metrics.total }} Completed</span>
+      </div>
+    {% endif %}
+  </div>
+
   {% include "components/page_header.html" with title="My training" supporting_text="Your assigned training and learning progress" %}
   {% include "reports/components/assignment_summary.html" %}
 
@@ -74,7 +86,7 @@
       <ol class="dashboard-task-list">
         {% for assignment in assigned_training %}
           <li>
-            <article class="card dashboard-task">
+            <article class="card dashboard-task dashboard-task--assigned{% if assignment.is_overdue %} is-overdue{% endif %}">
               <div class="card-body">
                 <div class="dashboard-task-copy">
                   <div class="dashboard-task-status">
@@ -97,7 +109,7 @@
         {% endfor %}
         {% for assignment in in_progress_training %}
           <li>
-            <article class="card dashboard-task">
+            <article class="card dashboard-task dashboard-task--in-progress{% if assignment.is_overdue %} is-overdue{% endif %}">
               <div class="card-body">
                 <div class="dashboard-task-copy">
                   <div class="dashboard-task-status">

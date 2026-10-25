@@ -17,6 +17,7 @@ import 'package:training_app/features/dashboard/domain/models/dashboard_data.dar
 import 'package:training_app/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:training_app/features/management/data/repositories/management_repository.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
+import 'package:training_app/features/management/presentation/screens/management_dashboard_screen.dart';
 import 'package:training_app/features/management/presentation/screens/organization_screens.dart';
 import 'package:training_app/features/management/presentation/screens/organization_reference_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/employee_profile_form_screen.dart';
@@ -146,11 +147,37 @@ void main() {
 
   Future<void> tap(WidgetTester tester, Object target) async {
     final finder = target is Finder ? target : find.text(target as String);
-    await tester.scrollUntilVisible(
-      finder,
-      150,
-      scrollable: find.byType(Scrollable).first,
-    );
+    final primaryScrollable = find.byType(Scrollable);
+    if (primaryScrollable.evaluate().isNotEmpty) {
+      await tester.scrollUntilVisible(
+        finder,
+        150,
+        scrollable: primaryScrollable.first,
+      );
+    }
+    final navBarFinder = find.byType(NavigationBar);
+    if (navBarFinder.evaluate().isNotEmpty && finder.evaluate().isNotEmpty) {
+      final navBarRect = tester.getRect(navBarFinder.first);
+      final targetRect = tester.getRect(finder.first);
+      final isHorizontallyOverlapping =
+          targetRect.right > navBarRect.left && targetRect.left < navBarRect.right;
+      final isVerticallyObstructed =
+          targetRect.bottom > navBarRect.top && targetRect.top < navBarRect.bottom;
+      if (isHorizontallyOverlapping && isVerticallyObstructed) {
+        final overlap = targetRect.bottom - navBarRect.top;
+        if (overlap > 0 && primaryScrollable.evaluate().isNotEmpty) {
+          final scrollableAncestor = find.ancestor(
+            of: finder,
+            matching: find.byType(Scrollable),
+          );
+          final scrollTarget = scrollableAncestor.evaluate().isNotEmpty
+              ? scrollableAncestor.first
+              : primaryScrollable.first;
+          await tester.drag(scrollTarget, Offset(0, -(overlap + 16.0)));
+          await tester.pumpAndSettle();
+        }
+      }
+    }
     await tester.tap(finder);
     await tester.pumpAndSettle();
   }
@@ -2261,4 +2288,73 @@ void main() {
       });
     }
   }
+
+  group('tap helper navigation obstruction handling', () {
+    testWidgets(
+      'scrolls when target is partially obstructed by NavigationBar in portrait',
+      (tester) async {
+        when(() => repository.dashboard(cancelToken: any(named: 'cancelToken')))
+            .thenAnswer((_) async => dashboardFixture(team: true));
+        await launch(tester, identity: managementIdentity(team: true));
+        await tap(tester, 'Team dashboard');
+        await tap(tester, find.widgetWithText(ListTile, 'Employee 1'));
+        expect(find.byType(DirectoryEmployeeScreen), findsOneWidget);
+        expect(find.text('Employee 1'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'scrolls when target is partially obstructed by NavigationBar in landscape 844x390',
+      (tester) async {
+        tester.view.physicalSize = const Size(844, 390);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await launch(
+          tester,
+          identity: managementIdentity(
+            team: true,
+            capabilities: {
+              'personal_learning',
+              'team_workspace',
+              'management_workspace',
+              'organization.view_employee',
+            },
+          ),
+        );
+        await tap(tester, 'Employee directory');
+        expect(find.byType(OrganizationListScreen), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'does not scroll when target is already unobstructed above NavigationBar',
+      (tester) async {
+        when(() => repository.dashboard(cancelToken: any(named: 'cancelToken')))
+            .thenAnswer((_) async => dashboardFixture(team: true));
+        await launch(tester, identity: managementIdentity(team: true));
+        await tap(tester, 'Team dashboard');
+        expect(find.byType(ManagementDashboardScreen), findsOneWidget);
+        expect(
+          find.text('Your reporting hierarchy, including your own assignments.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'taps directly on routes without NavigationBar',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/employees/new',
+          identity: managementIdentity(capabilities: {'organization.add_employee'}),
+        );
+        expect(find.byType(NavigationBar), findsNothing);
+        await tap(tester, 'Choose date');
+        expect(find.byType(DatePickerDialog), findsOneWidget);
+      },
+    );
+  });
 }

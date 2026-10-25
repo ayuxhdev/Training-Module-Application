@@ -107,10 +107,13 @@
         {% if item.module.description %}<p class="muted">{{ item.module.description }}</p>{% endif %}
         <ol>
           {% for entry in item.lessons %}
-            <li>
-              <a href="{% url 'training:assignment-detail' assignment.pk %}?lesson={{ entry.lesson.pk }}"{% if entry.lesson.pk == selected_lesson.pk %} aria-current="page"{% endif %}>{{ entry.lesson.title }}</a>
+            <li class="{% if entry.progress.completed_at %}is-completed{% else %}is-pending{% endif %}{% if entry.lesson.pk == selected_lesson.pk %} is-active{% endif %}">
+              <a href="{% url 'training:assignment-detail' assignment.pk %}?lesson={{ entry.lesson.pk }}"{% if entry.lesson.pk == selected_lesson.pk %} aria-current="page"{% endif %}>
+                <span class="lesson-status-icon" aria-hidden="true">{% if entry.progress.completed_at %}✓{% else %}○{% endif %}</span>
+                <span>{{ entry.lesson.title }}</span><span class="visually-hidden">, {% if entry.progress.completed_at %}Completed{% else %}Incomplete{% endif %}</span>
+              </a>
               <span class="muted">{{ entry.lesson.get_content_type_display }} · {% if entry.lesson.is_required %}Required{% else %}Optional{% endif %}</span>
-              {% if entry.progress.completed_at %}<span class="status-badge status-completed">Completed</span>{% else %}<span class="status-badge">Incomplete</span>{% endif %}
+              {% if entry.progress.completed_at %}<span class="status-badge status-completed" aria-hidden="true">Completed</span>{% else %}<span class="status-badge" aria-hidden="true">Incomplete</span>{% endif %}
             </li>
           {% empty %}
             <li class="empty-state">No lessons in this module.</li>
@@ -128,7 +131,7 @@
         <div class="lesson-text">{{ selected_lesson.body|linebreaks }}</div>
         {% if can_record_progress and not selected_progress.completed_at %}
           <form method="post" action="{% url 'training:text-lesson-complete' assignment.pk selected_lesson.pk %}">
-            {% csrf_token %}<button type="submit">Mark lesson complete</button>
+            {% csrf_token %}<button type="submit" class="btn btn-primary">Mark lesson complete</button>
           </form>
         {% endif %}
       {% elif selected_lesson.content_type == 'VIDEO' %}

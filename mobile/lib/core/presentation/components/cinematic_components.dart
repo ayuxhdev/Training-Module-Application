@@ -46,14 +46,14 @@ class CinematicHero extends StatelessWidget {
     return CinematicEntrance(
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: colors.outlineVariant),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
               Color.alphaBlend(
-                colors.primary.withValues(alpha: .13),
+                colors.primary.withValues(alpha: .09),
                 colors.surfaceContainerLow,
               ),
               colors.surfaceContainerLow,
@@ -61,27 +61,27 @@ class CinematicHero extends StatelessWidget {
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Wrap(
-                spacing: 10,
-                runSpacing: 8,
+                spacing: 8,
+                runSpacing: 6,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Icon(icon, color: colors.primary, size: 24),
+                  Icon(icon, color: colors.primary, size: 20),
                   Text(
                     eyebrow.toUpperCase(),
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: colors.primary,
                       fontWeight: FontWeight.w700,
-                      letterSpacing: 1.4,
+                      letterSpacing: 1.2,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
               Semantics(
                 header: true,
                 child: Text(
@@ -91,15 +91,15 @@ class CinematicHero extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 6),
               Text(
                 subtitle,
-                style: theme.textTheme.bodyLarge?.copyWith(
+                style: theme.textTheme.bodyMedium?.copyWith(
                   color: colors.onSurfaceVariant,
-                  height: 1.5,
+                  height: 1.45,
                 ),
               ),
-              if (child != null) ...[const SizedBox(height: 24), child!],
+              if (child != null) ...[const SizedBox(height: 16), child!],
             ],
           ),
         ),
@@ -153,17 +153,29 @@ class LearningProgress extends StatelessWidget {
     final value = total > 0 ? (completed / total).clamp(0.0, 1.0) : 0.0;
     final duration = MediaQuery.disableAnimationsOf(context)
         ? Duration.zero
-        : const Duration(milliseconds: 280);
+        : const Duration(milliseconds: 240);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: Theme.of(context).textTheme.bodyMedium),
-        const SizedBox(height: 12),
-        TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: value, end: value),
-          duration: duration,
-          builder: (context, amount, _) =>
-              LinearProgressIndicator(value: amount, semanticsLabel: label),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+        ),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: value, end: value),
+            duration: duration,
+            curve: Curves.easeOutCubic,
+            builder: (context, amount, _) => LinearProgressIndicator(
+              value: amount,
+              semanticsLabel: label,
+              minHeight: 6,
+            ),
+          ),
         ),
       ],
     );
@@ -193,6 +205,11 @@ class LearningCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colors.outlineVariant),
+      ),
       clipBehavior: Clip.antiAlias,
       child: Semantics(
         button: true,
@@ -208,44 +225,45 @@ class LearningCard extends StatelessWidget {
                   children: [
                     DecoratedBox(
                       decoration: BoxDecoration(
-                        color: colors.primary.withValues(alpha: .12),
-                        borderRadius: BorderRadius.circular(14),
+                        color: colors.primary.withValues(alpha: .10),
+                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: colors.primary.withValues(alpha: .2),
+                          color: colors.primary.withValues(alpha: .18),
                         ),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Icon(icon, color: colors.primary),
+                        padding: const EdgeInsets.all(10),
+                        child: Icon(icon, color: colors.primary, size: 22),
                       ),
                     ),
                     const Spacer(),
                     Icon(
                       Icons.arrow_outward_rounded,
-                      color: colors.onSurfaceVariant,
+                      color: colors.onSurfaceVariant.withValues(alpha: .7),
+                      size: 20,
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 Text(
                   title,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   subtitle,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colors.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 StatusBadge(
                   text: status.replaceAll('_', ' '),
                   status: badgeStatus,
                 ),
-                if (footer != null) ...[const SizedBox(height: 20), footer!],
+                if (footer != null) ...[const SizedBox(height: 16), footer!],
               ],
             ),
           ),
