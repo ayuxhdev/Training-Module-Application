@@ -13,10 +13,41 @@
       <h1>{{ certificate.training_title_snapshot }} certificate</h1>
       <p class="muted">Certificate number {{ certificate.certificate_number }}</p>
     </div>
-    <span class="status-badge {% if certificate.revoked_at %}status-inactive{% else %}status-completed{% endif %}" aria-label="Certificate status: {% if certificate.revoked_at %}revoked{% else %}valid{% endif %}">
-      {% if certificate.revoked_at %}Revoked{% else %}Valid{% endif %}
-    </span>
+    <div class="header-badges">
+      <span class="status-badge {% if certificate.revoked_at %}status-inactive{% else %}status-completed{% endif %}" aria-label="Certificate status: {% if certificate.revoked_at %}revoked{% else %}valid{% endif %}">
+        {% if certificate.revoked_at %}Revoked{% else %}Valid{% endif %}
+      </span>
+      <button type="button" class="btn btn-secondary" onclick="window.print()" style="margin-left: var(--space-2);">Print certificate</button>
+    </div>
   </header>
+
+  <article class="certificate-credential-card" aria-label="Certificate of completion">
+    <div class="certificate-watermark">Garden’s Need Training Academy</div>
+    <h2 style="margin: 0; font-size: var(--font-size-base); color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;">Certificate of Completion</h2>
+    <p class="muted" style="margin: var(--space-4) 0 0;">This is to certify that</p>
+    <div class="certificate-recipient">{{ certificate.employee_name_snapshot }}</div>
+    <p class="muted" style="margin: 0 0 var(--space-2);">Employee code: <strong>{{ certificate.employee_code_snapshot }}</strong></p>
+    <p class="muted" style="margin: var(--space-3) 0 0;">has successfully completed the accredited training curriculum for</p>
+    <div class="certificate-training-title">{{ certificate.training_title_snapshot }}</div>
+    <p class="muted" style="margin: 0;">Version {{ certificate.version_number_snapshot }}</p>
+
+    <div class="certificate-meta-row">
+      <div>
+        <span>Certificate number:</span>
+        <strong style="display: block; font-family: var(--font-family-mono, monospace);">{{ certificate.certificate_number }}</strong>
+      </div>
+      <div>
+        <span>Issued on:</span>
+        <strong style="display: block;"><time datetime="{{ certificate.issued_at|date:'c' }}">{{ certificate.issued_at|date:"M j, Y" }}</time></strong>
+      </div>
+      <div>
+        <span>Verification status:</span>
+        <strong style="display: block; color: {% if certificate.revoked_at %}var(--color-danger-foreground){% else %}var(--color-success-foreground){% endif %};">
+          {% if certificate.revoked_at %}Revoked{% else %}Verified Record{% endif %}
+        </strong>
+      </div>
+    </div>
+  </article>
 
   <section class="catalog-panel" aria-labelledby="certificate-information-heading">
     <header class="catalog-panel-heading">

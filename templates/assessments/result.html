@@ -1,10 +1,115 @@
 {% extends "base.html" %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-detail' attempt.assignment_id %}">Assignment</a></li><li><a href="{% url 'assessments:learner-overview' attempt.assignment_id attempt.assessment_id %}">{{ attempt.assessment.title }}</a></li><li>Attempt {{ attempt.attempt_number }} result</li></ol></nav>
-<header class="page-heading"><div><h1>{{ attempt.assessment.title }} result</h1><p class="muted">Attempt {{ attempt.attempt_number }} · {{ attempt.get_status_display }}</p></div><span class="status-badge {% if attempt.passed %}status-completed{% else %}status-inactive{% endif %}">{% if attempt.passed %}Passed{% else %}Not passed{% endif %}</span></header>
-<dl class="detail-list"><div><dt>Score</dt><dd>{{ attempt.score_points }} / {{ attempt.maximum_points }}</dd></div><div><dt>Pass threshold</dt><dd>{{ attempt.pass_percentage_snapshot }}%</dd></div><div><dt>Submitted</dt><dd>{{ attempt.submitted_at|date:"Y-m-d H:i"|default:"Not submitted" }}</dd></div></dl>
-{% if attempt.status == 'EXPIRED' %}<p role="status">This attempt expired before it was submitted in time.</p>{% endif %}
-<h2>Answers</h2>
-<ol>{% for answer in attempt.answers.all %}<li><strong>{{ answer.assessment_question.question_revision.prompt }}</strong><br>Your answer: {% if answer.selected_option %}{{ answer.selected_option.text }}{% else %}No answer{% endif %} · {{ answer.points_awarded }} / {{ answer.points_possible }} points</li>{% empty %}<li>No answers were recorded.</li>{% endfor %}</ol>
-<p><a class="action-link" href="{% url 'assessments:learner-overview' attempt.assignment_id attempt.assessment_id %}">View attempts and next steps</a></p>
+<div class="catalog-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li><a href="{% url 'training:assignment-detail' attempt.assignment_id %}">Assignment</a></li>
+      <li><a href="{% url 'assessments:learner-overview' attempt.assignment_id attempt.assessment_id %}">{{ attempt.assessment.title }}</a></li>
+      <li aria-current="page">Attempt {{ attempt.attempt_number }} result</li>
+    </ol>
+  </nav>
+
+  <header class="page-header">
+    <div class="page-header-main">
+      <h1>{{ attempt.assessment.title }} result</h1>
+      <p class="muted">Attempt {{ attempt.attempt_number }} · {{ attempt.get_status_display }}</p>
+    </div>
+    <div class="header-badges">
+      {% if attempt.status == 'SUBMITTED' %}
+        <span class="status-badge {% if attempt.passed %}status-completed{% else %}status-inactive{% endif %}">
+          {% if attempt.passed %}Passed{% else %}Not passed{% endif %}
+        </span>
+      {% elif attempt.status == 'EXPIRED' %}
+        <span class="status-badge status-warning">
+          {% if not attempt.submitted_at %}Expired · Not submitted{% else %}Expired{% endif %}
+        </span>
+      {% else %}
+        <span class="status-badge status-warning">{{ attempt.get_status_display }}</span>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if attempt.status == 'SUBMITTED' %}
+    <div class="result-score-banner {% if attempt.passed %}result-score-banner--passed{% else %}result-score-banner--failed{% endif %}">
+      <div class="result-score-metric">
+        <span class="result-score-label">Your Final Score</span>
+        <span class="result-score-value">{{ attempt.score_points }} / {{ attempt.maximum_points }}</span>
+      </div>
+      <div class="header-badges">
+        <span class="status-badge {% if attempt.passed %}status-completed{% else %}status-inactive{% endif %}">
+          {% if attempt.passed %}Requirement satisfied{% else %}Below passing threshold ({{ attempt.pass_percentage_snapshot }}% required){% endif %}
+        </span>
+      </div>
+    </div>
+  {% else %}
+    <div class="result-score-banner result-score-banner--neutral">
+      <div class="result-score-metric">
+        <span class="result-score-label">{% if attempt.submitted_at and attempt.score_points is not None %}Recorded Score{% else %}Assessment Status{% endif %}</span>
+        <span class="result-score-value">{% if attempt.submitted_at and attempt.score_points is not None %}{{ attempt.score_points }} / {{ attempt.maximum_points }}{% else %}Not graded{% endif %}</span>
+      </div>
+      <div class="header-badges">
+        <span class="status-badge status-warning">
+          {% if attempt.status == 'EXPIRED' %}
+            {% if not attempt.submitted_at %}Attempt expired · Not submitted{% else %}Submission recorded after deadline{% endif %}
+          {% else %}
+            {{ attempt.get_status_display }}
+          {% endif %}
+        </span>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="result-metrics-grid">
+    <div class="result-metric-card">
+      <span class="result-score-label">Pass threshold</span>
+      <p><strong>{{ attempt.pass_percentage_snapshot }}%</strong></p>
+    </div>
+    <div class="result-metric-card">
+      <span class="result-score-label">Submission status</span>
+      <p><strong>{{ attempt.get_status_display }}</strong></p>
+    </div>
+    <div class="result-metric-card">
+      <span class="result-score-label">Submitted at</span>
+      <p><strong>{{ attempt.submitted_at|date:"Y-m-d H:i"|default:"Not submitted" }}</strong></p>
+    </div>
+  </div>
+
+  {% if attempt.status == 'EXPIRED' %}
+    <div class="catalog-validation" role="status">
+      <strong>Attempt expired:</strong>
+      <p>{% if not attempt.submitted_at %}This attempt reached the deadline before it was submitted.{% else %}This attempt reached the deadline before it was submitted in time.{% endif %}</p>
+    </div>
+  {% elif attempt.status == 'ABANDONED' %}
+    <div class="catalog-validation" role="status">
+      <strong>Attempt abandoned:</strong>
+      <p>This attempt was marked as abandoned.</p>
+    </div>
+  {% endif %}
+
+  <section class="catalog-panel" aria-labelledby="submitted-answers-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="submitted-answers-heading">Answers</h2>
+      <p>{% if attempt.status == 'SUBMITTED' %}Recorded answers for this attempt.{% else %}Question responses for this attempt.{% endif %}</p>
+    </header>
+    <div class="catalog-panel-body">
+      <ol class="result-answers-list">
+        {% for answer in attempt.answers.all %}
+          <li class="result-answer-card {% if attempt.status == 'SUBMITTED' %}{% if answer.points_awarded > 0 %}is-correct{% else %}is-incorrect{% endif %}{% else %}is-ungraded{% endif %}">
+            <p><strong>{{ answer.assessment_question.question_revision.prompt }}</strong></p>
+            <p class="muted">
+              Your answer: {% if answer.selected_option %}{{ answer.selected_option.text }}{% else %}No answer{% endif %} · {% if attempt.status == 'SUBMITTED' %}{{ answer.points_awarded }} / {{ answer.points_possible }} points{% else %}Ungraded ({{ answer.points_possible }} point{{ answer.points_possible|pluralize }} possible){% endif %}
+            </p>
+          </li>
+        {% empty %}
+          <li class="empty-state">No answers were recorded.</li>
+        {% endfor %}
+      </ol>
+    </div>
+  </section>
+
+  <p>
+    <a class="btn btn-primary" href="{% url 'assessments:learner-overview' attempt.assignment_id attempt.assessment_id %}">View attempts and next steps</a>
+    <a class="btn btn-secondary" href="{% url 'training:assignment-detail' attempt.assignment_id %}">Back to assignment</a>
+  </p>
+</div>
 {% endblock %}

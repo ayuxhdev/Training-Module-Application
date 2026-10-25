@@ -1,68 +1,80 @@
-/* Timed assessment remaining time and expiration banner */
+/* Timed assessment remaining time and expiration banner - Architectural Botanica */
 .assessment-timer-banner {
   display: flex;
   flex-direction: column;
   gap: var(--space-2, 0.5rem);
-  padding: 1rem 1.25rem;
-  margin: 1rem 0 1.5rem;
+  padding: var(--space-4, 1rem) var(--space-6, 1.5rem);
+  margin: var(--space-4, 1rem) 0 var(--space-6, 1.5rem);
   background: var(--color-surface, #ffffff);
-  border: 1px solid var(--color-border, #cbd8d2);
-  border-left: 4px solid var(--color-brand-primary, #006b56);
-  border-radius: 4px;
+  border: 1px solid var(--color-border, #d2ddd8);
+  border-left: 4px solid var(--color-brand-primary, #006252);
+  border-radius: var(--radius-md, 0.75rem);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(18, 36, 33, 0.05));
+  transition: background-color 200ms ease, border-color 200ms ease;
 }
 
 .assessment-timer-content {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
+  gap: var(--space-3, 0.75rem);
   flex-wrap: wrap;
 }
 
 .timer-label {
   font-weight: 600;
-  color: var(--color-text, #172e2c);
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--color-text-muted, #4b6661);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .timer-countdown {
-  font-size: 1.25rem;
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--color-brand-primary, #006b56);
+  color: var(--color-brand-primary, #006252);
+  letter-spacing: 0.02em;
 }
 
 .timer-deadline-note {
   margin: 0;
-  font-size: 0.875rem;
-  color: var(--color-text-muted, #4d6561);
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--color-text-muted, #4b6661);
+  line-height: 1.4;
 }
 
 .assessment-timer-banner.is-warning {
-  border-left-color: var(--color-warning-foreground, #77510b);
-  background: var(--color-warning-background, #fcf0d5);
+  border-left-color: var(--color-warning-foreground, #92400e);
+  background: var(--color-warning-background, #fef3c7);
+  border-color: var(--color-warning-border, #fde68a);
 }
 
-.assessment-timer-banner.is-warning .timer-countdown {
-  color: var(--color-warning-foreground, #77510b);
+.assessment-timer-banner.is-warning .timer-countdown,
+.assessment-timer-banner.is-warning .timer-label {
+  color: var(--color-warning-foreground, #92400e);
 }
 
 .assessment-timer-banner.is-critical,
 .assessment-timer-banner.is-expired {
-  border-left-color: var(--color-danger-foreground, #9a2938);
-  background: var(--color-danger-background, #fce7ec);
+  border-left-color: var(--color-danger-foreground, #991b1b);
+  background: var(--color-danger-background, #fee2e2);
+  border-color: var(--color-danger-border, #fecaca);
 }
 
 .assessment-timer-banner.is-critical .timer-countdown,
-.assessment-timer-banner.is-expired .timer-countdown {
-  color: var(--color-danger-foreground, #9a2938);
+.assessment-timer-banner.is-expired .timer-countdown,
+.assessment-timer-banner.is-critical .timer-label,
+.assessment-timer-banner.is-expired .timer-label {
+  color: var(--color-danger-foreground, #991b1b);
 }
 
 .timer-alert {
-  margin: 0.25rem 0 0;
+  margin: var(--space-1, 0.25rem) 0 0;
   font-weight: 600;
-  font-size: 0.875rem;
-  color: var(--color-danger-foreground, #9a2938);
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--color-danger-foreground, #991b1b);
 }
 
 .assessment-timer-banner.is-warning .timer-alert {
-  color: var(--color-warning-foreground, #77510b);
+  color: var(--color-warning-foreground, #92400e);
 }

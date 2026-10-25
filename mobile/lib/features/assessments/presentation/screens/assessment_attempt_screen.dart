@@ -216,12 +216,13 @@ class _AssessmentAttemptScreenState
       assessmentAttemptProvider(widget.target).notifier,
     );
     final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
           'Attempt ${attempt.summary.attemptNumber}',
-          style: theme.textTheme.titleLarge,
+          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
         ),
         if (attempt.summary.deadlineAt != null)
           _Deadline(summary: attempt.summary),
@@ -229,7 +230,8 @@ class _AssessmentAttemptScreenState
         Text(
           '$answered of ${questions.length} answered',
           style: theme.textTheme.labelLarge?.copyWith(
-            color: theme.colorScheme.primary,
+            color: colors.primary,
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 8),
@@ -242,17 +244,38 @@ class _AssessmentAttemptScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Question ${index + 1} of ${questions.length}',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: theme.colorScheme.primary,
-                  letterSpacing: .5,
-                ),
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  Text(
+                    'Question ${index + 1} of ${questions.length}',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: colors.primary,
+                      letterSpacing: .5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (question.points.isNotEmpty)
+                    Text(
+                      '${question.points} pts',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
               Semantics(
                 header: true,
-                child: Text(question.prompt, style: theme.textTheme.titleLarge),
+                child: Text(
+                  question.prompt,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
               for (final option in options)
@@ -266,14 +289,18 @@ class _AssessmentAttemptScreenState
                         : null,
                   ),
                 ),
-              TextButton(
-                onPressed:
-                    state.canSubmit &&
-                        state.selectedAnswers[question.id] != null &&
-                        !_confirming
-                    ? () => controller.selectAnswer(question.id, null)
-                    : null,
-                child: const Text('Clear answer'),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed:
+                      state.canSubmit &&
+                              state.selectedAnswers[question.id] != null &&
+                              !_confirming
+                          ? () => controller.selectAnswer(question.id, null)
+                          : null,
+                  icon: const Icon(Icons.clear, size: 16),
+                  label: const Text('Clear answer'),
+                ),
               ),
             ],
           ),
@@ -320,6 +347,7 @@ class _AssessmentAttemptScreenState
   Widget _result(BuildContext context, AssessmentAttempt attempt) {
     final summary = attempt.summary;
     final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -343,7 +371,7 @@ class _AssessmentAttemptScreenState
                   alignment: Alignment.centerLeft,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerLow,
+                      color: colors.surfaceContainerLow,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: StatusBadge(
@@ -360,14 +388,18 @@ class _AssessmentAttemptScreenState
               const SizedBox(height: 20),
               Text(
                 'Attempt ${summary.attemptNumber}',
-                style: theme.textTheme.titleMedium,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               if (summary.scorePoints != null)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Text(
                     'Score: ${summary.scorePoints} / ${summary.maximumPoints}',
-                    style: theme.textTheme.titleLarge,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               Text('Passing score: ${summary.passPercentageSnapshot}%'),
@@ -375,24 +407,30 @@ class _AssessmentAttemptScreenState
                 Text(
                   'Submitted: ${summary.submittedAt!.toLocal()}',
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
               const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: () => context.go(
-                  '/learning/assignments/${widget.target.assignmentId}/assessments',
-                ),
-                child: const Text('Review eligibility and attempts'),
-              ),
-              if (attempt.certificateId != null)
-                FilledButton.icon(
-                  onPressed: () => context.push(
-                    '/profile/certificates/${attempt.certificateId}',
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => context.go(
+                      '/learning/assignments/${widget.target.assignmentId}/assessments',
+                    ),
+                    child: const Text('Review eligibility and attempts'),
                   ),
-                  icon: const Icon(Icons.workspace_premium_outlined),
-                  label: const Text('View certificate'),
-                ),
+                  if (attempt.certificateId != null)
+                    FilledButton.icon(
+                      onPressed: () => context.push(
+                        '/profile/certificates/${attempt.certificateId}',
+                      ),
+                      icon: const Icon(Icons.workspace_premium_outlined),
+                      label: const Text('View certificate'),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
@@ -411,15 +449,48 @@ class _AssessmentAttemptScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(answer.prompt, style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 8),
                     Text(
-                      'Your answer: ${answer.selectedOptionText ?? 'Unanswered'}',
+                      answer.prompt,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    if (answer.pointsAwarded != null)
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          answer.pointsAwarded != null &&
+                                  double.tryParse(answer.pointsAwarded!) != null &&
+                                  double.parse(answer.pointsAwarded!) > 0
+                              ? Icons.check_circle_outline
+                              : Icons.radio_button_checked,
+                          size: 18,
+                          color: answer.pointsAwarded != null &&
+                                  double.tryParse(answer.pointsAwarded!) != null &&
+                                  double.parse(answer.pointsAwarded!) > 0
+                              ? colors.primary
+                              : colors.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Your answer: ${answer.selectedOptionText ?? 'Unanswered'}',
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (answer.pointsAwarded != null) ...[
+                      const SizedBox(height: 6),
                       Text(
                         'Points: ${answer.pointsAwarded} / ${answer.pointsPossible}',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: colors.onSurfaceVariant,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
+                    ],
                   ],
                 ),
               ),
@@ -453,12 +524,18 @@ class _DeadlineState extends State<_Deadline> {
 
   @override
   Widget build(BuildContext context) {
-    final seconds = widget.summary.remainingAt(DateTime.now())!.inSeconds;
-    return CinematicNotice(
-      icon: Icons.schedule_rounded,
-      message: seconds == 0
-          ? 'Deadline reached. Submit to confirm the result with the server.'
-          : 'Time remaining: ${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}',
+    final remaining = widget.summary.remainingAt(DateTime.now());
+    final seconds = remaining?.inSeconds ?? 0;
+    final isCritical = seconds <= 60;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: CinematicNotice(
+        icon: isCritical ? Icons.alarm_rounded : Icons.schedule_rounded,
+        isError: isCritical,
+        message: seconds == 0
+            ? 'Deadline reached. Submit to confirm the result with the server.'
+            : 'Time remaining: ${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}',
+      ),
     );
   }
 }

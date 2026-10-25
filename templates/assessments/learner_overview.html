@@ -1,25 +1,108 @@
 {% extends "base.html" %}
 {% load tz %}
 {% block content %}
-<nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:assignment-list' %}">Assignments</a></li><li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.training.catalog_title }}</a></li><li>{{ assessment.title }}</li></ol></nav>
-<header class="page-heading"><div><h1>{{ assessment.title }}</h1><p class="muted">{{ assessment.get_kind_display }}{% if assessment.module %} · {{ assessment.module.title }}{% endif %}</p></div></header>
-<dl class="detail-list">
-  <div><dt>Pass threshold</dt><dd>{{ assessment.pass_percentage }}%</dd></div>
-  <div><dt>Attempts used</dt><dd>{{ attempts|length }} / {{ assessment.max_attempts }}</dd></div>
-  <div><dt>Time limit</dt><dd>{% if assessment.time_limit_minutes %}{{ assessment.time_limit_minutes }} minutes{% else %}No time limit{% endif %}</dd></div>
-  <div><dt>Result</dt><dd>{% if passed %}Passed{% elif ongoing %}In progress{% elif attempts %}Not passed{% else %}Not started{% endif %}</dd></div>
-</dl>
-{% if can_resume %}
-  <p>An attempt is in progress. <a class="action-link" href="{% url 'assessments:attempt-detail' ongoing.pk %}">Resume attempt {{ ongoing.attempt_number }}</a>{% if ongoing.deadline_at %} (Submit by: <time datetime="{{ ongoing.deadline_at|date:'c' }}">{{ ongoing.deadline_at|localtime|date:"Y-m-d H:i T" }}</time>){% endif %}</p>
-{% elif unavailable_reason %}
-  <p role="status">{{ unavailable_reason }}</p>
-{% else %}
-  <form method="post" action="{% url 'assessments:attempt-start' assignment.pk assessment.pk %}">{% csrf_token %}<button type="submit">{% if attempts %}Start another attempt{% else %}Start assessment{% endif %}</button></form>
-{% endif %}
-<section class="form-section" aria-label="Attempt history">
-  <h2>Attempt history</h2>
-  {% if attempts %}<ol>{% for attempt in attempts %}
-    <li><a href="{% url 'assessments:attempt-detail' attempt.pk %}">Attempt {{ attempt.attempt_number }}</a> · {{ attempt.get_status_display }}{% if attempt.passed %} · Passed{% elif attempt.status != 'IN_PROGRESS' %} · Not passed{% endif %}{% if attempt.score_points != None %} · {{ attempt.score_points }} / {{ attempt.maximum_points }} points{% endif %}</li>
-  {% endfor %}</ol>{% else %}<p class="empty-state">No attempts yet.</p>{% endif %}
-</section>
+<div class="catalog-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li><a href="{% url 'training:assignment-list' %}">Assignments</a></li>
+      <li><a href="{% url 'training:assignment-detail' assignment.pk %}">{{ assignment.training_version.training.catalog_title }}</a></li>
+      <li aria-current="page">{{ assessment.title }}</li>
+    </ol>
+  </nav>
+
+  <header class="page-header">
+    <div class="page-header-main">
+      <h1>{{ assessment.title }}</h1>
+      <p class="muted">{{ assessment.get_kind_display }}{% if assessment.module %} · {{ assessment.module.title }}{% endif %}</p>
+    </div>
+    <div class="header-badges">
+      <span class="status-badge {% if passed %}status-completed{% elif ongoing %}status-in_progress{% elif attempts %}status-inactive{% else %}status-assigned{% endif %}">
+        {% if passed %}Passed{% elif ongoing %}In progress{% elif attempts %}Not passed{% else %}Ready{% endif %}
+      </span>
+    </div>
+  </header>
+
+  <div class="result-metrics-grid">
+    <div class="result-metric-card">
+      <span class="result-score-label">Pass threshold</span>
+      <p><strong>{{ assessment.pass_percentage }}%</strong></p>
+    </div>
+    <div class="result-metric-card">
+      <span class="result-score-label">Attempts used</span>
+      <p><strong>{{ attempts|length }} / {{ assessment.max_attempts }}</strong></p>
+    </div>
+    <div class="result-metric-card">
+      <span class="result-score-label">Time limit</span>
+      <p><strong>{% if assessment.time_limit_minutes %}{{ assessment.time_limit_minutes }} minutes{% else %}No time limit{% endif %}</strong></p>
+    </div>
+    <div class="result-metric-card">
+      <span class="result-score-label">Assessment status</span>
+      <p><strong>{% if passed %}Passed{% elif ongoing %}In progress{% elif attempts %}Not passed{% else %}Not started{% endif %}</strong></p>
+    </div>
+  </div>
+
+  {% if can_resume %}
+    <div class="catalog-panel">
+      <header class="catalog-panel-heading">
+        <h2>Attempt in progress</h2>
+        <p>You have an ongoing attempt for this assessment.</p>
+      </header>
+      <div class="catalog-panel-body">
+        <p>
+          <a class="btn btn-primary" href="{% url 'assessments:attempt-detail' ongoing.pk %}">Resume attempt {{ ongoing.attempt_number }}</a>
+          {% if ongoing.deadline_at %}
+            <span class="muted">(Submit by: <time datetime="{{ ongoing.deadline_at|date:'c' }}">{{ ongoing.deadline_at|localtime|date:"Y-m-d H:i T" }}</time>)</span>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+  {% elif unavailable_reason %}
+    <div class="catalog-notice" role="status">
+      <strong>Assessment unavailable:</strong>
+      <p>{{ unavailable_reason }}</p>
+    </div>
+  {% else %}
+    <div class="catalog-panel">
+      <div class="catalog-panel-body">
+        <form method="post" action="{% url 'assessments:attempt-start' assignment.pk assessment.pk %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary">{% if attempts %}Start another attempt{% else %}Start assessment{% endif %}</button>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  <section class="catalog-panel" aria-label="Attempt history">
+    <header class="catalog-panel-heading">
+      <h2>Attempt history</h2>
+      <p>Your recorded attempts and results.</p>
+    </header>
+    <div class="catalog-panel-body">
+      {% if attempts %}
+        <ol class="result-answers-list">
+          {% for attempt in attempts %}
+            <li class="result-answer-card {% if attempt.passed %}is-correct{% elif attempt.status != 'IN_PROGRESS' %}is-incorrect{% endif %}">
+              <div class="assessment-question-header">
+                <a class="catalog-record-link" href="{% url 'assessments:attempt-detail' attempt.pk %}">Attempt {{ attempt.attempt_number }}</a>
+                <span class="status-badge {% if attempt.passed %}status-completed{% elif attempt.status == 'IN_PROGRESS' %}status-in_progress{% else %}status-inactive{% endif %}">
+                  {{ attempt.get_status_display }}
+                </span>
+              </div>
+              <p class="muted">
+                {% if attempt.passed %}Passed{% elif attempt.status != 'IN_PROGRESS' %}Not passed{% else %}In progress{% endif %}
+                {% if attempt.score_points != None %} · {{ attempt.score_points }} / {{ attempt.maximum_points }} points{% endif %}
+              </p>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <p class="empty-state">No attempts yet.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <p>
+    <a class="btn btn-secondary" href="{% url 'training:assignment-detail' assignment.pk %}">Back to assignment</a>
+  </p>
+</div>
 {% endblock %}

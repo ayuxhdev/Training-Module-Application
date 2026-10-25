@@ -95,6 +95,7 @@ class _AssessmentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final item = assessment;
     final base = '/learning/assignments/$assignmentId/assessments/${item.id}';
     final label = item.completed
@@ -112,10 +113,19 @@ class _AssessmentCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                item.completed ? Icons.task_alt : Icons.quiz_outlined,
-                color: theme.colorScheme.primary,
-                size: 32,
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: item.completed
+                      ? colors.primaryContainer.withValues(alpha: 0.5)
+                      : colors.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  item.completed ? Icons.task_alt : Icons.quiz_outlined,
+                  color: colors.primary,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -134,18 +144,43 @@ class _AssessmentCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          Text(item.title, style: theme.textTheme.titleLarge),
+          const SizedBox(height: 16),
+          Text(
+            item.title,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
           Text(
             '${item.kind == AssessmentKind.quiz ? 'Module quiz' : 'Final assessment'} • ${item.isRequired ? 'Required' : 'Optional'}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colors.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 16),
-          Text('Passing score: ${item.passPercentage}%'),
-          Text(
-            'Attempts remaining: ${item.attemptsRemaining} of ${item.maxAttempts}',
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: colors.outlineVariant),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Passing score: ${item.passPercentage}%'),
+                const SizedBox(height: 4),
+                Text(
+                  'Attempts remaining: ${item.attemptsRemaining} of ${item.maxAttempts}',
+                ),
+                if (item.timeLimitMinutes != null) ...[
+                  const SizedBox(height: 4),
+                  Text('Time limit: ${item.timeLimitMinutes} minutes'),
+                ],
+              ],
+            ),
           ),
-          if (item.timeLimitMinutes != null)
-            Text('Time limit: ${item.timeLimitMinutes} minutes'),
           if (item.eligibility.blockingReason != null)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -156,7 +191,8 @@ class _AssessmentCard extends StatelessWidget {
                     : Icons.lock_outline,
               ),
             ),
-          if (item.eligibility.canStart || item.eligibility.canResume)
+          if (item.eligibility.canStart || item.eligibility.canResume) ...[
+            const SizedBox(height: 12),
             FilledButton.icon(
               icon: Icon(
                 item.eligibility.canResume ? Icons.play_arrow : Icons.edit_note,
@@ -172,6 +208,7 @@ class _AssessmentCard extends StatelessWidget {
                     : '$base/attempt',
               ),
             ),
+          ],
           if (item.attempts.isNotEmpty) ...[
             const Divider(height: 32),
             const SectionHeading(
@@ -181,11 +218,21 @@ class _AssessmentCard extends StatelessWidget {
             for (final attempt in item.attempts)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  attempt.passed == true
-                      ? Icons.check_circle_outline
-                      : Icons.history_rounded,
-                  color: theme.colorScheme.primary,
+                leading: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: attempt.passed == true
+                        ? colors.primaryContainer.withValues(alpha: 0.5)
+                        : colors.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    attempt.passed == true
+                        ? Icons.check_circle_outline
+                        : Icons.history_rounded,
+                    color: colors.primary,
+                    size: 20,
+                  ),
                 ),
                 title: Text('Attempt ${attempt.attemptNumber}'),
                 subtitle: Text(attemptLabel(attempt)),

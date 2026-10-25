@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/cinematic_notice.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
@@ -31,6 +30,8 @@ class CertificateDetailScreen extends ConsumerWidget {
             ),
             data: (certificate) {
               if (certificate == null) return const LoadingView();
+              final theme = Theme.of(context);
+              final colors = theme.colorScheme;
               return RefreshIndicator(
                 onRefresh: () async {
                   try {
@@ -63,41 +64,85 @@ class CertificateDetailScreen extends ConsumerWidget {
                       'Certificate details',
                       subtitle: 'Your historical training record.',
                     ),
-                    CustomCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _Field(
-                            label: 'Certificate number',
-                            value: certificate.certificateNumber,
-                          ),
-                          _Field(
-                            label: 'Awarded to',
-                            value: certificate.employeeName,
-                          ),
-                          _Field(
-                            label: 'Employee code',
-                            value: certificate.employeeCode,
-                          ),
-                          _Field(
-                            label: 'Training version',
-                            value: '${certificate.versionNumber}',
-                          ),
-                          _Field(
-                            label: 'Issued',
-                            value: localDateLabel(certificate.issuedAt),
-                          ),
-                          if (certificate.revokedAt != null)
-                            _Field(
-                              label: 'Revoked on',
-                              value: localDateLabel(certificate.revokedAt!),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colors.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: certificate.isRevoked
+                              ? colors.error.withValues(alpha: 0.35)
+                              : colors.primary.withValues(alpha: 0.35),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  certificate.isRevoked
+                                      ? Icons.warning_amber_rounded
+                                      : Icons.verified_rounded,
+                                  color: certificate.isRevoked
+                                      ? colors.error
+                                      : colors.primary,
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    "Garden's Need Official Credential",
+                                    style: theme.textTheme.labelMedium?.copyWith(
+                                      color: certificate.isRevoked
+                                          ? colors.error
+                                          : colors.primary,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          const SizedBox(height: 12),
-                          const CinematicNotice(
-                            message: 'These details reflect the employee and training recorded when this certificate was issued.',
-                            icon: Icons.history_rounded,
-                          ),
-                        ],
+                            const Divider(height: 24),
+                            _Field(
+                              label: 'Certificate number',
+                              value: certificate.certificateNumber,
+                              monospace: true,
+                            ),
+                            _Field(
+                              label: 'Awarded to',
+                              value: certificate.employeeName,
+                              isHighlight: true,
+                            ),
+                            _Field(
+                              label: 'Employee code',
+                              value: certificate.employeeCode,
+                            ),
+                            _Field(
+                              label: 'Training version',
+                              value: '${certificate.versionNumber}',
+                            ),
+                            _Field(
+                              label: 'Issued',
+                              value: localDateLabel(certificate.issuedAt),
+                            ),
+                            if (certificate.revokedAt != null)
+                              _Field(
+                                label: 'Revoked on',
+                                value: localDateLabel(certificate.revokedAt!),
+                                isError: true,
+                              ),
+                            const SizedBox(height: 12),
+                            const CinematicNotice(
+                              message:
+                                  'These details reflect the employee and training recorded when this certificate was issued.',
+                              icon: Icons.history_rounded,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -117,21 +162,48 @@ class CertificateDetailScreen extends ConsumerWidget {
 class _Field extends StatelessWidget {
   final String label;
   final String value;
-  const _Field({required this.label, required this.value});
+  final bool monospace;
+  final bool isHighlight;
+  final bool isError;
+
+  const _Field({
+    required this.label,
+    required this.value,
+    this.monospace = false,
+    this.isHighlight = false,
+    this.isError = false,
+  });
+
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.labelLarge
-              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
-        const SizedBox(height: 4),
-        SelectableText(value, style: Theme.of(context).textTheme.bodyLarge),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: isError ? colors.error : colors.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+          SelectableText(
+            value,
+            style: (isHighlight
+                    ? theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      )
+                    : theme.textTheme.bodyLarge)
+                ?.copyWith(
+              fontFamily: monospace ? 'monospace' : null,
+              color: isError ? colors.error : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

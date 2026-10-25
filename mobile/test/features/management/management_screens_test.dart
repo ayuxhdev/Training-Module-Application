@@ -145,16 +145,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> tap(WidgetTester tester, Object target) async {
-    final finder = target is Finder ? target : find.text(target as String);
-    final primaryScrollable = find.byType(Scrollable);
-    if (primaryScrollable.evaluate().isNotEmpty) {
-      await tester.scrollUntilVisible(
-        finder,
-        150,
-        scrollable: primaryScrollable.first,
-      );
-    }
+  Future<void> ensureUnobstructed(WidgetTester tester, Finder finder) async {
     final navBarFinder = find.byType(NavigationBar);
     if (navBarFinder.evaluate().isNotEmpty && finder.evaluate().isNotEmpty) {
       final navBarRect = tester.getRect(navBarFinder.first);
@@ -165,6 +156,7 @@ void main() {
           targetRect.bottom > navBarRect.top && targetRect.top < navBarRect.bottom;
       if (isHorizontallyOverlapping && isVerticallyObstructed) {
         final overlap = targetRect.bottom - navBarRect.top;
+        final primaryScrollable = find.byType(Scrollable);
         if (overlap > 0 && primaryScrollable.evaluate().isNotEmpty) {
           final scrollableAncestor = find.ancestor(
             of: finder,
@@ -178,6 +170,110 @@ void main() {
         }
       }
     }
+  }
+
+  Future<void> tap(WidgetTester tester, Object target) async {
+    final finder = target is Finder ? target : find.text(target as String);
+    final primaryScrollable = find.byType(Scrollable);
+    final scrollableAncestor = find.ancestor(
+      of: finder,
+      matching: find.byType(Scrollable),
+    );
+
+    // Helper 1: Reveals target if already mounted on-stage or cached offstage in the element tree.
+    Future<bool> revealIfMounted() async {
+      if (finder.evaluate().isNotEmpty) {
+        if (scrollableAncestor.evaluate().isNotEmpty || primaryScrollable.evaluate().isNotEmpty) {
+          final targetRect = tester.getRect(finder.first);
+          final navBarFinder = find.byType(NavigationBar);
+          final viewHeight = tester.view.physicalSize.height / tester.view.devicePixelRatio;
+          final effectiveBottom = navBarFinder.evaluate().isNotEmpty
+              ? tester.getRect(navBarFinder.first).bottom
+              : viewHeight;
+
+          final isMountedOffscreen = targetRect.top >= effectiveBottom || targetRect.bottom <= 0;
+          if (isMountedOffscreen) {
+            await tester.ensureVisible(finder.first);
+            await tester.pumpAndSettle();
+          }
+        }
+        return finder.evaluate().isNotEmpty;
+      }
+
+      // Inspect tester.allElements for offstage matches. Note: MatchFinder-based
+      // inspection covers standard finders (byKey, text, byType, etc.), but not
+      // every chained or custom finder. Those cases retain the bounded scrolling fallback.
+      if (finder is MatchFinder) {
+        for (final element in tester.allElements) {
+          if (finder.matches(element)) {
+            final offstageFinder = find.byElementPredicate(
+              (e) => e == element,
+              skipOffstage: false,
+            );
+            await tester.ensureVisible(offstageFinder);
+            await tester.pumpAndSettle();
+            return finder.evaluate().isNotEmpty;
+          }
+        }
+      }
+      return false;
+    }
+
+    // Helper 2: Bounded directional search in Scrollable.
+    Future<bool> searchDirection(bool forward) async {
+      final scrollTarget = scrollableAncestor.evaluate().isNotEmpty
+          ? scrollableAncestor.first
+          : primaryScrollable.first;
+      final scrollState = tester.state<ScrollableState>(scrollTarget);
+      final position = scrollState.position;
+      final isVertical = position.axis == Axis.vertical;
+
+      if (forward && position.pixels >= position.maxScrollExtent) return false;
+      if (!forward && position.pixels <= position.minScrollExtent) return false;
+
+      for (int step = 0; step < 30; step++) {
+        if (await revealIfMounted()) return true;
+
+        if (forward && position.pixels >= position.maxScrollExtent) break;
+        if (!forward && position.pixels <= position.minScrollExtent) break;
+
+        final prevPixels = position.pixels;
+        final delta = forward ? -200.0 : 200.0;
+        final dragOffset = isVertical ? Offset(0, delta) : Offset(delta, 0);
+
+        await tester.drag(scrollTarget, dragOffset);
+        await tester.pumpAndSettle();
+
+        if ((position.pixels - prevPixels).abs() < 1e-4) break;
+      }
+
+      return await revealIfMounted();
+    }
+
+    // 1. Reveal if mounted (on-stage or cached offstage)
+    if (!await revealIfMounted()) {
+      // 2. Unbuilt/disposed target; bounded directional search
+      if (primaryScrollable.evaluate().isNotEmpty) {
+        final scrollTarget = scrollableAncestor.evaluate().isNotEmpty
+            ? scrollableAncestor.first
+            : primaryScrollable.first;
+        final scrollState = tester.state<ScrollableState>(scrollTarget);
+        final position = scrollState.position;
+
+        if (position.pixels > position.minScrollExtent) {
+          await searchDirection(false);
+        }
+
+        if (finder.evaluate().isEmpty) {
+          await searchDirection(true);
+        }
+      }
+    }
+
+    // 3. Clear NavigationBar overlap if any
+    await ensureUnobstructed(tester, finder);
+
+    // 4. Tap the revealed target
     await tester.tap(finder);
     await tester.pumpAndSettle();
   }
@@ -2293,13 +2389,65 @@ void main() {
     testWidgets(
       'scrolls when target is partially obstructed by NavigationBar in portrait',
       (tester) async {
-        when(() => repository.dashboard(cancelToken: any(named: 'cancelToken')))
-            .thenAnswer((_) async => dashboardFixture(team: true));
-        await launch(tester, identity: managementIdentity(team: true));
-        await tap(tester, 'Team dashboard');
-        await tap(tester, find.widgetWithText(ListTile, 'Employee 1'));
-        expect(find.byType(DirectoryEmployeeScreen), findsOneWidget);
-        expect(find.text('Employee 1'), findsOneWidget);
+        bool tapped = false;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ListView.builder(
+                itemCount: 20,
+                itemBuilder: (context, index) {
+                  if (index == 6) {
+                    return ListTile(
+                      key: const ValueKey('portrait_target'),
+                      title: const Text('Target Item'),
+                      onTap: () => tapped = true,
+                    );
+                  }
+                  return SizedBox(
+                    height: 80,
+                    child: Center(child: Text('Item $index')),
+                  );
+                },
+              ),
+              bottomNavigationBar: NavigationBar(
+                destinations: const [
+                  NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
+                  NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final targetFinder = find.byKey(const ValueKey('portrait_target'));
+        final navBarFinder = find.byType(NavigationBar);
+        final scrollableFinder = find.byType(Scrollable).first;
+
+        var targetRect = tester.getRect(targetFinder);
+        final navBarRect = tester.getRect(navBarFinder);
+
+        // Position target so it deterministically overlaps the top of the NavigationBar
+        final dragDelta = targetRect.top - (navBarRect.top - 20);
+        await tester.drag(scrollableFinder, Offset(0, -dragDelta));
+        await tester.pumpAndSettle();
+
+        targetRect = tester.getRect(targetFinder);
+
+        // 1. Assert target rectangle genuinely overlaps NavigationBar before invoking tap helper
+        expect(targetRect.top, lessThan(navBarRect.top));
+        expect(targetRect.bottom, greaterThan(navBarRect.top));
+        expect(targetRect.bottom, lessThan(navBarRect.bottom));
+
+        // 2. Invoke helper (bypasses scrollUntilVisible because target is already mounted)
+        await tap(tester, targetFinder);
+
+        // 3. Assert target is no longer obstructed
+        final targetRectAfter = tester.getRect(targetFinder);
+        expect(targetRectAfter.bottom, lessThanOrEqualTo(navBarRect.top));
+
+        // 4. Verify intended widget receives tap
+        expect(tapped, isTrue);
       },
     );
 
@@ -2311,20 +2459,78 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
 
-        await launch(
-          tester,
-          identity: managementIdentity(
-            team: true,
-            capabilities: {
-              'personal_learning',
-              'team_workspace',
-              'management_workspace',
-              'organization.view_employee',
-            },
+        bool tapped = false;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ListView.builder(
+                itemCount: 20,
+                itemBuilder: (context, index) {
+                  if (index == 6) {
+                    return ListTile(
+                      key: const ValueKey('landscape_target'),
+                      title: const Text('Target Item'),
+                      onTap: () => tapped = true,
+                    );
+                  }
+                  return SizedBox(
+                    height: 50,
+                    child: Center(child: Text('Item $index')),
+                  );
+                },
+              ),
+              bottomNavigationBar: NavigationBar(
+                destinations: const [
+                  NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
+                  NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                ],
+              ),
+            ),
           ),
         );
-        await tap(tester, 'Employee directory');
-        expect(find.byType(OrganizationListScreen), findsOneWidget);
+        await tester.pumpAndSettle();
+
+        final targetFinder = find.byKey(const ValueKey('landscape_target'));
+        final navBarFinder = find.byType(NavigationBar);
+        final scrollableFinder = find.byType(Scrollable).first;
+
+        var targetRect = tester.getRect(targetFinder);
+        final navBarRect = tester.getRect(navBarFinder);
+
+        // Position target so it deterministically overlaps the top of the NavigationBar
+        final dragDelta = targetRect.top - (navBarRect.top - 20);
+        await tester.drag(scrollableFinder, Offset(0, -dragDelta));
+        await tester.pumpAndSettle();
+
+        targetRect = tester.getRect(targetFinder);
+
+        // 1. Assert target rectangle genuinely overlaps NavigationBar before invoking tap helper
+        expect(targetRect.top, lessThan(navBarRect.top));
+        expect(targetRect.bottom, greaterThan(navBarRect.top));
+        expect(targetRect.bottom, lessThan(navBarRect.bottom));
+
+        // 2. Invoke helper (bypasses scrollUntilVisible because target is already mounted)
+        await tap(tester, targetFinder);
+
+        // 3. Assert target is no longer obstructed
+        final targetRectAfter = tester.getRect(targetFinder);
+        expect(targetRectAfter.bottom, lessThanOrEqualTo(navBarRect.top));
+
+        // 4. Verify intended widget receives tap
+        expect(tapped, isTrue);
+      },
+    );
+
+    testWidgets(
+      'navigates cleanly when clearing NavigationBar obstruction on management dashboard',
+      (tester) async {
+        when(() => repository.dashboard(cancelToken: any(named: 'cancelToken')))
+            .thenAnswer((_) async => dashboardFixture(team: true));
+        await launch(tester, identity: managementIdentity(team: true));
+        await tap(tester, 'Team dashboard');
+        await tap(tester, find.widgetWithText(ListTile, 'Employee 1'));
+        expect(find.byType(DirectoryEmployeeScreen), findsOneWidget);
+        expect(find.text('Employee 1'), findsOneWidget);
       },
     );
 
@@ -2354,6 +2560,310 @@ void main() {
         expect(find.byType(NavigationBar), findsNothing);
         await tap(tester, 'Choose date');
         expect(find.byType(DatePickerDialog), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'scrolls when mounted target is in scrollable outside viewport below NavigationBar',
+      (tester) async {
+        bool tapped = false;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: Column(
+                  children: List.generate(
+                    15,
+                    (index) => SizedBox(
+                      height: 80,
+                      child: ListTile(
+                        key: ValueKey('item_$index'),
+                        title: Text('Item $index'),
+                        onTap: () {
+                          if (index == 11) tapped = true;
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              bottomNavigationBar: NavigationBar(
+                destinations: const [
+                  NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
+                  NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final targetFinder = find.byKey(const ValueKey('item_11'));
+        final navBarFinder = find.byType(NavigationBar);
+
+        // 1. Target is mounted in widget tree but completely below NavigationBar
+        expect(targetFinder.evaluate(), isNotEmpty);
+
+        final targetRectBefore = tester.getRect(targetFinder);
+        final navBarRect = tester.getRect(navBarFinder);
+
+        // Target top (11 * 80 = 880) is completely below the NavigationBar (bottom: 600)
+        expect(targetRectBefore.top, greaterThanOrEqualTo(navBarRect.bottom));
+
+        // 2. Invoke tap helper: uses ensureVisible rather than skipping due to nonempty finder
+        await tap(tester, targetFinder);
+
+        // 3. Assert target is now visible above NavigationBar and received tap
+        final targetRectAfter = tester.getRect(targetFinder);
+        expect(targetRectAfter.bottom, lessThanOrEqualTo(navBarRect.top));
+        expect(tapped, isTrue);
+      },
+    );
+
+    testWidgets(
+      'scrolls when target is unmounted requiring scrollUntilVisible',
+      (tester) async {
+        bool tapped = false;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ListView.builder(
+                itemCount: 50,
+                itemBuilder: (context, index) {
+                  if (index == 35) {
+                    return ListTile(
+                      key: const ValueKey('unmounted_target'),
+                      title: const Text('Unmounted Target Item'),
+                      onTap: () => tapped = true,
+                    );
+                  }
+                  return SizedBox(
+                    height: 80,
+                    child: Center(child: Text('Item $index')),
+                  );
+                },
+              ),
+              bottomNavigationBar: NavigationBar(
+                destinations: const [
+                  NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
+                  NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final targetFinder = find.byKey(const ValueKey('unmounted_target'));
+        final navBarFinder = find.byType(NavigationBar);
+
+        // Target is far down the list and NOT mounted in widget tree
+        expect(targetFinder.evaluate(), isEmpty);
+
+        await tap(tester, targetFinder);
+
+        expect(targetFinder.evaluate(), isNotEmpty);
+        final targetRectAfter = tester.getRect(targetFinder);
+        final navBarRect = tester.getRect(navBarFinder);
+        expect(targetRectAfter.bottom, lessThanOrEqualTo(navBarRect.top));
+        expect(tapped, isTrue);
+      },
+    );
+
+    testWidgets(
+      'handles navigation obstruction on small screen 320x640 at 2.0x text scale',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        bool tapped = false;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(
+                size: Size(320, 640),
+                textScaler: TextScaler.linear(2.0),
+              ),
+              child: Scaffold(
+                body: ListView.builder(
+                  itemCount: 20,
+                  itemBuilder: (context, index) {
+                    if (index == 5) {
+                      return ListTile(
+                        key: const ValueKey('small_screen_target'),
+                        title: const Text('Small Target'),
+                        onTap: () => tapped = true,
+                      );
+                    }
+                    return SizedBox(
+                      height: 100,
+                      child: Center(child: Text('Large Item $index')),
+                    );
+                  },
+                ),
+                bottomNavigationBar: NavigationBar(
+                  destinations: const [
+                    NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
+                    NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final targetFinder = find.byKey(const ValueKey('small_screen_target'));
+        final navBarFinder = find.byType(NavigationBar);
+        final navBarRect = tester.getRect(navBarFinder);
+
+        await tap(tester, targetFinder);
+
+        final targetRectAfter = tester.getRect(targetFinder);
+        expect(targetRectAfter.bottom, lessThanOrEqualTo(navBarRect.top));
+        expect(tapped, isTrue);
+      },
+    );
+
+    testWidgets(
+      'scrolls backward when target was scrolled past and lies above the viewport in ListView.builder',
+      (tester) async {
+        bool tapped = false;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ListView.builder(
+                itemCount: 40,
+                itemExtent: 80,
+                itemBuilder: (context, index) {
+                  return ListTile(
+                    key: ValueKey('item_$index'),
+                    title: Text('Item $index'),
+                    onTap: () {
+                      if (index == 0) tapped = true;
+                    },
+                  );
+                },
+              ),
+              bottomNavigationBar: NavigationBar(
+                destinations: const [
+                  NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
+                  NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final targetFinder = find.byKey(const ValueKey('item_0'));
+        final navBarFinder = find.byType(NavigationBar);
+        final scrollableFinder = find.byType(Scrollable).first;
+
+        // 1. Target is initially visible at scroll offset 0
+        expect(targetFinder.evaluate(), isNotEmpty);
+        expect(tester.getRect(targetFinder).top, 0.0);
+
+        // 2. Scroll down past target by 300px so it lies above the visible viewport within cacheExtent
+        await tester.drag(scrollableFinder, const Offset(0, -300));
+        await tester.pumpAndSettle();
+
+        // 3. Establish the target's finder and element state before tapping:
+        // - Normal on-stage finder returns no result because it is scrolled past
+        expect(targetFinder.evaluate(), isEmpty);
+
+        // - Target still exists in tester.allElements (cached offstage)
+        final offstageMatches = tester.allElements.where(
+          (e) => targetFinder is MatchFinder && targetFinder.matches(e),
+        ).toList();
+        expect(offstageMatches, isNotEmpty);
+
+        // - Target geometry is positioned above the visible viewport
+        final offstageFinder = find.byElementPredicate(
+          (e) => e == offstageMatches.first,
+          skipOffstage: false,
+        );
+        final rectBefore = tester.getRect(offstageFinder);
+        expect(rectBefore.bottom, lessThanOrEqualTo(0.0));
+
+        // 4. Call the shared tap() helper (exercises Branch 2a)
+        await tap(tester, targetFinder);
+
+        // 5. Verify the target is now visible and unobstructed above NavigationBar
+        expect(targetFinder.evaluate(), isNotEmpty);
+        final targetRectAfter = tester.getRect(targetFinder);
+        final navBarRect = tester.getRect(navBarFinder);
+        expect(targetRectAfter.top, greaterThanOrEqualTo(0.0));
+        expect(targetRectAfter.bottom, lessThanOrEqualTo(navBarRect.top));
+
+        // 6. Verify the intended target actually received the tap
+        expect(tapped, isTrue);
+      },
+    );
+
+    testWidgets(
+      'scrolls backward when target was scrolled far past and disposed above the viewport in ListView.builder',
+      (tester) async {
+        bool tapped = false;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ListView.builder(
+                itemCount: 50,
+                itemExtent: 80,
+                itemBuilder: (context, index) {
+                  return ListTile(
+                    key: ValueKey('item_$index'),
+                    title: Text('Item $index'),
+                    onTap: () {
+                      if (index == 0) tapped = true;
+                    },
+                  );
+                },
+              ),
+              bottomNavigationBar: NavigationBar(
+                destinations: const [
+                  NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
+                  NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final targetFinder = find.byKey(const ValueKey('item_0'));
+        final navBarFinder = find.byType(NavigationBar);
+        final scrollableFinder = find.byType(Scrollable).first;
+
+        // 1. Target is initially visible at scroll offset 0
+        expect(targetFinder.evaluate(), isNotEmpty);
+
+        // 2. Scroll far down past target so it is completely unbuilt/disposed
+        await tester.drag(scrollableFinder, const Offset(0, -2500));
+        await tester.pumpAndSettle();
+
+        // 3. Establish that neither default finder nor element tree has the target
+        expect(targetFinder.evaluate(), isEmpty);
+        expect(
+          tester.allElements.where((e) => targetFinder is MatchFinder ? targetFinder.matches(e) : false),
+          isEmpty,
+        );
+
+        // 4. Call the shared tap() helper on the earlier target
+        await tap(tester, targetFinder);
+
+        // 5. Verify the list scrolled back: target is revealed and unobstructed
+        expect(targetFinder.evaluate(), isNotEmpty);
+        final targetRectAfter = tester.getRect(targetFinder);
+        final navBarRect = tester.getRect(navBarFinder);
+        expect(targetRectAfter.top, greaterThanOrEqualTo(0.0));
+        expect(targetRectAfter.bottom, lessThanOrEqualTo(navBarRect.top));
+
+        // 6. Verify the intended target actually received the tap
+        expect(tapped, isTrue);
       },
     );
   });
