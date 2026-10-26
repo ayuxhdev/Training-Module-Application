@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
@@ -20,7 +21,7 @@ class WorkspaceScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Account access')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.md),
         children: [
           CinematicHero(
             eyebrow: 'Garden’s Need',
@@ -28,59 +29,73 @@ class WorkspaceScreen extends ConsumerWidget {
             subtitle: 'Your authorized workspaces.',
             icon: Icons.workspaces_outline,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.lg),
           if (identity.canManage)
-            const CustomCard(
-              child: ListTile(
-                leading: Icon(Icons.business_outlined),
-                title: Text('Management access'),
-                subtitle: Text(
-                  'Create/edit Departments and Job Roles when permitted. '
-                  'Other management workflows are unavailable.',
+            const Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.md),
+              child: CustomCard(
+                child: ListTile(
+                  leading: Icon(Icons.business_outlined),
+                  title: Text('Management access'),
+                  subtitle: Text(
+                    'Create/edit Departments and Job Roles when permitted. '
+                    'Other management workflows are unavailable.',
+                  ),
                 ),
               ),
             ),
           if (identity.canViewTeam)
-            const CustomCard(
-              child: ListTile(
-                leading: Icon(Icons.groups_outlined),
-                title: Text('Team access'),
-                subtitle: Text(
-                  'Team visibility follows your reporting hierarchy.',
+            const Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.md),
+              child: CustomCard(
+                child: ListTile(
+                  leading: Icon(Icons.groups_outlined),
+                  title: Text('Team access'),
+                  subtitle: Text(
+                    'Team visibility follows your reporting hierarchy.',
+                  ),
                 ),
               ),
             ),
-          const SizedBox(height: 16),
           if (canViewManagementDashboard(identity))
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.dashboard_outlined),
-                title: Text(
-                  identity.capabilities.contains('company_dashboard')
-                      ? 'Company dashboard'
-                      : 'Team dashboard',
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.dashboard_outlined),
+                  title: Text(
+                    identity.capabilities.contains('company_dashboard')
+                        ? 'Company dashboard'
+                        : 'Team dashboard',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/workspace/dashboard'),
                 ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/workspace/dashboard'),
               ),
             ),
           if (identity.capabilities.contains('organization.view_employee'))
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.badge_outlined),
-                title: const Text('Employee directory'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/workspace/employees'),
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.badge_outlined),
+                  title: const Text('Employee directory'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/workspace/employees'),
+                ),
               ),
             ),
           for (final kind in ReferenceKind.values)
             if (identity.capabilities.contains(kind.permission))
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.account_tree_outlined),
-                  title: Text(kind.title),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.push('/workspace/${kind.path}'),
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                child: Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.account_tree_outlined),
+                    title: Text(kind.title),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/workspace/${kind.path}'),
+                  ),
                 ),
               ),
         ],

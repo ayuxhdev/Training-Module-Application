@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/core/presentation/formatters/date_labels.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
@@ -95,26 +96,29 @@ class ManagementDashboardScreen extends ConsumerWidget {
                 ),
               ),
             for (final employee in dashboard.incompleteEmployees)
-              Card(
-                child: ListTile(
-                  title: Text(employee.employeeName),
-                  subtitle: Text(
-                    '${employee.incompleteCount} incomplete · ${employee.overdueCount} overdue',
-                  ),
-                  trailing:
-                      auth.identity.capabilities.contains(
-                        'organization.view_employee',
-                      )
-                      ? const Icon(Icons.chevron_right)
-                      : null,
-                  onTap:
-                      auth.identity.capabilities.contains(
-                        'organization.view_employee',
-                      )
-                      ? () => context.push(
-                          '/workspace/employees/${employee.employeeId}',
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                child: Card(
+                  child: ListTile(
+                    title: Text(employee.employeeName),
+                    subtitle: Text(
+                      '${employee.incompleteCount} incomplete · ${employee.overdueCount} overdue',
+                    ),
+                    trailing:
+                        auth.identity.capabilities.contains(
+                          'organization.view_employee',
                         )
-                      : null,
+                        ? const Icon(Icons.chevron_right)
+                        : null,
+                    onTap:
+                        auth.identity.capabilities.contains(
+                          'organization.view_employee',
+                        )
+                        ? () => context.push(
+                            '/workspace/employees/${employee.employeeId}',
+                          )
+                        : null,
+                  ),
                 ),
               ),
           ],
@@ -124,22 +128,25 @@ class ManagementDashboardScreen extends ConsumerWidget {
               child: Text('There are no recent assessment failures to review.'),
             ),
           for (final failure in dashboard.recentFailures)
-            CustomCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    failure.assessmentTitle,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(failure.employeeName),
-                  Text(
-                    'Score: ${failure.scorePoints} / ${failure.maximumPoints}',
-                  ),
-                  Text('Submitted: ${localDateLabel(failure.submittedAt)}'),
-                  const Text('Not passed'),
-                ],
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: CustomCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      failure.assessmentTitle,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(failure.employeeName),
+                    Text(
+                      'Score: ${failure.scorePoints} / ${failure.maximumPoints}',
+                    ),
+                    Text('Submitted: ${localDateLabel(failure.submittedAt)}'),
+                    const Text('Not passed'),
+                  ],
+                ),
               ),
             ),
         ];

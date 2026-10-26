@@ -140,24 +140,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             const SizedBox(height: AppSpacing.lg),
             if (authState.canLearn)
-              Card(
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
-                  leading: const Icon(Icons.workspace_premium_outlined),
-                  title: const Text('My Certificates'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.push('/profile/certificates'),
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                child: Card(
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(16),
+                    leading: const Icon(Icons.workspace_premium_outlined),
+                    title: const Text('My Certificates'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/profile/certificates'),
+                  ),
                 ),
               ),
-            const SizedBox(height: AppSpacing.md),
             for (final kind in ReferenceKind.values)
               if (authState.identity.capabilities.contains(kind.permission))
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.account_tree_outlined),
-                    title: Text(kind.title),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => context.push('/workspace/${kind.path}'),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                  child: Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.account_tree_outlined),
+                      title: Text(kind.title),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push('/workspace/${kind.path}'),
+                    ),
                   ),
                 ),
             SecondaryButton(

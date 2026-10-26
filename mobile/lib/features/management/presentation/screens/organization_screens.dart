@@ -5,6 +5,7 @@ import 'package:training_app/core/presentation/components/cinematic_components.d
 import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
+import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
@@ -39,7 +40,12 @@ class _OrganizationListScreenState
   List<Widget> _items<T>(ManagementPage<T> page, Widget Function(T) tile) => [
     SectionHeading('${page.count} ${_recordLabel(page.count)}'),
     if (page.items.isEmpty) const EmptyView(message: 'No records to display.'),
-    ...page.items.map(tile),
+    ...page.items.map(
+      (item) => Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.md),
+        child: tile(item),
+      ),
+    ),
     const SizedBox(height: 16),
     Text('Page $_page', textAlign: TextAlign.center),
     Wrap(
