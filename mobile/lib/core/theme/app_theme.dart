@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'app_colors.dart';
 import 'app_spacing.dart';
 import 'app_typography.dart';
+import 'reduced_motion_transitions.dart';
 
 /// Architectural Botanica Material 3 Theme System.
 /// Implements balanced enterprise density with accessible contrast and 4-tier geometry.
@@ -13,33 +14,53 @@ class AppTheme {
 
   static ThemeData get darkTheme => _build(Brightness.dark);
 
+  static final _pageTransitions = PageTransitionsTheme(
+    builders: {
+      for (final entry in const PageTransitionsTheme().builders.entries)
+        entry.key: ReducedMotionTransitions(delegate: entry.value),
+    },
+  );
+
   static ThemeData _build(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: AppColors.primary,
-      brightness: brightness,
-    ).copyWith(
-      primary: isDark ? AppColors.mint : AppColors.primary,
-      onPrimary: isDark ? AppColors.midnight : Colors.white,
-      primaryContainer: isDark ? const Color(0xff13382d) : AppColors.accentSurface,
-      onPrimaryContainer: isDark ? AppColors.mint : AppColors.primaryDark,
-      secondary: isDark ? const Color(0xff80d4e0) : AppColors.secondary,
-      onSecondary: isDark ? AppColors.midnight : Colors.white,
-      surface: isDark ? AppColors.midnight : AppColors.surface,
-      surfaceContainerLow: isDark ? AppColors.charcoal : Colors.white,
-      surfaceContainer: isDark ? AppColors.charcoalSubtle : AppColors.surfaceSubtle,
-      surfaceContainerHighest: isDark
-          ? const Color(0xff24303e)
-          : const Color(0xffe2eae6),
-      onSurface: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
-      onSurfaceVariant: isDark ? AppColors.textSecondaryDark : AppColors.textSecondary,
-      outline: isDark ? AppColors.borderStrongDark : AppColors.borderStrong,
-      outlineVariant: isDark ? AppColors.borderSubtleDark : AppColors.borderSubtle,
-      error: isDark ? AppColors.dangerTextDark : AppColors.dangerTextLight,
-      onError: isDark ? AppColors.midnight : Colors.white,
-      errorContainer: isDark ? AppColors.dangerBgDark : AppColors.dangerBgLight,
-      onErrorContainer: isDark ? AppColors.dangerTextDark : AppColors.dangerTextLight,
-    );
+    final colorScheme =
+        ColorScheme.fromSeed(
+          seedColor: AppColors.primary,
+          brightness: brightness,
+        ).copyWith(
+          primary: isDark ? AppColors.mint : AppColors.primary,
+          onPrimary: isDark ? AppColors.midnight : Colors.white,
+          primaryContainer: isDark
+              ? const Color(0xff13382d)
+              : AppColors.accentSurface,
+          onPrimaryContainer: isDark ? AppColors.mint : AppColors.primaryDark,
+          secondary: isDark ? const Color(0xff80d4e0) : AppColors.secondary,
+          onSecondary: isDark ? AppColors.midnight : Colors.white,
+          surface: isDark ? AppColors.midnight : AppColors.surface,
+          surfaceContainerLow: isDark ? AppColors.charcoal : Colors.white,
+          surfaceContainer: isDark
+              ? AppColors.charcoalSubtle
+              : AppColors.surfaceSubtle,
+          surfaceContainerHighest: isDark
+              ? const Color(0xff24303e)
+              : const Color(0xffe2eae6),
+          onSurface: isDark ? AppColors.textPrimaryDark : AppColors.textPrimary,
+          onSurfaceVariant: isDark
+              ? AppColors.textSecondaryDark
+              : AppColors.textSecondary,
+          outline: isDark ? AppColors.borderStrongDark : AppColors.borderStrong,
+          outlineVariant: isDark
+              ? AppColors.borderSubtleDark
+              : AppColors.borderSubtle,
+          error: isDark ? AppColors.dangerTextDark : AppColors.dangerTextLight,
+          onError: isDark ? AppColors.midnight : Colors.white,
+          errorContainer: isDark
+              ? AppColors.dangerBgDark
+              : AppColors.dangerBgLight,
+          onErrorContainer: isDark
+              ? AppColors.dangerTextDark
+              : AppColors.dangerTextLight,
+        );
 
     final inputBorderColor = isDark
         ? colorScheme.outline
@@ -60,6 +81,7 @@ class AppTheme {
     return ThemeData(
       colorScheme: colorScheme,
       useMaterial3: true,
+      pageTransitionsTheme: _pageTransitions,
       scaffoldBackgroundColor: isDark
           ? AppColors.midnight
           : AppColors.background,

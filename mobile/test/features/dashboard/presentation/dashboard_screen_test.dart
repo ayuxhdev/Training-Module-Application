@@ -1,8 +1,12 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:training_app/core/presentation/components/loading_view.dart';
+import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
+import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/content_skeleton.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/domain/models/employee.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
@@ -14,33 +18,116 @@ import 'package:training_app/features/notifications/presentation/controllers/not
 import '../../notifications/notification_fixtures.dart';
 
 void main() {
+  testWidgets(
+    'recent certificate has one keyboard/tap surface and navigates once',
+    (tester) async {
+      var opened = 0;
+      final router = GoRouter(
+        routes: [
+          GoRoute(path: '/', builder: (_, state) => const DashboardScreen()),
+          GoRoute(
+            path: '/profile/certificates/42',
+            builder: (_, state) {
+              opened++;
+              return const Scaffold(body: Text('Certificate details'));
+            },
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authControllerProvider.overrideWith(AuthControllerMock.new),
+            notificationUnreadCountProvider.overrideWith(
+              ZeroUnreadController.new,
+            ),
+            dashboardDataProvider.overrideWith(
+              (_) async => DashboardData(
+                metrics: DashboardMetrics.fromJson({}),
+                actionRequired: [],
+                recentCertificates: [
+                  DashboardCertificate(
+                    id: 42,
+                    certificateNumber: 'GN-42',
+                    trainingTitle: 'Keyboard certificate',
+                    versionNumber: 1,
+                  ),
+                ],
+              ),
+            ),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Keyboard certificate'),
+        160,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final card = find.ancestor(
+        of: find.text('Keyboard certificate'),
+        matching: find.byType(CustomCard),
+      );
+      final target = find.descendant(of: card, matching: find.byType(InkWell));
+      expect(target, findsOneWidget);
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.byWidgetPredicate(
+            (w) => w is Semantics && w.properties.button == true,
+          ),
+        ),
+        findsOneWidget,
+      );
+      Focus.of(tester.element(find.text('Keyboard certificate')))
+          .requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.text('Certificate details'), findsOneWidget);
+      expect(opened, 1);
+    },
+  );
+
   testWidgets('DashboardScreen shows loading initially', (tester) async {
     final completer = Completer<DashboardData>();
-    
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
+          notificationUnreadCountProvider.overrideWith(
+            ZeroUnreadController.new,
+          ),
           authControllerProvider.overrideWith(() => AuthControllerMock()),
           dashboardDataProvider.overrideWith((ref) => completer.future),
         ],
-        child: const MaterialApp(
-          home: DashboardScreen(),
-        ),
+        child: const MaterialApp(home: DashboardScreen()),
       ),
     );
 
-    expect(find.byType(LoadingView), findsOneWidget);
-    
+    expect(find.byType(DashboardSkeleton), findsOneWidget);
+
     // complete the future to avoid pending timers
-    completer.complete(DashboardData(
-      metrics: DashboardMetrics(
-        total: 0, assigned: 0, inProgress: 0, completed: 0, cancelled: 0, overdue: 0, completionPercent: 0, certificatesCount: 0,
+    completer.complete(
+      DashboardData(
+        metrics: DashboardMetrics(
+          total: 0,
+          assigned: 0,
+          inProgress: 0,
+          completed: 0,
+          cancelled: 0,
+          overdue: 0,
+          completionPercent: 0,
+          certificatesCount: 0,
+        ),
+        actionRequired: [],
+        recentCertificates: [],
       ),
-      actionRequired: [],
-      recentCertificates: [],
-    ));
+    );
     await tester.pumpAndSettle();
+    expect(find.byType(DashboardSkeleton), findsNothing);
   });
 
   testWidgets('DashboardScreen displays metrics when loaded', (tester) async {
@@ -62,13 +149,13 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
+          notificationUnreadCountProvider.overrideWith(
+            ZeroUnreadController.new,
+          ),
           authControllerProvider.overrideWith(() => AuthControllerMock()),
           dashboardDataProvider.overrideWith((ref) => mockData),
         ],
-        child: const MaterialApp(
-          home: DashboardScreen(),
-        ),
+        child: const MaterialApp(home: DashboardScreen()),
       ),
     );
 
@@ -79,7 +166,9 @@ void main() {
     expect(find.text('2'), findsOneWidget); // in progress
   });
 
-  testWidgets('DashboardScreen displays recent certificates when present', (tester) async {
+  testWidgets('DashboardScreen displays recent certificates when present', (
+    tester,
+  ) async {
     final mockData = DashboardData(
       metrics: DashboardMetrics(
         total: 1,
@@ -106,18 +195,22 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
+          notificationUnreadCountProvider.overrideWith(
+            ZeroUnreadController.new,
+          ),
           authControllerProvider.overrideWith(() => AuthControllerMock()),
           dashboardDataProvider.overrideWith((ref) => mockData),
         ],
-        child: const MaterialApp(
-          home: DashboardScreen(),
-        ),
+        child: const MaterialApp(home: DashboardScreen()),
       ),
     );
 
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Recent Certificates'), 200, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(
+      find.text('Recent Certificates'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
 
     expect(find.text('Recent Certificates'), findsOneWidget);
     expect(find.text('Safety in Operations'), findsOneWidget);
@@ -145,20 +238,24 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
+          notificationUnreadCountProvider.overrideWith(
+            ZeroUnreadController.new,
+          ),
           authControllerProvider.overrideWith(() => AuthControllerMock()),
           dashboardDataProvider.overrideWith((ref) => mockData),
         ],
-        child: const MaterialApp(
-          home: DashboardScreen(),
-        ),
+        child: const MaterialApp(home: DashboardScreen()),
       ),
     );
 
     await tester.pumpAndSettle();
     expect(find.text('Overview'), findsOneWidget);
 
-    await tester.scrollUntilVisible(find.text('No certificates earned yet.'), 200, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(
+      find.text('No certificates earned yet.'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('No certificates earned yet.'), findsOneWidget);
   });
 
@@ -166,13 +263,15 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          notificationUnreadCountProvider.overrideWith(ZeroUnreadController.new),
+          notificationUnreadCountProvider.overrideWith(
+            ZeroUnreadController.new,
+          ),
           authControllerProvider.overrideWith(() => AuthControllerMock()),
-          dashboardDataProvider.overrideWith((ref) => Future.error(Exception('Failed to load'))),
+          dashboardDataProvider.overrideWith(
+            (ref) => Future.error(Exception('Failed to load')),
+          ),
         ],
-        child: const MaterialApp(
-          home: DashboardScreen(),
-        ),
+        child: const MaterialApp(home: DashboardScreen()),
       ),
     );
 

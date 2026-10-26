@@ -378,6 +378,9 @@ test("reduced-motion covers Batch 3 dashboard and curriculum elements", () => {
     ".dashboard-record-card",
     ".dashboard-progress-fill",
     ".learning-curriculum li",
+    ".assessment-question",
+    ".assessment-option",
+    ".assessment-timer-banner",
   ]) {
     assert.ok(
       dashboardRule.selectors.includes(selector),

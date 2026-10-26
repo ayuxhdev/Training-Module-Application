@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
-import 'package:training_app/core/presentation/components/loading_view.dart';
+import 'package:training_app/core/presentation/components/content_skeleton.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/learning/domain/models/assignment.dart';
@@ -61,7 +61,7 @@ class LearningScreen extends ConsumerWidget {
                   ),
           );
         },
-        loading: () => const LoadingView(),
+        loading: () => const SkeletonPage(child: LearningSkeleton()),
         error: (error, stackTrace) => ApiErrorView(
           error: error,
           onRetry: () => ref.invalidate(assignmentListProvider),

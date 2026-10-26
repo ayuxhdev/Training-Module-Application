@@ -20,7 +20,8 @@ class PrimaryButton extends StatelessWidget {
       onPressed: isLoading ? null : onPressed,
       child: Builder(
         builder: (context) {
-          final spinnerColor = DefaultTextStyle.of(context).style.color ??
+          final spinnerColor =
+              DefaultTextStyle.of(context).style.color ??
               IconTheme.of(context).color;
 
           final labelWidget = Text(
@@ -29,12 +30,25 @@ class PrimaryButton extends StatelessWidget {
           );
 
           if (isLoading) {
-            return SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: spinnerColor,
+            return Semantics(
+              label: text,
+              value: 'Loading',
+              liveRegion: true,
+              child: ExcludeSemantics(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: MediaQuery.disableAnimationsOf(context)
+                      ? Icon(
+                          Icons.hourglass_empty_rounded,
+                          size: 20,
+                          color: spinnerColor,
+                        )
+                      : CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: spinnerColor,
+                        ),
+                ),
               ),
             );
           }
@@ -43,11 +57,7 @@ class PrimaryButton extends StatelessWidget {
             return Row(
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                icon!,
-                const SizedBox(width: 8),
-                labelWidget,
-              ],
+              children: [icon!, const SizedBox(width: 8), labelWidget],
             );
           }
 

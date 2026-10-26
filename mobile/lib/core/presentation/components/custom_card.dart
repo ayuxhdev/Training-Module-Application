@@ -17,18 +17,18 @@ class CustomCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final content = Padding(padding: padding, child: child);
     Widget card = Card(
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: padding,
-          child: child,
-        ),
-      ),
+      child: onTap == null
+          ? content
+          : InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(16),
+              child: content,
+            ),
     );
-    if (semanticLabel != null) {
+    if (semanticLabel != null || onTap != null) {
       return Semantics(
         label: semanticLabel,
         button: onTap != null,

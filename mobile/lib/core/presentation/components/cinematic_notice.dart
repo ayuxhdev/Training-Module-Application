@@ -6,6 +6,7 @@ class CinematicNotice extends StatelessWidget {
   final IconData icon;
   final bool isError;
   final Widget? child;
+  final bool? announce;
 
   const CinematicNotice({
     super.key,
@@ -13,6 +14,7 @@ class CinematicNotice extends StatelessWidget {
     this.icon = Icons.info_outline_rounded,
     this.isError = false,
     this.child,
+    this.announce,
   });
 
   @override
@@ -21,7 +23,7 @@ class CinematicNotice extends StatelessWidget {
     final colors = theme.colorScheme;
     final foreground = isError ? colors.onErrorContainer : colors.onSurface;
     return Semantics(
-      liveRegion: isError,
+      liveRegion: announce ?? isError,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: isError ? colors.errorContainer : colors.surfaceContainer,

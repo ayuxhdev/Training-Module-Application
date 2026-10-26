@@ -7,6 +7,40 @@ import 'package:training_app/core/theme/app_theme.dart';
 
 void main() {
   testWidgets(
+    'confirmed progress interpolates once and reduced motion settles immediately',
+    (tester) async {
+      Widget page(int completed, bool reduce) => MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(disableAnimations: reduce),
+          child: LearningProgress(
+            completed: completed,
+            total: 4,
+            label: '$completed of 4 confirmed',
+          ),
+        ),
+      );
+      double amount() => tester
+          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
+          .value!;
+      await tester.pumpWidget(page(1, false));
+      expect(amount(), .25);
+      await tester.pumpWidget(page(3, false));
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(amount(), greaterThan(.25));
+      expect(amount(), lessThan(.75));
+      await tester.pumpWidget(page(3, true));
+      expect(amount(), .75);
+      expect(find.byType(TweenAnimationBuilder<double>), findsNothing);
+      await tester.pump();
+      expect(tester.binding.transientCallbackCount, 0);
+      await tester.pumpWidget(page(3, false));
+      expect(amount(), .75);
+      await tester.pumpAndSettle();
+      expect(tester.binding.transientCallbackCount, 0);
+    },
+  );
+
+  testWidgets(
     'learning card supports keyboard activation and button semantics',
     (tester) async {
       var activated = 0;

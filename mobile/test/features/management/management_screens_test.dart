@@ -7,7 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:training_app/core/errors/api_error.dart';
-import 'package:training_app/core/presentation/components/loading_view.dart';
+import 'package:training_app/core/presentation/components/content_skeleton.dart';
+import 'package:flutter/services.dart';
 import 'package:training_app/core/router/app_router.dart';
 import 'package:training_app/core/theme/app_theme.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
@@ -346,6 +347,74 @@ void main() {
           .called(1);
     },
   );
+
+  for (final edit in [false, true]) {
+    testWidgets(
+      'employee ${edit ? 'edit' : 'create'} labels and Cancel support keyboard focus',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        try {
+          await launch(
+            tester,
+            path: edit ? '/workspace/employees/1' : '/workspace/employees',
+            identity: managementIdentity(
+              capabilities: {
+                'management_workspace',
+                'organization.view_employee',
+                'organization.add_employee',
+                'organization.change_employee',
+              },
+            ),
+          );
+          // Enter through the supported action: edit receives its loaded record
+          // and both forms have their normal return route on the stack.
+          await tester.tap(
+            find.byTooltip(edit ? 'Edit employee' : 'Add employee'),
+          );
+          await tester.pumpAndSettle();
+          final field = find.byWidgetPredicate(
+            (w) => w is TextField && w.decoration?.labelText == 'Display name',
+          );
+          await tap(tester, field);
+          await tester.pumpAndSettle();
+          expect(
+            tester.getSemantics(field).getSemanticsData().label,
+            contains('Display name'),
+          );
+          final fieldFocus = FocusManager.instance.primaryFocus;
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.pumpAndSettle();
+          final currentFocus = FocusManager.instance.primaryFocus;
+          expect(currentFocus, isNotNull);
+          expect(currentFocus!.hasFocus, isTrue);
+          expect(identical(currentFocus, fieldFocus), isFalse);
+          final cancel = find.widgetWithText(OutlinedButton, 'Cancel');
+          await tester.scrollUntilVisible(
+            cancel,
+            150,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.pumpAndSettle();
+          Focus.of(
+            tester.element(
+              find.descendant(of: cancel, matching: find.text('Cancel')),
+            ),
+          ).requestFocus();
+          await tester.pump();
+          await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+          await tester.pumpAndSettle();
+          expect(
+            find.byType(
+              edit ? EmployeeProfileFormScreen : EmployeeCreationFormScreen,
+            ),
+            findsNothing,
+          );
+        } finally {
+          semantics.dispose();
+        }
+      },
+    );
+  }
 
   testWidgets(
     'Manager workspace opens the team dashboard and scoped employee information',
@@ -1846,7 +1915,7 @@ void main() {
       );
       await tester.pump();
       expect(find.text('Old private employee'), findsNothing);
-      expect(find.byType(LoadingView), findsOneWidget);
+      expect(find.byType(CardListSkeleton), findsOneWidget);
       response.complete(employeePage(name: 'Current employee'));
       await tester.pumpAndSettle();
       expect(find.text('Current employee'), findsOneWidget);

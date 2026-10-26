@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
+import 'package:training_app/core/presentation/components/content_skeleton.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
@@ -121,6 +122,10 @@ class _OrganizationListScreenState
     if (kind == null) {
       return ReadOnlyPage<ManagementPage<DirectoryEmployee>>(
         title: 'Employees',
+        loading: const CardListSkeleton(
+          message: 'Loading employees',
+          compact: true,
+        ),
         actions: [
           if (canCreateEmployee(auth.identity))
             IconButton(
@@ -167,6 +172,10 @@ class _OrganizationListScreenState
     final canEdit = canEditOrganizationReference(auth.identity, kind);
     return ReadOnlyPage<ManagementPage<OrganizationReference>>(
       title: kind.title,
+      loading: CardListSkeleton(
+        message: 'Loading ${kind.title.toLowerCase()}',
+        compact: true,
+      ),
       actions: [
         if (canCreate)
           IconButton(

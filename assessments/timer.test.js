@@ -46,6 +46,37 @@ test("immediate initialization uses the server anchor despite device clock skew"
   assert.equal(f.label.textContent, "2:00");
 });
 
+test("persistent warning region changes only at 2m, 1m and expiry, including resume", t => {
+  const f = clockFixture(t, { duration: 180000 });
+  const writes = [];
+  let text = f.alert.textContent;
+  Object.defineProperty(f.alert, "textContent", {
+    get() { return text; },
+    set(value) { text = value; writes.push(value); },
+  });
+  f.advance(60000);
+  f.timer.tick();
+  assert.match(text, /2 minutes/);
+  for (let tick = 0; tick < 3; tick++) {
+    f.advance(1000);
+    f.timer.tick();
+  }
+  assert.equal(writes.length, 1);
+  f.hide();
+  f.advance(57000, 0);
+  f.show();
+  assert.match(text, /1 minute/);
+  f.view.dispatchEvent(new Event("focus"));
+  f.timer.tick();
+  assert.equal(writes.length, 2);
+  f.advance(60000);
+  f.timer.tick();
+  assert.match(text, /expired/i);
+  f.timer.tick();
+  f.show();
+  assert.equal(writes.length, 3);
+});
+
 test("delayed initialization displays the 100 seconds actually remaining", t => {
   const f = clockFixture(t, { delay: 20000, skew: -86400000 });
   assert.equal(f.label.textContent, "1:40");

@@ -11,7 +11,7 @@ class CinematicEntrance extends StatelessWidget {
     if (MediaQuery.disableAnimationsOf(context)) return child;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 280),
+      duration: const Duration(milliseconds: 200),
       curve: Curves.easeOutCubic,
       child: child,
       builder: (context, value, child) => Opacity(
@@ -154,28 +154,31 @@ class LearningProgress extends StatelessWidget {
     final duration = MediaQuery.disableAnimationsOf(context)
         ? Duration.zero
         : const Duration(milliseconds: 240);
+    Widget indicator(double amount) => LinearProgressIndicator(
+      value: amount,
+      semanticsLabel: label,
+      semanticsValue: '${(value * 100).floor()}%',
+      minHeight: 6,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 10),
         ClipRRect(
           borderRadius: BorderRadius.circular(3),
-          child: TweenAnimationBuilder<double>(
-            tween: Tween<double>(begin: value, end: value),
-            duration: duration,
-            curve: Curves.easeOutCubic,
-            builder: (context, amount, _) => LinearProgressIndicator(
-              value: amount,
-              semanticsLabel: label,
-              minHeight: 6,
-            ),
-          ),
+          child: MediaQuery.disableAnimationsOf(context)
+              ? indicator(value)
+              : TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: value, end: value),
+                  duration: duration,
+                  curve: Curves.easeOutCubic,
+                  builder: (context, amount, _) => indicator(amount),
+                ),
         ),
       ],
     );

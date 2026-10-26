@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
-import 'package:training_app/core/presentation/components/loading_view.dart';
+import 'package:training_app/core/presentation/components/content_skeleton.dart';
 
 class ReadOnlyPage<T> extends StatelessWidget {
   final String title;
@@ -9,6 +9,7 @@ class ReadOnlyPage<T> extends StatelessWidget {
   final Future<void> Function() refresh;
   final List<Widget> Function(T) content;
   final List<Widget> actions;
+  final Widget loading;
 
   const ReadOnlyPage({
     super.key,
@@ -17,6 +18,11 @@ class ReadOnlyPage<T> extends StatelessWidget {
     required this.refresh,
     required this.content,
     this.actions = const [],
+    this.loading = const CardListSkeleton(
+      message: 'Loading details',
+      showHeader: false,
+      compact: true,
+    ),
   });
 
   Future<void> _refresh() async {
@@ -50,7 +56,7 @@ class ReadOnlyPage<T> extends StatelessWidget {
           skipLoadingOnReload: false,
           skipLoadingOnRefresh: false,
           data: content,
-          loading: () => [const LoadingView()],
+          loading: () => [loading],
           error: (error, _) => [ApiErrorView(error: error, onRetry: _refresh)],
         ),
       ),

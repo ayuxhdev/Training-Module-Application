@@ -23,14 +23,67 @@ void main() {
   }
 
   group('UI Components', () {
+    testWidgets(
+      'loading primary action retains its accessible label and reduced-motion status',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        try {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: const MediaQueryData(disableAnimations: true),
+                child: Scaffold(
+                  body: PrimaryButton(
+                    text: 'Save employee',
+                    isLoading: true,
+                    onPressed: () => fail('Disabled action dispatched'),
+                  ),
+                ),
+              ),
+            ),
+          );
+          final data = tester
+              .getSemantics(find.byType(ElevatedButton))
+              .getSemanticsData();
+          expect(data.label, 'Save employee');
+          expect(data.value, 'Loading');
+          expect(
+            tester
+                .widget<ElevatedButton>(find.byType(ElevatedButton))
+                .onPressed,
+            isNull,
+          );
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          expect(find.byIcon(Icons.hourglass_empty_rounded), findsOneWidget);
+          expect(tester.binding.transientCallbackCount, 0);
+        } finally {
+          semantics.dispose();
+        }
+      },
+    );
+
+    testWidgets('static cards have no nested interactive surface', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        buildTestApp(const CustomCard(child: Text('Information'))),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(CustomCard),
+          matching: find.byType(InkWell),
+        ),
+        findsNothing,
+      );
+    });
+
     testWidgets('PrimaryButton displays text and handles tap', (tester) async {
       bool tapped = false;
-      await tester.pumpWidget(buildTestApp(
-        PrimaryButton(
-          text: 'Click Me',
-          onPressed: () => tapped = true,
+      await tester.pumpWidget(
+        buildTestApp(
+          PrimaryButton(text: 'Click Me', onPressed: () => tapped = true),
         ),
-      ));
+      );
 
       expect(find.text('Click Me'), findsOneWidget);
       await tester.tap(find.byType(PrimaryButton));
@@ -38,25 +91,23 @@ void main() {
     });
 
     testWidgets('PrimaryButton shows loading state', (tester) async {
-      await tester.pumpWidget(buildTestApp(
-        const PrimaryButton(
-          text: 'Click Me',
-          isLoading: true,
-        ),
-      ));
+      await tester.pumpWidget(
+        buildTestApp(const PrimaryButton(text: 'Click Me', isLoading: true)),
+      );
 
       expect(find.text('Click Me'), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
 
-    testWidgets('SecondaryButton displays text and handles tap', (tester) async {
+    testWidgets('SecondaryButton displays text and handles tap', (
+      tester,
+    ) async {
       bool tapped = false;
-      await tester.pumpWidget(buildTestApp(
-        SecondaryButton(
-          text: 'Click Me',
-          onPressed: () => tapped = true,
+      await tester.pumpWidget(
+        buildTestApp(
+          SecondaryButton(text: 'Click Me', onPressed: () => tapped = true),
         ),
-      ));
+      );
 
       expect(find.text('Click Me'), findsOneWidget);
       await tester.tap(find.byType(SecondaryButton));
@@ -64,36 +115,34 @@ void main() {
     });
 
     testWidgets('SecondaryButton shows loading state', (tester) async {
-      await tester.pumpWidget(buildTestApp(
-        const SecondaryButton(
-          text: 'Click Me',
-          isLoading: true,
-        ),
-      ));
+      await tester.pumpWidget(
+        buildTestApp(const SecondaryButton(text: 'Click Me', isLoading: true)),
+      );
 
       expect(find.text('Click Me'), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
 
-    testWidgets('CustomTextField displays label and accepts input', (tester) async {
+    testWidgets('CustomTextField displays label and accepts input', (
+      tester,
+    ) async {
       final controller = TextEditingController();
-      await tester.pumpWidget(buildTestApp(
-        CustomTextField(
-          label: 'Username',
-          controller: controller,
+      await tester.pumpWidget(
+        buildTestApp(
+          CustomTextField(label: 'Username', controller: controller),
         ),
-      ));
+      );
 
       expect(find.text('Username'), findsOneWidget);
-      
+
       await tester.enterText(find.byType(CustomTextField), 'testuser');
       expect(controller.text, 'testuser');
     });
 
     testWidgets('LoadingView displays message', (tester) async {
-      await tester.pumpWidget(buildTestApp(
-        const LoadingView(message: 'Please wait...'),
-      ));
+      await tester.pumpWidget(
+        buildTestApp(const LoadingView(message: 'Please wait...')),
+      );
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.text('Please wait...'), findsOneWidget);
@@ -101,244 +150,321 @@ void main() {
 
     testWidgets('ErrorView displays message and retry button', (tester) async {
       bool retryTapped = false;
-      await tester.pumpWidget(buildTestApp(
-        ErrorView(
-          message: 'Something went wrong',
-          onRetry: () => retryTapped = true,
+      await tester.pumpWidget(
+        buildTestApp(
+          ErrorView(
+            message: 'Something went wrong',
+            onRetry: () => retryTapped = true,
+          ),
         ),
-      ));
+      );
 
       expect(find.text('Something went wrong'), findsOneWidget);
-      
+
       final retryButton = find.text('Retry');
       expect(retryButton, findsOneWidget);
-      
+
       await tester.tap(retryButton);
       expect(retryTapped, isTrue);
     });
 
     testWidgets('EmptyView displays message and icon', (tester) async {
-      await tester.pumpWidget(buildTestApp(
-        const EmptyView(message: 'No data found', icon: Icons.folder_open),
-      ));
+      await tester.pumpWidget(
+        buildTestApp(
+          const EmptyView(message: 'No data found', icon: Icons.folder_open),
+        ),
+      );
 
       expect(find.text('No data found'), findsOneWidget);
       expect(find.byIcon(Icons.folder_open), findsOneWidget);
     });
 
     testWidgets('StatusBadge displays text', (tester) async {
-      await tester.pumpWidget(buildTestApp(
-        const StatusBadge(text: 'Active', status: BadgeStatus.success),
-      ));
+      await tester.pumpWidget(
+        buildTestApp(
+          const StatusBadge(text: 'Active', status: BadgeStatus.success),
+        ),
+      );
 
       expect(find.text('ACTIVE'), findsOneWidget);
     });
 
     testWidgets('StatusBadge displays neutral status', (tester) async {
-      await tester.pumpWidget(buildTestApp(
-        const StatusBadge(text: 'Archived', status: BadgeStatus.neutral),
-      ));
+      await tester.pumpWidget(
+        buildTestApp(
+          const StatusBadge(text: 'Archived', status: BadgeStatus.neutral),
+        ),
+      );
 
       expect(find.text('ARCHIVED'), findsOneWidget);
     });
 
     testWidgets('CustomCard handles tap and semantic label', (tester) async {
       bool tapped = false;
-      await tester.pumpWidget(buildTestApp(
-        CustomCard(
-          onTap: () => tapped = true,
-          semanticLabel: 'Card Action',
-          child: const Text('Card Body'),
+      await tester.pumpWidget(
+        buildTestApp(
+          CustomCard(
+            onTap: () => tapped = true,
+            semanticLabel: 'Card Action',
+            child: const Text('Card Body'),
+          ),
         ),
-      ));
+      );
       expect(find.text('Card Body'), findsOneWidget);
       await tester.tap(find.text('Card Body'));
       expect(tapped, isTrue);
     });
 
     testWidgets('PrimaryButton displays icon when provided', (tester) async {
-      await tester.pumpWidget(buildTestApp(
-        const PrimaryButton(
-          text: 'Save',
-          icon: Icon(Icons.save),
-        ),
-      ));
+      await tester.pumpWidget(
+        buildTestApp(const PrimaryButton(text: 'Save', icon: Icon(Icons.save))),
+      );
       expect(find.text('Save'), findsOneWidget);
       expect(find.byIcon(Icons.save), findsOneWidget);
     });
 
     testWidgets('SecondaryButton displays icon when provided', (tester) async {
-      await tester.pumpWidget(buildTestApp(
-        const SecondaryButton(
-          text: 'Cancel',
-          icon: Icon(Icons.cancel),
+      await tester.pumpWidget(
+        buildTestApp(
+          const SecondaryButton(text: 'Cancel', icon: Icon(Icons.cancel)),
         ),
-      ));
+      );
       expect(find.text('Cancel'), findsOneWidget);
       expect(find.byIcon(Icons.cancel), findsOneWidget);
     });
 
-    testWidgets('EmptyView displays title and action when provided', (tester) async {
-      await tester.pumpWidget(buildTestApp(
-        const EmptyView(
-          title: 'No Items',
-          message: 'Nothing here',
-          action: Text('Add Item'),
+    testWidgets('EmptyView displays title and action when provided', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        buildTestApp(
+          const EmptyView(
+            title: 'No Items',
+            message: 'Nothing here',
+            action: Text('Add Item'),
+          ),
         ),
-      ));
+      );
       expect(find.text('No Items'), findsOneWidget);
       expect(find.text('Nothing here'), findsOneWidget);
       expect(find.text('Add Item'), findsOneWidget);
     });
 
     testWidgets('LoadingView displays title when provided', (tester) async {
-      await tester.pumpWidget(buildTestApp(
-        const LoadingView(title: 'Please Wait', message: 'Fetching...'),
-      ));
+      await tester.pumpWidget(
+        buildTestApp(
+          const LoadingView(title: 'Please Wait', message: 'Fetching...'),
+        ),
+      );
       expect(find.text('Please Wait'), findsOneWidget);
       expect(find.text('Fetching...'), findsOneWidget);
     });
-    testWidgets('PrimaryButton does not force text color and inherits effective foreground in default M3, light and dark themes', (tester) async {
-      final defaultM3 = ThemeData(useMaterial3: true);
-      for (final theme in [defaultM3, AppTheme.lightTheme, AppTheme.darkTheme]) {
-        // Enabled
-        await tester.pumpWidget(buildTestApp(
-          theme: theme,
-          PrimaryButton(text: 'Enabled', onPressed: () {}),
-        ));
-        await tester.pumpAndSettle();
-        final enabledText = tester.widget<Text>(find.text('Enabled'));
-        expect(enabledText.style?.color, isNull, reason: 'Text must not override effective button foreground');
+    testWidgets(
+      'PrimaryButton does not force text color and inherits effective foreground in default M3, light and dark themes',
+      (tester) async {
+        final defaultM3 = ThemeData(useMaterial3: true);
+        for (final theme in [
+          defaultM3,
+          AppTheme.lightTheme,
+          AppTheme.darkTheme,
+        ]) {
+          // Enabled
+          await tester.pumpWidget(
+            buildTestApp(
+              theme: theme,
+              PrimaryButton(text: 'Enabled', onPressed: () {}),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final enabledText = tester.widget<Text>(find.text('Enabled'));
+          expect(
+            enabledText.style?.color,
+            isNull,
+            reason: 'Text must not override effective button foreground',
+          );
 
-        final inheritedColor = DefaultTextStyle.of(tester.element(find.text('Enabled'))).style.color;
-        final expectedColor = theme == defaultM3
-            ? theme.colorScheme.primary
-            : theme.colorScheme.onPrimary;
-        expect(inheritedColor, expectedColor);
+          final inheritedColor = DefaultTextStyle.of(
+            tester.element(find.text('Enabled')),
+          ).style.color;
+          final expectedColor = theme == defaultM3
+              ? theme.colorScheme.primary
+              : theme.colorScheme.onPrimary;
+          expect(inheritedColor, expectedColor);
 
-        // Disabled
-        await tester.pumpWidget(buildTestApp(
-          theme: theme,
-          const PrimaryButton(text: 'Disabled', onPressed: null),
-        ));
-        await tester.pumpAndSettle();
-        final disabledText = tester.widget<Text>(find.text('Disabled'));
-        expect(disabledText.style?.color, isNull, reason: 'Disabled text must not override button foreground');
-        final disabledInheritedColor = DefaultTextStyle.of(tester.element(find.text('Disabled'))).style.color;
-        final expectedDisabledColor = theme.elevatedButtonTheme.style?.foregroundColor?.resolve({WidgetState.disabled}) ??
-            // ignore: deprecated_member_use
-            theme.colorScheme.onSurface.withOpacity(0.38);
-        expect(disabledInheritedColor, expectedDisabledColor);
-        expect(disabledInheritedColor?.a, closeTo(0.38, 0.01),
-            reason: 'Material 3 disabled button foreground opacity must be 0.38');
+          // Disabled
+          await tester.pumpWidget(
+            buildTestApp(
+              theme: theme,
+              const PrimaryButton(text: 'Disabled', onPressed: null),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final disabledText = tester.widget<Text>(find.text('Disabled'));
+          expect(
+            disabledText.style?.color,
+            isNull,
+            reason: 'Disabled text must not override button foreground',
+          );
+          final disabledInheritedColor = DefaultTextStyle.of(
+            tester.element(find.text('Disabled')),
+          ).style.color;
+          final expectedDisabledColor =
+              theme.elevatedButtonTheme.style?.foregroundColor?.resolve({
+                WidgetState.disabled,
+              }) ??
+              // ignore: deprecated_member_use
+              theme.colorScheme.onSurface.withOpacity(0.38);
+          expect(disabledInheritedColor, expectedDisabledColor);
+          expect(
+            disabledInheritedColor?.a,
+            closeTo(0.38, 0.01),
+            reason:
+                'Material 3 disabled button foreground opacity must be 0.38',
+          );
 
-        // Loading spinner inherits disabled button foreground
-        await tester.pumpWidget(buildTestApp(
-          theme: theme,
-          const PrimaryButton(text: 'Loading', isLoading: true),
-        ));
-        await tester.pump(const Duration(milliseconds: 250));
-        final spinner = tester.widget<CircularProgressIndicator>(find.byType(CircularProgressIndicator));
-        expect(spinner.color, expectedDisabledColor);
+          // Loading spinner inherits disabled button foreground
+          await tester.pumpWidget(
+            buildTestApp(
+              theme: theme,
+              const PrimaryButton(text: 'Loading', isLoading: true),
+            ),
+          );
+          await tester.pump(const Duration(milliseconds: 250));
+          final spinner = tester.widget<CircularProgressIndicator>(
+            find.byType(CircularProgressIndicator),
+          );
+          expect(spinner.color, expectedDisabledColor);
 
-        // Optional leading icon inherits button IconTheme
-        await tester.pumpWidget(buildTestApp(
-          theme: theme,
-          PrimaryButton(
-            text: 'With Icon',
-            icon: const Icon(Icons.star),
-            onPressed: () {},
-          ),
-        ));
-        await tester.pumpAndSettle();
-        final iconTheme = IconTheme.of(tester.element(find.byIcon(Icons.star)));
-        expect(iconTheme.color, expectedColor);
-      }
-    });
-
-    testWidgets('PrimaryButton respects scoped ElevatedButtonTheme overrides for enabled, disabled, loading, and icon', (tester) async {
-      const customEnabledColor = Color(0xFF6200EE);
-      const customDisabledColor = Color(0xFFFF5722);
-
-      Widget buildScopedApp({required Widget child}) {
-        return MaterialApp(
-          home: Scaffold(
-            body: ElevatedButtonTheme(
-              data: ElevatedButtonThemeData(
-                style: ButtonStyle(
-                  foregroundColor: WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.disabled)) {
-                      return customDisabledColor;
-                    }
-                    return customEnabledColor;
-                  }),
-                ),
+          // Optional leading icon inherits button IconTheme
+          await tester.pumpWidget(
+            buildTestApp(
+              theme: theme,
+              PrimaryButton(
+                text: 'With Icon',
+                icon: const Icon(Icons.star),
+                onPressed: () {},
               ),
-              child: child,
+            ),
+          );
+          await tester.pumpAndSettle();
+          final iconTheme = IconTheme.of(
+            tester.element(find.byIcon(Icons.star)),
+          );
+          expect(iconTheme.color, expectedColor);
+        }
+      },
+    );
+
+    testWidgets(
+      'PrimaryButton respects scoped ElevatedButtonTheme overrides for enabled, disabled, loading, and icon',
+      (tester) async {
+        const customEnabledColor = Color(0xFF6200EE);
+        const customDisabledColor = Color(0xFFFF5722);
+
+        Widget buildScopedApp({required Widget child}) {
+          return MaterialApp(
+            home: Scaffold(
+              body: ElevatedButtonTheme(
+                data: ElevatedButtonThemeData(
+                  style: ButtonStyle(
+                    foregroundColor: WidgetStateProperty.resolveWith((states) {
+                      if (states.contains(WidgetState.disabled)) {
+                        return customDisabledColor;
+                      }
+                      return customEnabledColor;
+                    }),
+                  ),
+                ),
+                child: child,
+              ),
+            ),
+          );
+        }
+
+        // Enabled with scoped theme
+        await tester.pumpWidget(
+          buildScopedApp(
+            child: PrimaryButton(text: 'Scoped Enabled', onPressed: () {}),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final enabledText = tester.widget<Text>(find.text('Scoped Enabled'));
+        expect(enabledText.style?.color, isNull);
+        final enabledInherited = DefaultTextStyle.of(
+          tester.element(find.text('Scoped Enabled')),
+        ).style.color;
+        expect(enabledInherited, customEnabledColor);
+
+        // Disabled with scoped theme
+        await tester.pumpWidget(
+          buildScopedApp(
+            child: const PrimaryButton(
+              text: 'Scoped Disabled',
+              onPressed: null,
             ),
           ),
         );
-      }
-
-      // Enabled with scoped theme
-      await tester.pumpWidget(buildScopedApp(
-        child: PrimaryButton(text: 'Scoped Enabled', onPressed: () {}),
-      ));
-      await tester.pumpAndSettle();
-      final enabledText = tester.widget<Text>(find.text('Scoped Enabled'));
-      expect(enabledText.style?.color, isNull);
-      final enabledInherited = DefaultTextStyle.of(tester.element(find.text('Scoped Enabled'))).style.color;
-      expect(enabledInherited, customEnabledColor);
-
-      // Disabled with scoped theme
-      await tester.pumpWidget(buildScopedApp(
-        child: const PrimaryButton(text: 'Scoped Disabled', onPressed: null),
-      ));
-      await tester.pumpAndSettle();
-      final disabledText = tester.widget<Text>(find.text('Scoped Disabled'));
-      expect(disabledText.style?.color, isNull);
-      final disabledInherited = DefaultTextStyle.of(tester.element(find.text('Scoped Disabled'))).style.color;
-      expect(disabledInherited, customDisabledColor);
-
-      // Loading with scoped theme derives spinner color from effective button style
-      await tester.pumpWidget(buildScopedApp(
-        child: const PrimaryButton(text: 'Scoped Loading', isLoading: true),
-      ));
-      await tester.pump(const Duration(milliseconds: 250));
-      final spinner = tester.widget<CircularProgressIndicator>(find.byType(CircularProgressIndicator));
-      expect(spinner.color, customDisabledColor);
-
-      // Leading icon with scoped theme inherits scoped foreground
-      await tester.pumpWidget(buildScopedApp(
-        child: PrimaryButton(
-          text: 'Scoped Icon',
-          icon: const Icon(Icons.star),
-          onPressed: () {},
-        ),
-      ));
-      await tester.pumpAndSettle();
-      final iconTheme = IconTheme.of(tester.element(find.byIcon(Icons.star)));
-      expect(iconTheme.color, customEnabledColor);
-    });
-
-    testWidgets('SecondaryButton preserves unforced label color for enabled and disabled states', (tester) async {
-      for (final theme in [AppTheme.lightTheme, AppTheme.darkTheme]) {
-        // Enabled
-        await tester.pumpWidget(buildTestApp(
-          theme: theme,
-          SecondaryButton(text: 'Enabled', onPressed: () {}),
-        ));
-        final enabledText = tester.widget<Text>(find.text('Enabled'));
-        expect(enabledText.style?.color, isNull);
-
-        // Disabled
-        await tester.pumpWidget(buildTestApp(
-          theme: theme,
-          const SecondaryButton(text: 'Disabled', onPressed: null),
-        ));
-        final disabledText = tester.widget<Text>(find.text('Disabled'));
+        await tester.pumpAndSettle();
+        final disabledText = tester.widget<Text>(find.text('Scoped Disabled'));
         expect(disabledText.style?.color, isNull);
-      }
-    });
+        final disabledInherited = DefaultTextStyle.of(
+          tester.element(find.text('Scoped Disabled')),
+        ).style.color;
+        expect(disabledInherited, customDisabledColor);
+
+        // Loading with scoped theme derives spinner color from effective button style
+        await tester.pumpWidget(
+          buildScopedApp(
+            child: const PrimaryButton(text: 'Scoped Loading', isLoading: true),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 250));
+        final spinner = tester.widget<CircularProgressIndicator>(
+          find.byType(CircularProgressIndicator),
+        );
+        expect(spinner.color, customDisabledColor);
+
+        // Leading icon with scoped theme inherits scoped foreground
+        await tester.pumpWidget(
+          buildScopedApp(
+            child: PrimaryButton(
+              text: 'Scoped Icon',
+              icon: const Icon(Icons.star),
+              onPressed: () {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final iconTheme = IconTheme.of(tester.element(find.byIcon(Icons.star)));
+        expect(iconTheme.color, customEnabledColor);
+      },
+    );
+
+    testWidgets(
+      'SecondaryButton preserves unforced label color for enabled and disabled states',
+      (tester) async {
+        for (final theme in [AppTheme.lightTheme, AppTheme.darkTheme]) {
+          // Enabled
+          await tester.pumpWidget(
+            buildTestApp(
+              theme: theme,
+              SecondaryButton(text: 'Enabled', onPressed: () {}),
+            ),
+          );
+          final enabledText = tester.widget<Text>(find.text('Enabled'));
+          expect(enabledText.style?.color, isNull);
+
+          // Disabled
+          await tester.pumpWidget(
+            buildTestApp(
+              theme: theme,
+              const SecondaryButton(text: 'Disabled', onPressed: null),
+            ),
+          );
+          final disabledText = tester.widget<Text>(find.text('Disabled'));
+          expect(disabledText.style?.color, isNull);
+        }
+      },
+    );
   });
 }

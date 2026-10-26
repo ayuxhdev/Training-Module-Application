@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
+import 'package:training_app/core/presentation/components/content_skeleton.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
@@ -25,6 +26,7 @@ class ManagementDashboardScreen extends ConsumerWidget {
     }
     return ReadOnlyPage<ManagementDashboard>(
       title: 'Management dashboard',
+      loading: const ManagementSkeleton(),
       value: ref.watch(managementDashboardProvider),
       refresh: () =>
           ref.refresh(managementDashboardProvider.future).then<void>((_) {}),

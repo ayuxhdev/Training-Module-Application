@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +6,7 @@ import 'package:training_app/core/presentation/components/cinematic_components.d
 import 'package:training_app/core/presentation/components/cinematic_notice.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/features/assessments/presentation/widgets/assessment_choice.dart';
+import 'package:training_app/features/assessments/presentation/widgets/assessment_deadline.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
@@ -222,10 +221,12 @@ class _AssessmentAttemptScreenState
       children: [
         Text(
           'Attempt ${attempt.summary.attemptNumber}',
-          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         if (attempt.summary.deadlineAt != null)
-          _Deadline(summary: attempt.summary),
+          AssessmentDeadline(summary: attempt.summary),
         const SizedBox(height: 16),
         Text(
           '$answered of ${questions.length} answered',
@@ -294,10 +295,10 @@ class _AssessmentAttemptScreenState
                 child: TextButton.icon(
                   onPressed:
                       state.canSubmit &&
-                              state.selectedAnswers[question.id] != null &&
-                              !_confirming
-                          ? () => controller.selectAnswer(question.id, null)
-                          : null,
+                          state.selectedAnswers[question.id] != null &&
+                          !_confirming
+                      ? () => controller.selectAnswer(question.id, null)
+                      : null,
                   icon: const Icon(Icons.clear, size: 16),
                   label: const Text('Clear answer'),
                 ),
@@ -461,13 +462,16 @@ class _AssessmentAttemptScreenState
                       children: [
                         Icon(
                           answer.pointsAwarded != null &&
-                                  double.tryParse(answer.pointsAwarded!) != null &&
+                                  double.tryParse(answer.pointsAwarded!) !=
+                                      null &&
                                   double.parse(answer.pointsAwarded!) > 0
                               ? Icons.check_circle_outline
                               : Icons.radio_button_checked,
                           size: 18,
-                          color: answer.pointsAwarded != null &&
-                                  double.tryParse(answer.pointsAwarded!) != null &&
+                          color:
+                              answer.pointsAwarded != null &&
+                                  double.tryParse(answer.pointsAwarded!) !=
+                                      null &&
                                   double.parse(answer.pointsAwarded!) > 0
                               ? colors.primary
                               : colors.onSurfaceVariant,
@@ -497,45 +501,6 @@ class _AssessmentAttemptScreenState
             ),
         ],
       ],
-    );
-  }
-}
-
-class _Deadline extends StatefulWidget {
-  final AssessmentAttemptSummary summary;
-  const _Deadline({required this.summary});
-  @override
-  State<_Deadline> createState() => _DeadlineState();
-}
-
-class _DeadlineState extends State<_Deadline> {
-  late final Timer _timer;
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final remaining = widget.summary.remainingAt(DateTime.now());
-    final seconds = remaining?.inSeconds ?? 0;
-    final isCritical = seconds <= 60;
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 4),
-      child: CinematicNotice(
-        icon: isCritical ? Icons.alarm_rounded : Icons.schedule_rounded,
-        isError: isCritical,
-        message: seconds == 0
-            ? 'Deadline reached. Submit to confirm the result with the server.'
-            : 'Time remaining: ${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}',
-      ),
     );
   }
 }

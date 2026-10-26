@@ -6,7 +6,7 @@ import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/formatters/date_labels.dart';
-import 'package:training_app/core/presentation/components/loading_view.dart';
+import 'package:training_app/core/presentation/components/content_skeleton.dart';
 import 'package:training_app/features/certificates/presentation/controllers/certificate_controller.dart';
 
 class CertificateListScreen extends ConsumerWidget {
@@ -21,8 +21,9 @@ class CertificateListScreen extends ConsumerWidget {
           .when(
             skipLoadingOnRefresh: false,
             skipLoadingOnReload: false,
-            loading: () =>
-                const LoadingView(message: 'Loading your certificates...'),
+            loading: () => const SkeletonPage(
+              child: CardListSkeleton(message: 'Loading your certificates'),
+            ),
             error: (error, _) => ApiErrorView(
               error: error,
               onRetry: () => ref.invalidate(certificateListProvider),

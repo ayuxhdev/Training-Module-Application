@@ -5,7 +5,7 @@ import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
-import 'package:training_app/core/presentation/components/loading_view.dart';
+import 'package:training_app/core/presentation/components/content_skeleton.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/notifications/domain/models/training_notification.dart';
 import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
@@ -52,7 +52,9 @@ class NotificationCenterScreen extends ConsumerWidget {
       body: result.when(
         skipLoadingOnRefresh: false,
         skipLoadingOnReload: false,
-        loading: () => const LoadingView(message: 'Loading notifications…'),
+        loading: () => const SkeletonPage(
+          child: CardListSkeleton(message: 'Loading notifications…'),
+        ),
         error: (error, _) =>
             error is NotificationMutationError &&
                 error.statusCode != 401 &&
