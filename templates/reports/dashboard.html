@@ -1,14 +1,18 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="dashboard-workspace">
+<div class="dashboard-workspace{% if role == 'company' or role == 'manager' %} management-dashboard management-dashboard--{{ role }}{% endif %}">
 {% if role == "unavailable" %}
   {% include "components/page_header.html" with title="Dashboard" supporting_text="Your training workspace" %}
   {% include "components/empty_state.html" with title="Dashboard unavailable" message="No dashboard is available for this account." %}
 {% elif role == "company" or role == "manager" %}
+  <div class="management-scope-heading">
+    <span class="management-scope-label">{% if role == "company" %}Company workspace{% else %}Team workspace{% endif %}</span>
+    <span class="management-overdue-count{% if metrics.overdue %} is-overdue{% endif %}">{% if metrics.overdue %}<span aria-hidden="true">!</span> {% endif %}{{ metrics.overdue }} overdue assignment{{ metrics.overdue|pluralize }}</span>
+  </div>
   {% if role == "company" %}
     {% include "components/page_header.html" with title="Company dashboard" supporting_text="Company-wide training activity and workforce indicators" %}
   {% else %}
-    {% include "components/page_header.html" with title="Manager dashboard" supporting_text="Training activity and progress within your reporting scope" %}
+    {% include "components/page_header.html" with title="Team dashboard" supporting_text="Training activity and progress within your reporting scope" %}
   {% endif %}
 
   <p class="catalog-notice">

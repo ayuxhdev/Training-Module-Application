@@ -23,6 +23,7 @@ import 'package:training_app/features/management/presentation/screens/organizati
 import 'package:training_app/features/management/presentation/screens/employee_profile_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/employee_creation_form_screen.dart';
 import 'package:training_app/features/management/presentation/widgets/employee_deactivation_dialog.dart';
+import 'package:training_app/features/management/presentation/widgets/management_metrics.dart';
 import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
 
 import 'management_fixtures.dart';
@@ -151,9 +152,11 @@ void main() {
       final navBarRect = tester.getRect(navBarFinder.first);
       final targetRect = tester.getRect(finder.first);
       final isHorizontallyOverlapping =
-          targetRect.right > navBarRect.left && targetRect.left < navBarRect.right;
+          targetRect.right > navBarRect.left &&
+          targetRect.left < navBarRect.right;
       final isVerticallyObstructed =
-          targetRect.bottom > navBarRect.top && targetRect.top < navBarRect.bottom;
+          targetRect.bottom > navBarRect.top &&
+          targetRect.top < navBarRect.bottom;
       if (isHorizontallyOverlapping && isVerticallyObstructed) {
         final overlap = targetRect.bottom - navBarRect.top;
         final primaryScrollable = find.byType(Scrollable);
@@ -183,15 +186,18 @@ void main() {
     // Helper 1: Reveals target if already mounted on-stage or cached offstage in the element tree.
     Future<bool> revealIfMounted() async {
       if (finder.evaluate().isNotEmpty) {
-        if (scrollableAncestor.evaluate().isNotEmpty || primaryScrollable.evaluate().isNotEmpty) {
+        if (scrollableAncestor.evaluate().isNotEmpty ||
+            primaryScrollable.evaluate().isNotEmpty) {
           final targetRect = tester.getRect(finder.first);
           final navBarFinder = find.byType(NavigationBar);
-          final viewHeight = tester.view.physicalSize.height / tester.view.devicePixelRatio;
+          final viewHeight =
+              tester.view.physicalSize.height / tester.view.devicePixelRatio;
           final effectiveBottom = navBarFinder.evaluate().isNotEmpty
               ? tester.getRect(navBarFinder.first).bottom
               : viewHeight;
 
-          final isMountedOffscreen = targetRect.top >= effectiveBottom || targetRect.bottom <= 0;
+          final isMountedOffscreen =
+              targetRect.top >= effectiveBottom || targetRect.bottom <= 0;
           if (isMountedOffscreen) {
             await tester.ensureVisible(finder.first);
             await tester.pumpAndSettle();
@@ -2352,6 +2358,106 @@ void main() {
   );
 
   for (final brightness in Brightness.values) {
+    testWidgets(
+      '$brightness management metrics keep values, semantics and 16dp gaps',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        try {
+          for (final scale in [1.0, 2.0]) {
+            await tester.pumpWidget(
+              MaterialApp(
+                theme: brightness == Brightness.dark
+                    ? AppTheme.darkTheme
+                    : AppTheme.lightTheme,
+                home: MediaQuery(
+                  data: MediaQueryData(
+                    textScaler: TextScaler.linear(scale),
+                    disableAnimations: true,
+                  ),
+                  child: const Scaffold(
+                    body: SingleChildScrollView(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: ManagementMetricGrid(
+                          highlightOverdue: true,
+                          values: {
+                            'Assigned': '7',
+                            'Completed': '3',
+                            'Overdue': '1',
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            final assigned = tester.getRect(
+              find.byKey(const ValueKey('management-metric-Assigned')),
+            );
+            final completed = tester.getRect(
+              find.byKey(const ValueKey('management-metric-Completed')),
+            );
+            final overdue = tester.getRect(
+              find.byKey(const ValueKey('management-metric-Overdue')),
+            );
+            if (scale == 1) {
+              expect(completed.left - assigned.right, closeTo(16, 0.01));
+              expect(overdue.top - assigned.bottom, closeTo(16, 0.01));
+            } else {
+              expect(completed.top - assigned.bottom, closeTo(16, 0.01));
+              expect(overdue.top - completed.bottom, closeTo(16, 0.01));
+            }
+            expect(find.bySemanticsLabel('Overdue: 1'), findsOneWidget);
+            expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+            expect(tester.takeException(), isNull);
+          }
+        } finally {
+          semantics.dispose();
+        }
+      },
+    );
+  }
+
+  testWidgets(
+    'directory retains 16dp between records and navigation at large text',
+    (tester) async {
+      when(
+        () => repository.employees(
+          page: 1,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ManagementPage.fromJson(
+          pageJson([employeeJson(1), employeeJson(2)]),
+          DirectoryEmployee.fromJson,
+        ),
+      );
+      await launch(tester, path: '/workspace/employees', textScale: 2);
+      final first = find.widgetWithText(ListTile, 'Employee 1');
+      final second = find.widgetWithText(ListTile, 'Employee 2');
+      final scrollable = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(first, 100, scrollable: scrollable);
+      await tester.pumpAndSettle();
+      final position = tester.state<ScrollableState>(scrollable).position;
+      final firstBottom = tester.getRect(first).bottom + position.pixels;
+      await tester.scrollUntilVisible(second, 100, scrollable: scrollable);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(second).top + position.pixels - firstBottom,
+        closeTo(16, 0.01),
+      );
+      await tap(tester, second);
+      expect(find.byType(DirectoryEmployeeScreen), findsOneWidget);
+      verify(
+        () => repository.employee(2, cancelToken: any(named: 'cancelToken')),
+      ).called(1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final brightness in Brightness.values) {
     for (final (size, scale) in [
       (const Size(320, 640), 2.0),
       (const Size(844, 390), 1.6),
@@ -2412,7 +2518,10 @@ void main() {
               bottomNavigationBar: NavigationBar(
                 destinations: const [
                   NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-                  NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                  NavigationDestination(
+                    icon: Icon(Icons.person),
+                    label: 'Profile',
+                  ),
                 ],
               ),
             ),
@@ -2482,7 +2591,10 @@ void main() {
               bottomNavigationBar: NavigationBar(
                 destinations: const [
                   NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-                  NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                  NavigationDestination(
+                    icon: Icon(Icons.person),
+                    label: 'Profile',
+                  ),
                 ],
               ),
             ),
@@ -2543,25 +2655,28 @@ void main() {
         await tap(tester, 'Team dashboard');
         expect(find.byType(ManagementDashboardScreen), findsOneWidget);
         expect(
-          find.text('Your reporting hierarchy, including your own assignments.'),
+          find.text(
+            'Your reporting hierarchy, including your own assignments.',
+          ),
           findsOneWidget,
         );
       },
     );
 
-    testWidgets(
-      'taps directly on routes without NavigationBar',
-      (tester) async {
-        await launch(
-          tester,
-          path: '/workspace/employees/new',
-          identity: managementIdentity(capabilities: {'organization.add_employee'}),
-        );
-        expect(find.byType(NavigationBar), findsNothing);
-        await tap(tester, 'Choose date');
-        expect(find.byType(DatePickerDialog), findsOneWidget);
-      },
-    );
+    testWidgets('taps directly on routes without NavigationBar', (
+      tester,
+    ) async {
+      await launch(
+        tester,
+        path: '/workspace/employees/new',
+        identity: managementIdentity(
+          capabilities: {'organization.add_employee'},
+        ),
+      );
+      expect(find.byType(NavigationBar), findsNothing);
+      await tap(tester, 'Choose date');
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+    });
 
     testWidgets(
       'scrolls when mounted target is in scrollable outside viewport below NavigationBar',
@@ -2590,7 +2705,10 @@ void main() {
               bottomNavigationBar: NavigationBar(
                 destinations: const [
                   NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-                  NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                  NavigationDestination(
+                    icon: Icon(Icons.person),
+                    label: 'Profile',
+                  ),
                 ],
               ),
             ),
@@ -2646,7 +2764,10 @@ void main() {
               bottomNavigationBar: NavigationBar(
                 destinations: const [
                   NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-                  NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                  NavigationDestination(
+                    icon: Icon(Icons.person),
+                    label: 'Profile',
+                  ),
                 ],
               ),
             ),
@@ -2705,8 +2826,14 @@ void main() {
                 ),
                 bottomNavigationBar: NavigationBar(
                   destinations: const [
-                    NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-                    NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                    NavigationDestination(
+                      icon: Icon(Icons.home),
+                      label: 'Home',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.person),
+                      label: 'Profile',
+                    ),
                   ],
                 ),
               ),
@@ -2750,7 +2877,10 @@ void main() {
               bottomNavigationBar: NavigationBar(
                 destinations: const [
                   NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-                  NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                  NavigationDestination(
+                    icon: Icon(Icons.person),
+                    label: 'Profile',
+                  ),
                 ],
               ),
             ),
@@ -2775,9 +2905,11 @@ void main() {
         expect(targetFinder.evaluate(), isEmpty);
 
         // - Target still exists in tester.allElements (cached offstage)
-        final offstageMatches = tester.allElements.where(
-          (e) => targetFinder is MatchFinder && targetFinder.matches(e),
-        ).toList();
+        final offstageMatches = tester.allElements
+            .where(
+              (e) => targetFinder is MatchFinder && targetFinder.matches(e),
+            )
+            .toList();
         expect(offstageMatches, isNotEmpty);
 
         // - Target geometry is positioned above the visible viewport
@@ -2826,7 +2958,10 @@ void main() {
               bottomNavigationBar: NavigationBar(
                 destinations: const [
                   NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-                  NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+                  NavigationDestination(
+                    icon: Icon(Icons.person),
+                    label: 'Profile',
+                  ),
                 ],
               ),
             ),
@@ -2848,7 +2983,10 @@ void main() {
         // 3. Establish that neither default finder nor element tree has the target
         expect(targetFinder.evaluate(), isEmpty);
         expect(
-          tester.allElements.where((e) => targetFinder is MatchFinder ? targetFinder.matches(e) : false),
+          tester.allElements.where(
+            (e) =>
+                targetFinder is MatchFinder ? targetFinder.matches(e) : false,
+          ),
           isEmpty,
         );
 

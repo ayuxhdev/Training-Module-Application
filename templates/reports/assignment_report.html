@@ -54,21 +54,8 @@
   .assignment-report-table .status-badge {
     white-space: nowrap;
   }
-  .table-scroll-hint {
-    display: none;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--font-size-xs);
-    color: var(--color-text-muted);
-    margin: 0 0 var(--space-2);
-  }
-  @media (max-width: 80rem) {
-    .table-scroll-hint {
-      display: flex;
-    }
-  }
 </style>
-<div class="catalog-workspace">
+<div class="catalog-workspace report-workspace">
   <header class="page-header">
     <div class="page-header-main">
       <h1>Assignment report</h1>
@@ -137,8 +124,8 @@
       <h2 id="assignment-report-results-heading">Assignment results</h2>
       <p>Employee, training, timeline and completion information for assignments in scope.</p>
     </header>
-    <p class="table-scroll-hint" aria-hidden="true">&larr;&rarr; Scroll horizontally to view all columns</p>
-    <div class="table-scroll catalog-table-scroll" role="region" aria-label="Assignment report results" tabindex="0">
+    <p class="management-scroll-hint" id="report-table-help">Scroll horizontally to view all columns. Keyboard: focus this table region and use the arrow keys.</p>
+    <div class="table-scroll catalog-table-scroll management-table-region" role="region" aria-label="Assignment report results" aria-describedby="report-table-help" tabindex="0">
       <table class="catalog-table assignment-report-table">
         <thead>
           <tr>

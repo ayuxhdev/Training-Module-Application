@@ -11,7 +11,8 @@
   </header>
   <section class="org-panel" aria-labelledby="reference-list-heading">
     <header class="org-panel-heading"><h2 id="reference-list-heading">{{ title }}</h2><p>Codes, descriptions and current status</p></header>
-    <div class="table-scroll org-table-scroll" role="region" aria-label="{{ title }}" tabindex="0">
+    <p class="management-scroll-hint" id="reference-table-help">Scroll horizontally if needed. Keyboard: focus this table region and use the arrow keys.</p>
+    <div class="table-scroll org-table-scroll management-table-region" role="region" aria-label="{{ title }}" aria-describedby="reference-table-help" tabindex="0">
       <table class="org-table org-reference-table">
         <thead><tr><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Description</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
         <tbody>

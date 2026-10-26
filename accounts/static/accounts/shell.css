@@ -1340,6 +1340,35 @@ button.sidebar-backdrop { display: none; }
   .catalog-lessons-heading { padding: var(--space-4) var(--space-4) var(--space-2); }
 }
 
+/* M22 Batch 5: management presentation, scoped away from learner/player pages. */
+.management-scope-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
+.management-scope-label { font-size: var(--font-size-xs); font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--color-brand-primary); }
+.management-dashboard > .page-header { padding: var(--space-6); border: var(--border-subtle); border-inline-start: 4px solid var(--color-brand-primary); border-radius: var(--radius-md); background: var(--color-accent-surface); }
+.management-dashboard--manager > .page-header { border-inline-start-color: var(--color-brand-secondary); background: var(--color-surface-subtle); }
+.management-dashboard--manager .management-scope-label { color: var(--color-brand-secondary); }
+.management-overdue-count { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: var(--border-subtle); border-radius: var(--radius-sm); font-size: var(--font-size-sm); font-weight: 600; background: var(--color-surface); }
+.management-overdue-count.is-overdue { border-color: var(--color-warning-border); background: var(--color-warning-background); color: var(--color-warning-foreground); }
+.management-dashboard .dashboard-assignment-states > div:has(.dashboard-state-dot--warning) { padding: var(--space-3); border: 1px solid var(--color-warning-border); border-radius: var(--radius-sm); background: var(--color-warning-background); color: var(--color-warning-foreground); }
+.management-dashboard .dashboard-assignment-states > div:has(.dashboard-state-dot--warning) dt { color: inherit; }
+.org-workspace .management-scroll-hint, .report-workspace .management-scroll-hint { margin: 0; padding: var(--space-3) var(--space-4); color: var(--color-text-muted); background: var(--color-surface-subtle); border-bottom: var(--border-subtle); font-size: var(--font-size-sm); }
+.org-workspace .management-table-region, .report-workspace .management-table-region { min-width: 0; max-block-size: 65vh; overflow: auto; scrollbar-color: var(--color-border-strong) var(--color-surface-subtle); }
+.management-table-region thead th { position: sticky; top: 0; z-index: 1; background: var(--color-surface-subtle); box-shadow: 0 1px 0 var(--color-border); }
+.management-table-region .org-table-actions { min-width: 6rem; }
+.org-workspace .management-form-section, .catalog-workspace .management-form-section { min-width: 0; margin: 0; padding: 0; border: 0; }
+.management-form-section + .management-form-section { padding-top: var(--space-6); border-top: var(--border-subtle); }
+.management-form-section legend { padding: 0; margin-bottom: var(--space-4); font-size: var(--font-size-lg); font-weight: 600; color: var(--color-text); }
+.management-fields > .management-field { min-width: 0; }
+.management-fields > .management-field > label { display: block; margin-bottom: var(--space-2); }
+.management-fields > .management-field:has([required]) > label::after { content: none; }
+@media (max-width: 40rem) {
+  .management-dashboard > .page-header { padding: var(--space-4); }
+}
+@media print {
+  .org-workspace .management-table-region, .report-workspace .management-table-region { max-block-size: none; overflow: visible; }
+  .management-table-region thead th { position: static; }
+  .management-scroll-hint { display: none; }
+}
+
 /* Accessibility helpers */
 .visually-hidden {
   position: absolute !important;

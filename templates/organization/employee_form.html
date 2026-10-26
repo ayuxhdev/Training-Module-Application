@@ -10,7 +10,30 @@
     <form method="post" class="form-stack org-form">
       {% csrf_token %}
       {% if form.errors %}<p class="org-validation" role="alert">Please correct the errors below. Your entries have been preserved.</p>{% endif %}
-      <div class="org-fields">{{ form.as_div }}</div>
+      {{ form.non_field_errors }}
+      {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+      <fieldset class="management-form-section">
+        <legend>Identity and account</legend>
+        <div class="org-fields management-fields">
+          {% include "components/management_field.html" with field=form.employee_code %}
+          {% include "components/management_field.html" with field=form.display_name %}
+          {% include "components/management_field.html" with field=form.user %}
+        </div>
+      </fieldset>
+      <fieldset class="management-form-section">
+        <legend>Organization and reporting</legend>
+        <div class="org-fields management-fields">
+          {% include "components/management_field.html" with field=form.department %}
+          {% include "components/management_field.html" with field=form.job_role %}
+          {% include "components/management_field.html" with field=form.reporting_manager %}
+        </div>
+      </fieldset>
+      <fieldset class="management-form-section">
+        <legend>Employment details</legend>
+        <div class="org-fields management-fields">
+          {% include "components/management_field.html" with field=form.date_joined %}
+        </div>
+      </fieldset>
       <div class="org-form-actions"><button class="btn btn-primary" type="submit">Save employee</button><a class="btn btn-secondary" href="{% url 'organization:employee-list' %}">Cancel</a></div>
     </form>
   </section>

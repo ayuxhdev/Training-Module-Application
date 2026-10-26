@@ -334,7 +334,12 @@ class OrganizationViewTests(TestCase):
                 client = Client()
                 client.force_login(user)
                 listing = client.get("/employees/")
-                self.assertContains(listing, 'class="table-scroll org-table-scroll" role="region" aria-label="Employees" tabindex="0"')
+                self.assertRegex(
+                    listing.content.decode(),
+                    r'<div(?=[^>]*\bclass="[^"]*\btable-scroll\b)(?=[^>]*\bclass="[^"]*\borg-table-scroll\b)'
+                    r'(?=[^>]*\brole="region")(?=[^>]*\baria-label="Employees")'
+                    r'(?=[^>]*\baria-describedby="employee-table-help")(?=[^>]*\btabindex="0")[^>]*>',
+                )
                 self.assertContains(listing, '<th scope="col">Employee</th>')
                 self.assertContains(listing, '<th scope="row">')
                 self.assertContains(listing, '&lt;script&gt;unsafe employee&lt;/script&gt;')

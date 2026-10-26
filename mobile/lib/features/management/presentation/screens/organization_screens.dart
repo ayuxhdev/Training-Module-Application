@@ -38,6 +38,17 @@ class _OrganizationListScreenState
   }
 
   List<Widget> _items<T>(ManagementPage<T> page, Widget Function(T) tile) => [
+    CinematicHero(
+      eyebrow: 'Organization',
+      title: widget.referenceKind?.title ?? 'Employee directory',
+      subtitle: widget.referenceKind == null
+          ? 'Profiles and reporting relationships available to your account.'
+          : 'Codes, descriptions and current organization status.',
+      icon: widget.referenceKind == null
+          ? Icons.badge_outlined
+          : Icons.account_tree_outlined,
+    ),
+    const SizedBox(height: 24),
     SectionHeading('${page.count} ${_recordLabel(page.count)}'),
     if (page.items.isEmpty) const EmptyView(message: 'No records to display.'),
     ...page.items.map(
@@ -127,7 +138,8 @@ class _OrganizationListScreenState
         },
         content: (page) => _items(
           page,
-          (employee) => Card(
+          (employee) => CustomCard(
+            padding: EdgeInsets.zero,
             child: ListTile(
               contentPadding: const EdgeInsets.all(16),
               title: Text(employee.displayName),

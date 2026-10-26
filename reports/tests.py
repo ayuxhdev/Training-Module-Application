@@ -226,7 +226,7 @@ class ReportingTests(CurriculumTestCase):
 		response = client.get("/")
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.context["role"], "manager")
-		self.assertContains(response, "Manager dashboard")
+		self.assertContains(response, "Team dashboard")
 		self.assertContains(response, f'href="{reverse("organization:employee-list")}"')
 		self.assertContains(response, 'href="/assignments/"')
 		self.assertContains(response, "Assignment report")

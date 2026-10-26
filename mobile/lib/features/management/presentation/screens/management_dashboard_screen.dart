@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/core/presentation/formatters/date_labels.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
@@ -10,6 +11,7 @@ import 'package:training_app/features/auth/presentation/controllers/auth_control
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/management/presentation/widgets/read_only_page.dart';
+import 'package:training_app/features/management/presentation/widgets/management_metrics.dart';
 
 class ManagementDashboardScreen extends ConsumerWidget {
   const ManagementDashboardScreen({super.key});
@@ -41,7 +43,9 @@ class ManagementDashboardScreen extends ConsumerWidget {
               };
         return [
           CinematicHero(
-            eyebrow: "Garden's Need",
+            eyebrow: dashboard.isCompany
+                ? 'Company workspace'
+                : 'Team workspace',
             title: dashboard.isCompany ? 'Company dashboard' : 'Team dashboard',
             subtitle: dashboard.isCompany
                 ? 'Company-wide training overview.'
@@ -49,43 +53,35 @@ class ManagementDashboardScreen extends ConsumerWidget {
             icon: dashboard.isCompany
                 ? Icons.business_outlined
                 : Icons.groups_outlined,
+            child: StatusBadge(
+              text: dashboard.isCompany ? 'Company-wide' : 'Reporting team',
+              status: dashboard.isCompany
+                  ? BadgeStatus.info
+                  : BadgeStatus.neutral,
+            ),
           ),
           const SizedBox(height: 24),
-          const SectionHeading('Overview'),
-          CustomCard(
-            child: Wrap(
-              spacing: 32,
-              runSpacing: 8,
-              children: [
-                for (final entry in summaryLabels.entries)
-                  InformationRow(
-                    entry.value,
-                    dashboard.summary[entry.key]?.toString() ?? '—',
-                  ),
-              ],
-            ),
+          SectionHeading(
+            dashboard.isCompany ? 'Workforce overview' : 'Team overview',
+          ),
+          ManagementMetricGrid(
+            values: {
+              for (final entry in summaryLabels.entries)
+                entry.value: dashboard.summary[entry.key]?.toString() ?? '—',
+            },
           ),
           const SectionHeading('Assignment status'),
-          CustomCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Wrap(
-                  spacing: 32,
-                  runSpacing: 8,
-                  children: [
-                    InformationRow('Total assignments', '${metrics.total}'),
-                    InformationRow('Assigned', '${metrics.assigned}'),
-                    InformationRow('In progress', '${metrics.inProgress}'),
-                    InformationRow('Completed', '${metrics.completed}'),
-                    InformationRow('Cancelled', '${metrics.cancelled}'),
-                    InformationRow('Overdue', '${metrics.overdue}'),
-                  ],
-                ),
-                const Divider(),
-                InformationRow('Completion', '${metrics.completionPercent}%'),
-              ],
-            ),
+          ManagementMetricGrid(
+            highlightOverdue: metrics.overdue > 0,
+            values: {
+              'Total assignments': '${metrics.total}',
+              'Assigned': '${metrics.assigned}',
+              'In progress': '${metrics.inProgress}',
+              'Completed': '${metrics.completed}',
+              'Cancelled': '${metrics.cancelled}',
+              'Overdue': '${metrics.overdue}',
+              'Completion': '${metrics.completionPercent}%',
+            },
           ),
           if (!dashboard.isCompany) ...[
             const SectionHeading('Employees with incomplete training'),

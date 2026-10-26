@@ -6,7 +6,31 @@
 <section class="catalog-panel catalog-editor" aria-labelledby="version-editor-heading">
   <header class="catalog-panel-heading"><h2 id="version-editor-heading">Version information</h2><p>Edit this draft on its own page before publishing.</p></header>
 <form method="post" class="form-stack catalog-form">
-	{% include "training/components/editor_fields.html" %}
+  {% csrf_token %}
+  {% if form.errors %}<p class="catalog-validation" role="alert">Please correct the errors below. Text entries have been preserved.</p>{% endif %}
+  {{ form.non_field_errors }}
+  {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+  <p class="muted">Fields marked with an asterisk are required.</p>
+  <fieldset class="management-form-section">
+    <legend>Version identity</legend>
+    <div class="catalog-fields management-fields">
+      {% include "components/management_field.html" with field=form.version_number %}
+      {% include "components/management_field.html" with field=form.title %}
+    </div>
+  </fieldset>
+  <fieldset class="management-form-section">
+    <legend>Learning content</legend>
+    <div class="catalog-fields management-fields">
+      {% include "components/management_field.html" with field=form.description %}
+      {% include "components/management_field.html" with field=form.learning_objectives %}
+    </div>
+  </fieldset>
+  <fieldset class="management-form-section">
+    <legend>Revision notes</legend>
+    <div class="catalog-fields management-fields">
+      {% include "components/management_field.html" with field=form.change_summary %}
+    </div>
+  </fieldset>
 	<div class="catalog-form-actions"><button class="btn btn-primary" type="submit">Save draft</button><a href="{% url 'training:training-detail' form.instance.training_id %}" class="btn btn-secondary">Cancel</a></div>
 </form>
 </section>
