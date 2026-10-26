@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Profile | Garden's Need Training{% endblock %}
+{% block content %}
+<div class="org-workspace account-profile">
+  <header class="page-header">
+    <div class="page-header-main"><h1>Profile</h1><p class="muted">Your account and organization details.</p></div>
+  </header>
+  <section class="org-panel" aria-labelledby="account-details-heading">
+    <header class="org-panel-heading"><h2 id="account-details-heading">Account details</h2><p>Read-only account information</p></header>
+    <dl class="org-profile">
+      <div><dt>Username</dt><dd>{{ user.get_username }}</dd></div>
+      <div><dt>Employee Code</dt><dd>{{ profile_employee.employee_code|default:"Not assigned" }}</dd></div>
+      <div><dt>Department</dt><dd>{{ profile_employee.department.name|default:"Not assigned" }}</dd></div>
+      <div><dt>Job Role</dt><dd>{{ profile_employee.job_role.name|default:"Not assigned" }}</dd></div>
+    </dl>
+  </section>
+</div>
+{% endblock %}

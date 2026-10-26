@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/presentation/components/secondary_button.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
@@ -48,7 +50,6 @@ class AuthControllerMock extends AuthController {
   }
 }
 
-
 class ProfileIdentityAuthController extends AuthController {
   final AuthenticatedIdentity _identity;
   ProfileIdentityAuthController(this._identity);
@@ -58,6 +59,98 @@ class ProfileIdentityAuthController extends AuthController {
 }
 
 void main() {
+  for (final brightness in Brightness.values) {
+    for (final scenario in [
+      (width: 390.0, scale: 1.0, columns: 2),
+      (width: 280.0, scale: 1.0, columns: 1),
+      (width: 390.0, scale: 2.0, columns: 1),
+    ]) {
+      testWidgets(
+        'account details ${scenario.width}px ${scenario.scale}x $brightness',
+        (tester) async {
+          tester.view.physicalSize = Size(scenario.width, 1600);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final semantics = tester.ensureSemantics();
+          try {
+            await tester.pumpWidget(
+              ProviderScope(
+                overrides: [
+                  authControllerProvider.overrideWith(
+                    () => AuthControllerMock(),
+                  ),
+                ],
+                child: MaterialApp(
+                  theme: brightness == Brightness.dark
+                      ? AppTheme.darkTheme
+                      : AppTheme.lightTheme,
+                  builder: (context, child) => MediaQuery(
+                    data: MediaQuery.of(
+                      context,
+                    ).copyWith(textScaler: TextScaler.linear(scenario.scale)),
+                    child: child!,
+                  ),
+                  home: const ProfileScreen(),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            final labels = [
+              'Username',
+              'Employee Code',
+              'Department',
+              'Job Role',
+            ];
+            final values = ['jdoe', 'EMP123', 'Engineering', 'Developer'];
+            final positions = labels
+                .map((label) => tester.getTopLeft(find.text(label)))
+                .toList();
+            for (var index = 0; index < labels.length; index++) {
+              expect(
+                find.bySemanticsLabel('${labels[index]}: ${values[index]}'),
+                findsOneWidget,
+              );
+              final sortKey =
+                  tester
+                          .getSemantics(
+                            find.bySemanticsLabel(
+                              '${labels[index]}: ${values[index]}',
+                            ),
+                          )
+                          .sortKey
+                      as OrdinalSortKey;
+              expect(sortKey.order, index.toDouble());
+              expect(
+                tester.getTopLeft(find.text(values[index])).dx,
+                positions[index].dx,
+              );
+              final text = tester.widget<Text>(find.text(labels[index]));
+              expect(text.textAlign, isNot(TextAlign.center));
+            }
+            if (scenario.columns == 2) {
+              expect(positions[0].dy, positions[1].dy);
+              expect(positions[2].dy, positions[3].dy);
+              expect(positions[0].dx, lessThan(positions[1].dx));
+              expect(positions[2].dy, greaterThan(positions[0].dy));
+            } else {
+              for (var index = 1; index < positions.length; index++) {
+                expect(positions[index].dx, positions[0].dx);
+                expect(
+                  positions[index].dy,
+                  greaterThan(positions[index - 1].dy),
+                );
+              }
+            }
+            expect(tester.takeException(), isNull);
+          } finally {
+            semantics.dispose();
+          }
+        },
+      );
+    }
+  }
+
   Future<void> pumpProfile(WidgetTester tester, AuthControllerMock auth) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -67,6 +160,73 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('certificate action still opens the existing profile route', (
+    tester,
+  ) async {
+    final router = GoRouter(
+      routes: [
+        GoRoute(path: '/', builder: (_, state) => const ProfileScreen()),
+        GoRoute(
+          path: '/profile/certificates',
+          builder: (_, state) =>
+              const Scaffold(body: Text('Certificate destination')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authControllerProvider.overrideWith(() => AuthControllerMock()),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('My Certificates'), 150);
+    await tester.tap(find.text('My Certificates'));
+    await tester.pumpAndSettle();
+    expect(find.text('Certificate destination'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'management-only profile keeps username without inventing employee details',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authControllerProvider.overrideWith(
+              () => ProfileIdentityAuthController(
+                AuthenticatedIdentity(
+                  username: 'admin',
+                  displayName: 'Administrator',
+                ),
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: const ProfileScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('admin'), findsOneWidget);
+      expect(find.text('Username'), findsOneWidget);
+      for (final label in [
+        'Employee Code',
+        'Department',
+        'Job Role',
+        'My Certificates',
+      ]) {
+        expect(find.text(label), findsNothing);
+      }
+      expect(find.byTooltip('Appearance'), findsOneWidget);
+      expect(find.text('Logout'), findsOneWidget);
+    },
+  );
 
   testWidgets('refresh keeps profile visible and displays updated data', (
     tester,
@@ -199,10 +359,7 @@ void main() {
                 () => ProfileIdentityAuthController(identity),
               ),
             ],
-            child: MaterialApp(
-              theme: theme,
-              home: const ProfileScreen(),
-            ),
+            child: MaterialApp(theme: theme, home: const ProfileScreen()),
           ),
         );
         await tester.pumpAndSettle();

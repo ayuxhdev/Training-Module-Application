@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/errors/api_error.dart';
@@ -115,27 +116,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               subtitle: 'Your organization profile.',
             ),
             CustomCard(
-              child: Column(
-                children: [
-                  if (employee != null) ...[
-                    _ProfileItem(
-                      label: 'Employee Code',
-                      value: employee.employeeCode,
-                    ),
-                    const Divider(),
-                    _ProfileItem(
-                      label: 'Department',
-                      value: employee.department,
-                    ),
-                    const Divider(),
-                    _ProfileItem(label: 'Job Role', value: employee.jobRole),
-                    const Divider(),
-                  ],
-                  _ProfileItem(
-                    label: 'Username',
-                    value: authState.identity.username,
-                  ),
-                ],
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final columns =
+                      constraints.maxWidth >= 280 &&
+                          MediaQuery.textScalerOf(context).scale(14) <= 21
+                      ? 2
+                      : 1;
+                  final fields = [
+                    ('Username', authState.identity.username),
+                    if (employee != null) ...[
+                      ('Employee Code', employee.employeeCode),
+                      ('Department', employee.department),
+                      ('Job Role', employee.jobRole),
+                    ],
+                  ];
+                  return Wrap(
+                    spacing: AppSpacing.md,
+                    runSpacing: AppSpacing.md,
+                    children: [
+                      for (final (index, field) in fields.indexed)
+                        SizedBox(
+                          width:
+                              (constraints.maxWidth -
+                                  AppSpacing.md * (columns - 1)) /
+                              columns,
+                          child: _ProfileItem(
+                            label: field.$1,
+                            value: field.$2,
+                            order: index.toDouble(),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -181,13 +195,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 class _ProfileItem extends StatelessWidget {
   final String label;
   final String value;
+  final double order;
 
-  const _ProfileItem({required this.label, required this.value});
+  const _ProfileItem({
+    required this.label,
+    required this.value,
+    required this.order,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+    return Semantics(
+      container: true,
+      sortKey: OrdinalSortKey(order),
+      label: '$label: $value',
+      excludeSemantics: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -197,7 +219,7 @@ class _ProfileItem extends StatelessWidget {
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppSpacing.xs),
           Text(
             value,
             style: Theme.of(context).textTheme.bodyLarge

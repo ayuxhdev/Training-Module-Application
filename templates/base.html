@@ -21,6 +21,7 @@
       </div>
       <div class="account-controls">
         <span class="signed-in-user">Signed in as {% if user.get_full_name %}{{ user.get_full_name }}{% else %}{{ user.get_username }}{% endif %}</span>
+        <a class="btn btn-secondary" href="{% url 'accounts:profile' %}"{% if request.resolver_match.view_name == 'accounts:profile' %} aria-current="page"{% endif %}>Profile</a>
         {% include "components/appearance_control.html" %}
         <form method="post" action="{% url 'accounts:logout' %}">
           {% csrf_token %}
