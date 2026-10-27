@@ -7,6 +7,9 @@ from .forms import AuditLogFilterForm
 from .models import AuditLog
 
 
+AUDIT_RESULT_LIMIT = 200
+
+
 @login_required
 def audit_log_list(request):
 	if not request.user.has_perm("audit.view_auditlog"):
@@ -32,5 +35,6 @@ def audit_log_list(request):
 		logs = logs.none()
 	return render(request, "audit/audit_log_list.html", {
 		"filter_form": form,
-		"audit_logs": logs.order_by("-occurred_at", "-pk")[:200],
+		"audit_logs": logs.order_by("-occurred_at", "-pk")[:AUDIT_RESULT_LIMIT],
+		"audit_result_limit": AUDIT_RESULT_LIMIT,
 	}, status=200 if valid else 400)

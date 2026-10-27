@@ -107,6 +107,55 @@ void main() {
   );
 
   test(
+    'directory search and filters use the agreed server query contract',
+    () async {
+      final response = Response(
+        requestOptions: RequestOptions(path: '/management/employees/'),
+        data: pageJson([employeeJson()]),
+      );
+      when(
+        () => dio.get(
+          '/management/employees/',
+          queryParameters: {
+            'page': 3,
+            'page_size': 25,
+            'search': 'Taylor',
+            'department_id': 4,
+            'job_role_id': 9,
+            'is_active': false,
+          },
+          cancelToken: null,
+        ),
+      ).thenAnswer((_) async => response);
+
+      final page = await repository.employees(
+        page: 3,
+        pageSize: 25,
+        search: '  Taylor  ',
+        departmentId: 4,
+        jobRoleId: 9,
+        isActive: false,
+      );
+
+      expect(page.items.single.employeeCode, 'EMP1');
+      verify(
+        () => dio.get(
+          '/management/employees/',
+          queryParameters: {
+            'page': 3,
+            'page_size': 25,
+            'search': 'Taylor',
+            'department_id': 4,
+            'job_role_id': 9,
+            'is_active': false,
+          },
+          cancelToken: null,
+        ),
+      ).called(1);
+    },
+  );
+
+  test(
     'employee detail and both reference routes parse their exact contracts',
     () async {
       reply('/management/employees/3/', employeeDetailJson(3));
@@ -974,6 +1023,8 @@ void main() {
     await expectLater(repository.employees(page: 0), throwsArgumentError);
     await expectLater(repository.employees(pageSize: 0), throwsArgumentError);
     await expectLater(repository.employees(pageSize: 101), throwsArgumentError);
+    expect(() => repository.employees(departmentId: 0), throwsArgumentError);
+    expect(() => repository.employees(jobRoleId: 0), throwsArgumentError);
     await expectLater(
       repository.references(ReferenceKind.jobRoles, page: -1),
       throwsArgumentError,

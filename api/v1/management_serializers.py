@@ -62,6 +62,26 @@ class EmployeeDirectoryDetailSerializer(EmployeeDirectorySerializer):
         return "ACTIVE" if employee.user.is_active else "INACTIVE"
 
 
+class EmployeeDirectoryFilterSerializer(serializers.Serializer):
+    search = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=150,
+        trim_whitespace=True,
+    )
+    department_id = serializers.IntegerField(
+        required=False,
+        min_value=1,
+    )
+    job_role_id = serializers.IntegerField(
+        required=False,
+        min_value=1,
+    )
+    is_active = serializers.BooleanField(
+        required=False,
+    )
+
+
 class EmployeeProfileWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee

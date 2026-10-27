@@ -182,7 +182,7 @@ class _EmployeeCreationFormScreenState
           managementAccount(ref.read(authControllerProvider)) != _account) {
         return;
       }
-      ref.invalidate(employeeDirectoryProvider(1));
+      ref.invalidate(employeeDirectoryProvider);
       ref.invalidate(managementDashboardProvider);
       setState(() => _saveCompleted = true);
       ScaffoldMessenger.of(context).showSnackBar(

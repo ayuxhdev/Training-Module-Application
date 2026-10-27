@@ -304,16 +304,42 @@ final managementDashboardProvider =
           .dashboard(cancelToken: request);
     }, retry: (_, _) => null);
 
+typedef EmployeeDirectoryRequest = ({
+  int page,
+  String? search,
+  int? departmentId,
+  int? jobRoleId,
+  bool? isActive,
+});
+
 final employeeDirectoryProvider = FutureProvider.autoDispose
-    .family<ManagementPage<DirectoryEmployee>, int>((ref, page) {
-      final request = _request(
+    .family<ManagementPage<DirectoryEmployee>, EmployeeDirectoryRequest>((
+      ref,
+      request,
+    ) {
+      final cancelToken = _request(
         ref,
         (identity) =>
             identity.capabilities.contains('organization.view_employee'),
       );
-      return ref
-          .watch(managementRepositoryProvider)
-          .employees(page: page, cancelToken: request);
+      final repository = ref.watch(managementRepositoryProvider);
+      if (request.search == null &&
+          request.departmentId == null &&
+          request.jobRoleId == null &&
+          request.isActive == null) {
+        return repository.employees(
+          page: request.page,
+          cancelToken: cancelToken,
+        );
+      }
+      return repository.employees(
+        page: request.page,
+        search: request.search,
+        departmentId: request.departmentId,
+        jobRoleId: request.jobRoleId,
+        isActive: request.isActive,
+        cancelToken: cancelToken,
+      );
     }, retry: (_, _) => null);
 
 final directoryEmployeeProvider = FutureProvider.autoDispose
@@ -369,4 +395,15 @@ final organizationReferencesProvider = FutureProvider.autoDispose
       return ref
           .watch(managementRepositoryProvider)
           .references(target.kind, page: target.page, cancelToken: request);
+    }, retry: (_, _) => null);
+
+final organizationReferenceChoicesProvider = FutureProvider.autoDispose
+    .family<List<OrganizationReference>, ReferenceKind>((ref, kind) {
+      final request = _request(
+        ref,
+        (identity) => identity.capabilities.contains(kind.permission),
+      );
+      return ref
+          .watch(managementRepositoryProvider)
+          .allReferences(kind, cancelToken: request);
     }, retry: (_, _) => null);

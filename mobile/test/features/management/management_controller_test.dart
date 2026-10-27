@@ -15,6 +15,14 @@ import 'management_fixtures.dart';
 
 class RepositoryMock extends Mock implements ManagementRepository {}
 
+EmployeeDirectoryRequest _directoryRequest(int page) => (
+  page: page,
+  search: null,
+  departmentId: null,
+  jobRoleId: null,
+  isActive: null,
+);
+
 void main() {
   late RepositoryMock repository;
   late ManagementTestAuth auth;
@@ -425,10 +433,9 @@ void main() {
       isTrue,
     );
     expect(
-      (await container.read(employeeDirectoryProvider(2).future))
-          .items
-          .single
-          .id,
+      (await container.read(
+        employeeDirectoryProvider(_directoryRequest(2)).future,
+      )).items.single.id,
       2,
     );
     expect((await container.read(directoryEmployeeProvider(2).future)).id, 2);
@@ -451,7 +458,9 @@ void main() {
         auth.setAuth(denied);
         for (final future in [
           container.read(managementDashboardProvider.future),
-          container.read(employeeDirectoryProvider(1).future),
+          container.read(
+            employeeDirectoryProvider(_directoryRequest(1)).future,
+          ),
           container.read(directoryEmployeeProvider(1).future),
           container.read(
             organizationReferencesProvider((
@@ -502,7 +511,7 @@ void main() {
       throwsA(isA<ApiError>()),
     );
     await expectLater(
-      container.read(employeeDirectoryProvider(1).future),
+      container.read(employeeDirectoryProvider(_directoryRequest(1)).future),
       throwsA(isA<ApiError>()),
     );
     verifyNever(
@@ -521,7 +530,10 @@ void main() {
       tokens.add(call.namedArguments[#cancelToken] as CancelToken);
       return tokens.length == 1 ? old.future : current.future;
     });
-    final sub = container.listen(employeeDirectoryProvider(1), (_, _) {});
+    final sub = container.listen(
+      employeeDirectoryProvider(_directoryRequest(1)),
+      (_, _) {},
+    );
     addTearDown(sub.close);
     await Future<void>.delayed(Duration.zero);
     auth.setAuth(
@@ -531,13 +543,15 @@ void main() {
     expect(tokens.first.isCancelled, isTrue);
     old.complete(employeePage(name: 'Old private employee'));
     await Future<void>.delayed(Duration.zero);
-    expect(container.read(employeeDirectoryProvider(1)).isLoading, isTrue);
+    expect(
+      container.read(employeeDirectoryProvider(_directoryRequest(1))).isLoading,
+      isTrue,
+    );
     current.complete(employeePage(name: 'Current employee'));
     expect(
-      (await container.read(employeeDirectoryProvider(1).future))
-          .items
-          .single
-          .displayName,
+      (await container.read(
+        employeeDirectoryProvider(_directoryRequest(1)).future,
+      )).items.single.displayName,
       'Current employee',
     );
   });
@@ -556,7 +570,10 @@ void main() {
         token = call.namedArguments[#cancelToken] as CancelToken;
         return response.future;
       });
-      final sub = container.listen(employeeDirectoryProvider(1), (_, _) {});
+      final sub = container.listen(
+        employeeDirectoryProvider(_directoryRequest(1)),
+        (_, _) {},
+      );
       addTearDown(sub.close);
       await Future<void>.delayed(Duration.zero);
       auth.setAuth(
@@ -565,13 +582,18 @@ void main() {
         ),
       );
       await expectLater(
-        container.read(employeeDirectoryProvider(1).future),
+        container.read(employeeDirectoryProvider(_directoryRequest(1)).future),
         throwsA(isA<ApiError>()),
       );
       expect(token.isCancelled, isTrue);
       response.complete(employeePage());
       await Future<void>.delayed(Duration.zero);
-      expect(container.read(employeeDirectoryProvider(1)).hasError, isTrue);
+      expect(
+        container
+            .read(employeeDirectoryProvider(_directoryRequest(1)))
+            .hasError,
+        isTrue,
+      );
       verify(
         () => repository.employees(
           page: 1,

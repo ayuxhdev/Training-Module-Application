@@ -57,22 +57,43 @@ void _flow<T>(
   required Type skeleton,
   required String emptyText,
   required String successText,
+  Finder Function()? scrollable,
 }) {
   testWidgets(
     '$name replaces skeleton on error, Retry, empty and refreshed success',
     (tester) async {
+      Future<void> expectLoading() async {
+        // Directory loading follows the stable filter controls and may be below
+        // the fold. Other screens keep their existing loading placement.
+        if (scrollable != null) {
+          await tester.scrollUntilVisible(
+            find.byType(skeleton),
+            160,
+            scrollable: scrollable(),
+          );
+          await tester.pumpAndSettle();
+        }
+        expect(find.byType(skeleton), findsOneWidget);
+      }
+
       var pending = Completer<T>();
       await tester.pumpWidget(frame(() => pending.future));
       await tester.pump();
-      expect(find.byType(skeleton), findsOneWidget);
+      await expectLoading();
       pending.completeError(ApiError.networkFailure());
       await tester.pumpAndSettle();
       expect(find.byType(skeleton), findsNothing);
+      await tester.scrollUntilVisible(
+        find.text('Retry'),
+        160,
+        scrollable: scrollable?.call() ?? find.byType(Scrollable).last,
+      );
+      await tester.pumpAndSettle();
       expect(find.text('Retry'), findsOneWidget);
       pending = Completer<T>();
       await tester.tap(find.text('Retry'));
       await tester.pump();
-      expect(find.byType(skeleton), findsOneWidget);
+      await expectLoading();
       pending.complete(empty);
       await tester.pumpAndSettle();
       expect(find.byType(skeleton), findsNothing);
@@ -80,7 +101,7 @@ void _flow<T>(
       await tester.scrollUntilVisible(
         find.text(emptyText),
         160,
-        scrollable: find.byType(Scrollable).last,
+        scrollable: scrollable?.call() ?? find.byType(Scrollable).last,
       );
       expect(find.text(emptyText), findsWidgets);
       pending = Completer<T>();
@@ -88,7 +109,7 @@ void _flow<T>(
           .widget<RefreshIndicator>(find.byType(RefreshIndicator).first)
           .onRefresh();
       await tester.pump();
-      expect(find.byType(skeleton), findsOneWidget);
+      await expectLoading();
       pending.complete(success);
       await refresh;
       await tester.pumpAndSettle();
@@ -96,7 +117,7 @@ void _flow<T>(
       await tester.scrollUntilVisible(
         find.text(successText),
         -160,
-        scrollable: find.byType(Scrollable).last,
+        scrollable: scrollable?.call() ?? find.byType(Scrollable).last,
       );
       expect(find.text(successText), findsWidgets);
       expect(tester.takeException(), isNull);
@@ -173,7 +194,18 @@ void main() {
     'Employee directory',
     frame: (load) => _account(
       ProviderScope(
-        overrides: [employeeDirectoryProvider(1).overrideWith((_) => load())],
+        overrides: [
+          employeeDirectoryProvider((
+            page: 1,
+            search: null,
+            departmentId: null,
+            jobRoleId: null,
+            isActive: null,
+          )).overrideWith((_) => load()),
+          for (final kind in ReferenceKind.values)
+            organizationReferenceChoicesProvider(kind)
+                .overrideWith((_) async => []),
+        ],
         child: const OrganizationListScreen(),
       ),
     ),
@@ -182,6 +214,7 @@ void main() {
     skeleton: CardListSkeleton,
     emptyText: 'No records to display.',
     successText: 'Employee 1',
+    scrollable: () => find.byType(Scrollable).first,
   );
   for (final kind in ReferenceKind.values) {
     _flow<ManagementPage<OrganizationReference>>(

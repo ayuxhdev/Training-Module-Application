@@ -36,6 +36,8 @@
   .audit-change-table th:first-child { width: 21%; }
   .audit-change-table th:nth-child(2), .audit-change-table th:nth-child(3) { width: 39.5%; }
   .audit-change-table th, .audit-change-table td { overflow-wrap: anywhere; }
+  .audit-snapshot-table th:first-child { width: 35%; }
+  .audit-snapshot-table th:nth-child(2) { width: 65%; }
   .audit-change-value { white-space: pre-wrap; overflow-wrap: anywhere; }
   .audit-raw { border-top: var(--border-subtle); background: var(--color-surface-subtle); }
   .audit-raw summary { min-height: 2.75rem; padding: var(--space-2) var(--space-4); color: var(--color-brand-primary); font-weight: 650; cursor: pointer; }
@@ -86,9 +88,10 @@
 
   <section class="audit-panel" aria-labelledby="audit-results-heading">
     <h2 id="audit-results-heading">Events</h2>
-    <div class="audit-list" role="region" aria-label="Audit history results" tabindex="0">
+    <p id="audit-results-limit" class="muted">Showing up to the {{ audit_result_limit }} newest matching events. If more events match, older matches are not shown. Narrow the filters to find earlier activity.</p>
+    <div class="audit-list" role="region" aria-label="Audit history results" aria-describedby="audit-results-limit" tabindex="0">
       {% for entry in audit_logs %}
-        {% with changes=entry|audit_changes %}
+        {% with changes=entry|audit_changes detail_kind=entry|audit_detail_kind %}
           <article class="audit-entry">
             <header class="audit-entry-heading">
               <div class="audit-entry-heading-main">
@@ -120,23 +123,42 @@
               {% endif %}
 
               {% if changes %}
-                <section aria-label="Recorded changes">
-                  <h4 class="audit-change-heading">What changed</h4>
-                  <div class="table-scroll" role="region" aria-label="Before and after values" tabindex="0">
-                    <table class="audit-change-table">
-                      <thead><tr><th scope="col">Detail</th><th scope="col">Before</th><th scope="col">After</th></tr></thead>
+                <section aria-label="{% if detail_kind == 'changes' %}Recorded changes{% else %}Recorded details{% endif %}">
+                  <h4 class="audit-change-heading">{% if detail_kind == 'creation' %}New record details{% elif detail_kind == 'changes' %}What changed{% else %}Recorded details{% endif %}</h4>
+                  {% if detail_kind == 'creation' %}
+                    <p class="muted">Values recorded when this record was created.</p>
+                  {% elif detail_kind == 'snapshot' %}
+                    {% with notice=entry|audit_snapshot_notice %}
+                      {% if notice %}
+                        <p class="muted">{{ notice }} Changes cannot be determined without both snapshots.</p>
+                      {% endif %}
+                    {% endwith %}
+                  {% endif %}
+                  <div class="table-scroll" role="region" aria-label="{% if detail_kind == 'changes' %}Before and after values{% else %}Recorded values{% endif %}" tabindex="0">
+                    <table class="audit-change-table{% if detail_kind != 'changes' %} audit-snapshot-table{% endif %}">
+                      <thead><tr><th scope="col">Detail</th>{% if detail_kind == 'changes' %}<th scope="col">Before</th><th scope="col">After</th>{% else %}<th scope="col">Recorded value</th>{% endif %}</tr></thead>
                       <tbody>
                         {% for change in changes %}
                           <tr>
                             <th scope="row">{{ change.field|audit_field_label }}</th>
-                            <td><span class="audit-change-value">{% if change.captured %}{{ change.before|audit_display_value:change.field }}{% else %}Not captured in audit snapshots{% endif %}</span></td>
-                            <td><span class="audit-change-value">{% if change.captured %}{{ change.after|audit_display_value:change.field }}{% else %}Not captured in audit snapshots{% endif %}</span></td>
+                            {% if detail_kind == 'changes' %}
+                              {% if change.captured %}
+                                <td><span class="audit-change-value">{{ change.before|audit_display_value:change.field }}</span></td>
+                                <td><span class="audit-change-value">{{ change.after|audit_display_value:change.field }}</span></td>
+                              {% else %}
+                                <td colspan="2"><span class="audit-change-value">Listed as changed; values not captured in audit snapshots.</span></td>
+                              {% endif %}
+                            {% else %}
+                              <td><span class="audit-change-value">{% if change.captured %}{{ change.recorded|audit_display_value:change.field }}{% else %}Not captured in audit snapshots{% endif %}</span></td>
+                            {% endif %}
                           </tr>
                         {% endfor %}
                       </tbody>
                     </table>
                   </div>
                 </section>
+              {% elif detail_kind == 'changes' %}
+                <p class="audit-empty">No differences between the recorded before and after values.</p>
               {% else %}
                 <p class="audit-empty">No before-and-after details were recorded for this event.</p>
               {% endif %}

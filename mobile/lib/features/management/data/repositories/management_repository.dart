@@ -18,6 +18,7 @@ class ManagementRepository {
     T Function(Map<String, dynamic>) parse, {
     int? page,
     int? pageSize,
+    Map<String, dynamic>? additionalQueryParameters,
     CancelToken? cancelToken,
   }) async {
     if (page != null && page <= 0) throw ArgumentError.value(page, 'page');
@@ -27,6 +28,7 @@ class ManagementRepository {
     final query = <String, dynamic>{
       if (page != null && page > 1) 'page': page,
       'page_size': ?pageSize,
+      ...?additionalQueryParameters,
     };
     try {
       final response = await apiClient.dio.get(
@@ -50,14 +52,35 @@ class ManagementRepository {
   Future<ManagementPage<DirectoryEmployee>> employees({
     int page = 1,
     int? pageSize,
+    String? search,
+    int? departmentId,
+    int? jobRoleId,
+    bool? isActive,
     CancelToken? cancelToken,
-  }) => _get(
-    'employees/',
-    (json) => ManagementPage.fromJson(json, DirectoryEmployee.fromJson),
-    page: page,
-    pageSize: pageSize,
-    cancelToken: cancelToken,
-  );
+  }) {
+    if (departmentId != null && departmentId <= 0) {
+      throw ArgumentError.value(departmentId, 'departmentId');
+    }
+    if (jobRoleId != null && jobRoleId <= 0) {
+      throw ArgumentError.value(jobRoleId, 'jobRoleId');
+    }
+    final normalizedSearch = search?.trim();
+    return _get(
+      'employees/',
+      (json) => ManagementPage.fromJson(json, DirectoryEmployee.fromJson),
+      page: page,
+      pageSize: pageSize,
+      additionalQueryParameters: {
+        'search': ?(normalizedSearch?.isNotEmpty == true
+            ? normalizedSearch
+            : null),
+        'department_id': ?departmentId,
+        'job_role_id': ?jobRoleId,
+        'is_active': ?isActive,
+      },
+      cancelToken: cancelToken,
+    );
+  }
 
   Future<DirectoryEmployee> employee(int id, {CancelToken? cancelToken}) async {
     if (id <= 0) throw ArgumentError.value(id, 'id');
@@ -83,6 +106,11 @@ class ManagementRepository {
     pageSize: pageSize,
     cancelToken: cancelToken,
   );
+
+  Future<List<OrganizationReference>> allReferences(
+    ReferenceKind kind, {
+    CancelToken? cancelToken,
+  }) => _allReferencePages(kind, cancelToken);
 
   Future<OrganizationReference> saveReference(
     ReferenceKind kind, {

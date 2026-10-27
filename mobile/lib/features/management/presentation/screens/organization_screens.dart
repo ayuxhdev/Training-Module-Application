@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/content_skeleton.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
@@ -25,8 +28,379 @@ class OrganizationListScreen extends ConsumerStatefulWidget {
 
 class _OrganizationListScreenState
     extends ConsumerState<OrganizationListScreen> {
+  static const _allReferencesId = 0;
+  static const _searchDebounceDuration = Duration(milliseconds: 350);
+
   int _page = 1;
   String? _account;
+  final _searchController = TextEditingController();
+  Timer? _searchDebounce;
+  String _searchQuery = '';
+  int? _departmentId;
+  int? _jobRoleId;
+  String _activeStatus = 'all';
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool get _hasEmployeeFilters =>
+      _searchController.text.trim().isNotEmpty ||
+      _departmentId != null ||
+      _jobRoleId != null ||
+      _activeStatus != 'all';
+
+  bool? get _isActiveFilter => switch (_activeStatus) {
+    'active' => true,
+    'inactive' => false,
+    _ => null,
+  };
+
+  EmployeeDirectoryRequest _directoryRequest({int? page}) => (
+    page: page ?? _page,
+    search: _searchQuery.isEmpty ? null : _searchQuery,
+    departmentId: _departmentId,
+    jobRoleId: _jobRoleId,
+    isActive: _isActiveFilter,
+  );
+
+  void _onSearchChanged(String _) {
+    _searchDebounce?.cancel();
+    setState(() {});
+    _searchDebounce = Timer(_searchDebounceDuration, () {
+      if (!mounted) return;
+      final query = _searchController.text.trim();
+      if (_searchQuery == query) return;
+      setState(() {
+        _searchQuery = query;
+        _page = 1;
+      });
+    });
+  }
+
+  void _applyDirectoryFilters({
+    bool changeDepartment = false,
+    int? departmentId,
+    bool changeJobRole = false,
+    int? jobRoleId,
+    String? activeStatus,
+  }) {
+    _searchDebounce?.cancel();
+    setState(() {
+      _page = 1;
+      _searchQuery = _searchController.text.trim();
+      if (changeDepartment) _departmentId = departmentId;
+      if (changeJobRole) _jobRoleId = jobRoleId;
+      if (activeStatus != null) _activeStatus = activeStatus;
+    });
+  }
+
+  void _clearDirectoryFilters() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    setState(() {
+      _page = 1;
+      _searchQuery = '';
+      _departmentId = null;
+      _jobRoleId = null;
+      _activeStatus = 'all';
+    });
+  }
+
+  Future<void> _refreshEmployeeDirectory(WidgetRef ref) async {
+    setState(() => _page = 1);
+    final request = _directoryRequest(page: 1);
+    ref.invalidate(employeeDirectoryProvider(request));
+    try {
+      await ref.read(employeeDirectoryProvider(request).future);
+    } catch (_) {
+      // The provider exposes the failed refresh in the page content.
+    }
+  }
+
+  Widget _searchAndFilters(
+    WidgetRef ref, {
+    required AsyncValue<List<OrganizationReference>>? departments,
+    required AsyncValue<List<OrganizationReference>>? jobRoles,
+  }) => Column(
+    key: const ValueKey('employee-directory-filters'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      TextField(
+        controller: _searchController,
+        textInputAction: TextInputAction.search,
+        onChanged: _onSearchChanged,
+        decoration: InputDecoration(
+          labelText: 'Search employees',
+          hintText: 'Name or employee code',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: _searchController.text.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear search',
+                  onPressed: () {
+                    _searchDebounce?.cancel();
+                    _searchController.clear();
+                    setState(() {
+                      _searchQuery = '';
+                      _page = 1;
+                    });
+                  },
+                  icon: const Icon(Icons.close),
+                ),
+        ),
+      ),
+      if (departments case final choices?) ...[
+        const SizedBox(height: 12),
+        _referenceFilter(
+          ref,
+          kind: ReferenceKind.departments,
+          choices: choices,
+          selectedId: _departmentId,
+          onChanged: (id) =>
+              _applyDirectoryFilters(changeDepartment: true, departmentId: id),
+        ),
+      ],
+      if (jobRoles case final choices?) ...[
+        const SizedBox(height: 12),
+        _referenceFilter(
+          ref,
+          kind: ReferenceKind.jobRoles,
+          choices: choices,
+          selectedId: _jobRoleId,
+          onChanged: (id) =>
+              _applyDirectoryFilters(changeJobRole: true, jobRoleId: id),
+        ),
+      ],
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        initialValue: _activeStatus,
+        isExpanded: true,
+        decoration: const InputDecoration(labelText: 'Active status'),
+        items: const [
+          DropdownMenuItem(value: 'all', child: Text('All employees')),
+          DropdownMenuItem(value: 'active', child: Text('Active')),
+          DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
+        ],
+        onChanged: (value) {
+          if (value != null) {
+            _applyDirectoryFilters(activeStatus: value);
+          }
+        },
+      ),
+      if (_hasEmployeeFilters) ...[
+        const SizedBox(height: 8),
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: TextButton.icon(
+            onPressed: _clearDirectoryFilters,
+            icon: const Icon(Icons.filter_alt_off_outlined),
+            label: const Text('Clear filters'),
+          ),
+        ),
+      ],
+    ],
+  );
+
+  Widget _referenceFilter(
+    WidgetRef ref, {
+    required ReferenceKind kind,
+    required AsyncValue<List<OrganizationReference>> choices,
+    required int? selectedId,
+    required ValueChanged<int?> onChanged,
+  }) => choices.when(
+    data: (items) => DropdownButtonFormField<int>(
+      initialValue: selectedId ?? _allReferencesId,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: kind.title == 'Departments' ? 'Department' : 'Job role',
+      ),
+      items: [
+        DropdownMenuItem(
+          value: _allReferencesId,
+          child: Text('All ${kind.title.toLowerCase()}'),
+        ),
+        ...items.map(
+          (item) => DropdownMenuItem(value: item.id, child: Text(item.name)),
+        ),
+      ],
+      onChanged: (value) {
+        if (value != null) {
+          onChanged(value == _allReferencesId ? null : value);
+        }
+      },
+    ),
+    loading: () => InputDecorator(
+      decoration: InputDecoration(
+        labelText: kind.title == 'Departments' ? 'Department' : 'Job role',
+      ),
+      child: const LinearProgressIndicator(),
+    ),
+    error: (error, _) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Unable to load ${kind.title.toLowerCase()} filter options.'),
+        TextButton(
+          onPressed: () =>
+              ref.invalidate(organizationReferenceChoicesProvider(kind)),
+          child: Text('Retry ${kind.title.toLowerCase()}'),
+        ),
+      ],
+    ),
+  );
+
+  List<Widget> _employeeContent(
+    ManagementPage<DirectoryEmployee> page,
+    BuildContext context,
+  ) => [
+    SectionHeading('${page.count} ${_recordLabel(page.count)}'),
+    if (page.items.isEmpty)
+      EmptyView(
+        message: _hasEmployeeFilters
+            ? 'No employees match these search and filter criteria.'
+            : 'No records to display.',
+        action: _hasEmployeeFilters
+            ? TextButton(
+                onPressed: _clearDirectoryFilters,
+                child: const Text('Clear filters'),
+              )
+            : null,
+      ),
+    ...page.items.map(
+      (employee) => Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.md),
+        child: CustomCard(
+          padding: EdgeInsets.zero,
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(16),
+            title: Text(employee.displayName),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(employee.employeeCode),
+                Text('${employee.department.name} · ${employee.jobRole.name}'),
+                if (employee.reportingManager != null)
+                  Text('Reports to ${employee.reportingManager}'),
+                const SizedBox(height: 8),
+                _status(employee.isActive),
+              ],
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/workspace/employees/${employee.id}'),
+          ),
+        ),
+      ),
+    ),
+    const SizedBox(height: 16),
+    Text('Page $_page', textAlign: TextAlign.center),
+    Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      spacing: 16,
+      children: [
+        TextButton.icon(
+          onPressed: _page > 1 ? () => setState(() => _page--) : null,
+          icon: const Icon(Icons.chevron_left),
+          label: const Text('Previous page'),
+        ),
+        TextButton.icon(
+          onPressed: page.hasMore ? () => setState(() => _page++) : null,
+          icon: const Icon(Icons.chevron_right),
+          label: const Text('Next page'),
+        ),
+      ],
+    ),
+  ];
+
+  Widget _employeeDirectory(
+    BuildContext context,
+    WidgetRef ref,
+    AuthAuthenticated auth,
+  ) {
+    final request = _directoryRequest();
+    final value = ref.watch(employeeDirectoryProvider(request));
+    final isLoading = value.isLoading;
+    final canViewDepartments = auth.identity.capabilities.contains(
+      ReferenceKind.departments.permission,
+    );
+    final canViewJobRoles = auth.identity.capabilities.contains(
+      ReferenceKind.jobRoles.permission,
+    );
+    final departments = canViewDepartments
+        ? ref.watch(
+            organizationReferenceChoicesProvider(ReferenceKind.departments),
+          )
+        : null;
+    final jobRoles = canViewJobRoles
+        ? ref.watch(
+            organizationReferenceChoicesProvider(ReferenceKind.jobRoles),
+          )
+        : null;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Employees'),
+        actions: [
+          if (canCreateEmployee(auth.identity))
+            IconButton(
+              tooltip: 'Add employee',
+              onPressed: () => _openEmployeeCreation(context, ref),
+              icon: const Icon(Icons.person_add_alt_1_outlined),
+            ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: isLoading ? null : () => _refreshEmployeeDirectory(ref),
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => _refreshEmployeeDirectory(ref),
+        child: ListView(
+          key: ValueKey('employee-directory-$_account'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          children: [
+            const CinematicHero(
+              eyebrow: 'Organization',
+              title: 'Employee directory',
+              subtitle: 'Profiles and reporting relationships available to your account.',
+              icon: Icons.badge_outlined,
+            ),
+            const SizedBox(height: 24),
+            _searchAndFilters(
+              ref,
+              departments: departments,
+              jobRoles: jobRoles,
+            ),
+            const SizedBox(height: 16),
+            if (isLoading)
+              const CardListSkeleton(
+                message: 'Loading employees',
+                compact: true,
+              ),
+            if (!isLoading)
+              ...value.when<List<Widget>>(
+                skipLoadingOnReload: false,
+                skipLoadingOnRefresh: false,
+                data: (page) => _employeeContent(page, context),
+                loading: () => const [],
+                error: (error, _) => [
+                  ApiErrorView(
+                    error: error,
+                    onRetry: () {
+                      unawaited(_refreshEmployeeDirectory(ref));
+                    },
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   String _recordLabel(int count) => count == 1
       ? widget.referenceKind?.singular ?? 'employee'
@@ -101,72 +475,32 @@ class _OrganizationListScreenState
     final created = await context.push<bool>('/workspace/employees/new');
     if (created == true && mounted) {
       setState(() => _page = 1);
-      ref.invalidate(employeeDirectoryProvider(1));
+      ref.invalidate(employeeDirectoryProvider);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authControllerProvider);
+    final account = managementAccount(auth);
+    if (_account != account) {
+      _account = account;
+      _searchDebounce?.cancel();
+      _searchController.clear();
+      _searchQuery = '';
+      _departmentId = null;
+      _jobRoleId = null;
+      _activeStatus = 'all';
+      _page = 1;
+    }
     final kind = widget.referenceKind;
     final permission = kind?.permission ?? 'organization.view_employee';
     if (auth is! AuthAuthenticated ||
         !auth.identity.capabilities.contains(permission)) {
       return const SizedBox.shrink();
     }
-    final account = managementAccount(auth);
-    if (_account != account) {
-      _account = account;
-      _page = 1;
-    }
     if (kind == null) {
-      return ReadOnlyPage<ManagementPage<DirectoryEmployee>>(
-        title: 'Employees',
-        loading: const CardListSkeleton(
-          message: 'Loading employees',
-          compact: true,
-        ),
-        actions: [
-          if (canCreateEmployee(auth.identity))
-            IconButton(
-              tooltip: 'Add employee',
-              onPressed: () => _openEmployeeCreation(context, ref),
-              icon: const Icon(Icons.person_add_alt_1_outlined),
-            ),
-        ],
-        value: ref.watch(employeeDirectoryProvider(_page)),
-        refresh: () {
-          setState(() => _page = 1);
-          return ref
-              .refresh(employeeDirectoryProvider(1).future)
-              .then<void>((_) {});
-        },
-        content: (page) => _items(
-          page,
-          (employee) => CustomCard(
-            padding: EdgeInsets.zero,
-            child: ListTile(
-              contentPadding: const EdgeInsets.all(16),
-              title: Text(employee.displayName),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(employee.employeeCode),
-                  Text(
-                    '${employee.department.name} · ${employee.jobRole.name}',
-                  ),
-                  if (employee.reportingManager != null)
-                    Text('Reports to ${employee.reportingManager}'),
-                  const SizedBox(height: 8),
-                  _status(employee.isActive),
-                ],
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/workspace/employees/${employee.id}'),
-            ),
-          ),
-        ),
-      );
+      return _employeeDirectory(context, ref, auth);
     }
     final canCreate = canCreateOrganizationReference(auth.identity, kind);
     final canEdit = canEditOrganizationReference(auth.identity, kind);

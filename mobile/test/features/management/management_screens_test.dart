@@ -79,6 +79,14 @@ void main() {
     ).thenAnswer((_) async => employeeEditChoicesFixture());
     for (final kind in ReferenceKind.values) {
       when(
+        () => repository.allReferences(
+          kind,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => [OrganizationReference.fromJson(referenceJson())],
+      );
+      when(
         () => repository.references(
           kind,
           page: any(named: 'page'),
@@ -307,6 +315,12 @@ void main() {
       await launch(tester);
       await tap(tester, 'Employee directory');
       expect(find.byType(OrganizationListScreen), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('EMP1'),
+        160,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.text('EMP1'), findsOneWidget);
       await tap(tester, 'Employee 1');
       expect(find.byType(DirectoryEmployeeScreen), findsOneWidget);
@@ -1902,6 +1916,12 @@ void main() {
         ),
       ).thenAnswer((_) async => employeePage(name: 'Old private employee'));
       await launch(tester, path: '/workspace/employees');
+      await tester.scrollUntilVisible(
+        find.text('Old private employee'),
+        160,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.text('Old private employee'), findsOneWidget);
       final response = Completer<ManagementPage<DirectoryEmployee>>();
       when(
@@ -1917,6 +1937,12 @@ void main() {
       expect(find.text('Old private employee'), findsNothing);
       expect(find.byType(CardListSkeleton), findsOneWidget);
       response.complete(employeePage(name: 'Current employee'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Current employee'),
+        160,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       expect(find.text('Current employee'), findsOneWidget);
       auth.setAuth(AuthUnauthenticated());

@@ -252,3 +252,266 @@ class ManagementReadAPITests(CurriculumTestCase):
         for path in ("dashboard/", "employees/", f"employees/{self.employee.pk}/", "departments/", "job-roles/"):
             self.assertEqual(self.get(path).status_code, 200)
         self.assertEqual([model.objects.count() for model in models], counts)
+
+
+class EmployeeDirectoryFilterAPITests(CurriculumTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.admin = get_user_model().objects.create_user(username="filter-admin")
+        cls.admin.groups.add(Group.objects.get(name="Administrator"))
+
+        cls.manager_user = get_user_model().objects.create_user(username="filter-manager")
+        cls.manager_user.groups.add(Group.objects.get(name="Manager"))
+
+        cls.no_perm_user = get_user_model().objects.create_user(username="filter-noperm")
+
+        cls.dept_prod = cls.department
+        cls.dept_sales = Department.objects.create(code="FILTER-SALES", name="Sales")
+
+        cls.role_op = cls.role
+        cls.role_lead = JobRole.objects.create(code="FILTER-LEAD", name="Team Lead")
+
+        cls.manager_emp = Employee.objects.create(
+            user=cls.manager_user, employee_code="MGR-01", display_name="Alice Manager",
+            department=cls.dept_prod, job_role=cls.role_lead, date_joined=cls.now.date(),
+            is_active=True,
+        )
+
+        cls.sub_bob = Employee.objects.create(
+            employee_code="SUB-BOB", display_name="Bob Operator", reporting_manager=cls.manager_emp,
+            department=cls.dept_prod, job_role=cls.role_op, date_joined=cls.now.date(),
+            is_active=True,
+        )
+
+        cls.sub_charlie = Employee.objects.create(
+            employee_code="SUB-CHARLIE", display_name="Charlie Lead", reporting_manager=cls.manager_emp,
+            department=cls.dept_sales, job_role=cls.role_lead, date_joined=cls.now.date(),
+            is_active=True,
+        )
+
+        cls.sub_diana = Employee.objects.create(
+            employee_code="SUB-DIANA", display_name="Diana Inactive", reporting_manager=cls.manager_emp,
+            department=cls.dept_prod, job_role=cls.role_op, date_joined=cls.now.date(),
+            is_active=False, deactivated_at=cls.now, deactivation_reason="Resigned",
+        )
+
+        cls.foreign_evan = Employee.objects.create(
+            employee_code="FOR-EVAN", display_name="Evan Foreign",
+            department=cls.dept_sales, job_role=cls.role_op, date_joined=cls.now.date(),
+            is_active=True,
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def authenticate(self, user):
+        self.client.credentials(HTTP_AUTHORIZATION="Bearer " + str(RefreshToken.for_user(user).access_token))
+
+    def get_employees(self, query="", user=None):
+        self.authenticate(user or self.admin)
+        path = "/api/v1/management/employees/"
+        if query:
+            path += "?" + query.lstrip("?")
+        return self.client.get(path)
+
+    def test_unfiltered_directory_preserves_scope_and_returns_all_employees_including_inactive(self):
+        admin_resp = self.get_employees(user=self.admin)
+        self.assertEqual(admin_resp.status_code, 200)
+        self.assertEqual(set(admin_resp.data), {"count", "next", "previous", "results"})
+        admin_ids = {row["id"] for row in admin_resp.data["results"]}
+        self.assertIn(self.foreign_evan.pk, admin_ids)
+        self.assertIn(self.sub_diana.pk, admin_ids)
+        self.assertIn(self.sub_bob.pk, admin_ids)
+        self.assertIn(self.sub_charlie.pk, admin_ids)
+        self.assertIn(self.manager_emp.pk, admin_ids)
+
+        manager_resp = self.get_employees(user=self.manager_user)
+        self.assertEqual(manager_resp.status_code, 200)
+        manager_ids = {row["id"] for row in manager_resp.data["results"]}
+        self.assertEqual(manager_ids, {self.manager_emp.pk, self.sub_bob.pk, self.sub_charlie.pk, self.sub_diana.pk})
+        self.assertNotIn(self.foreign_evan.pk, manager_ids)
+
+    def test_search_by_partial_display_name_case_insensitive(self):
+        response = self.get_employees("search=bob")
+        self.assertEqual(response.status_code, 200)
+        matched_ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(matched_ids, {self.sub_bob.pk})
+
+        response = self.get_employees("search=CHARLIE")
+        self.assertEqual(response.status_code, 200)
+        matched_ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(matched_ids, {self.sub_charlie.pk})
+
+        response = self.get_employees("search=Lead")
+        self.assertEqual(response.status_code, 200)
+        matched_ids = {row["id"] for row in response.data["results"]}
+        self.assertIn(self.sub_charlie.pk, matched_ids)
+
+    def test_search_by_partial_employee_code_case_insensitive(self):
+        response = self.get_employees("search=SUB-BOB")
+        self.assertEqual(response.status_code, 200)
+        matched_ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(matched_ids, {self.sub_bob.pk})
+
+        response = self.get_employees("search=sub-")
+        self.assertEqual(response.status_code, 200)
+        matched_ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(matched_ids, {self.sub_bob.pk, self.sub_charlie.pk, self.sub_diana.pk})
+
+        response = self.get_employees("search=mgr")
+        self.assertEqual(response.status_code, 200)
+        matched_ids = {row["id"] for row in response.data["results"]}
+        self.assertIn(self.manager_emp.pk, matched_ids)
+
+    def test_search_whitespace_handling(self):
+        response = self.get_employees("search=%20Bob%20")
+        self.assertEqual(response.status_code, 200)
+        matched_ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(matched_ids, {self.sub_bob.pk})
+
+        blank_resp = self.get_employees("search=%20%20%20")
+        self.assertEqual(blank_resp.status_code, 200)
+        unfiltered_resp = self.get_employees()
+        self.assertEqual(blank_resp.data["count"], unfiltered_resp.data["count"])
+
+    def test_search_empty_results_when_no_match(self):
+        response = self.get_employees("search=nonexistent_xyz")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
+
+    def test_filter_by_department_id(self):
+        response = self.get_employees(f"department_id={self.dept_sales.pk}")
+        self.assertEqual(response.status_code, 200)
+        matched_ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(matched_ids, {self.sub_charlie.pk, self.foreign_evan.pk})
+
+        empty_resp = self.get_employees("department_id=999999")
+        self.assertEqual(empty_resp.status_code, 200)
+        self.assertEqual(empty_resp.data["count"], 0)
+        self.assertEqual(empty_resp.data["results"], [])
+
+    def test_filter_by_job_role_id(self):
+        response = self.get_employees(f"job_role_id={self.role_lead.pk}")
+        self.assertEqual(response.status_code, 200)
+        matched_ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(matched_ids, {self.manager_emp.pk, self.sub_charlie.pk})
+
+        empty_resp = self.get_employees("job_role_id=999999")
+        self.assertEqual(empty_resp.status_code, 200)
+        self.assertEqual(empty_resp.data["count"], 0)
+        self.assertEqual(empty_resp.data["results"], [])
+
+    def test_filter_by_is_active(self):
+        active_resp = self.get_employees("is_active=true")
+        self.assertEqual(active_resp.status_code, 200)
+        for row in active_resp.data["results"]:
+            self.assertTrue(row["is_active"])
+        active_ids = {row["id"] for row in active_resp.data["results"]}
+        self.assertNotIn(self.sub_diana.pk, active_ids)
+
+        inactive_resp = self.get_employees("is_active=false")
+        self.assertEqual(inactive_resp.status_code, 200)
+        for row in inactive_resp.data["results"]:
+            self.assertFalse(row["is_active"])
+        inactive_ids = {row["id"] for row in inactive_resp.data["results"]}
+        self.assertEqual(inactive_ids, {self.sub_diana.pk})
+
+        one_resp = self.get_employees("is_active=1")
+        self.assertEqual(one_resp.status_code, 200)
+        self.assertEqual(one_resp.data["count"], active_resp.data["count"])
+
+        zero_resp = self.get_employees("is_active=0")
+        self.assertEqual(zero_resp.status_code, 200)
+        self.assertEqual(zero_resp.data["count"], inactive_resp.data["count"])
+
+    def test_combined_filters_narrow_results_correctly(self):
+        query = f"department_id={self.dept_prod.pk}&job_role_id={self.role_op.pk}&is_active=true&search=Bob"
+        response = self.get_employees(query)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.sub_bob.pk)
+
+        query_inactive = f"department_id={self.dept_prod.pk}&job_role_id={self.role_op.pk}&is_active=false"
+        response_inactive = self.get_employees(query_inactive)
+        self.assertEqual(response_inactive.status_code, 200)
+        self.assertEqual(response_inactive.data["count"], 1)
+        self.assertEqual(response_inactive.data["results"][0]["id"], self.sub_diana.pk)
+
+        query_nomatch = f"department_id={self.dept_sales.pk}&job_role_id={self.role_op.pk}&is_active=false"
+        response_nomatch = self.get_employees(query_nomatch)
+        self.assertEqual(response_nomatch.status_code, 200)
+        self.assertEqual(response_nomatch.data["count"], 0)
+        self.assertEqual(response_nomatch.data["results"], [])
+
+    def test_combined_filters_with_pagination(self):
+        query = f"department_id={self.dept_prod.pk}&page_size=2&page=1"
+        response_p1 = self.get_employees(query)
+        self.assertEqual(response_p1.status_code, 200)
+        self.assertGreater(response_p1.data["count"], 2)
+        self.assertEqual(len(response_p1.data["results"]), 2)
+        self.assertIsNotNone(response_p1.data["next"])
+        self.assertIsNone(response_p1.data["previous"])
+
+        response_p2 = self.get_employees(f"department_id={self.dept_prod.pk}&page_size=2&page=2")
+        self.assertEqual(response_p2.status_code, 200)
+        self.assertIsNotNone(response_p2.data["previous"])
+        p1_ids = [r["id"] for r in response_p1.data["results"]]
+        p2_ids = [r["id"] for r in response_p2.data["results"]]
+        self.assertEqual(set(p1_ids).intersection(set(p2_ids)), set())
+
+    def test_manager_scope_isolation_with_search_and_filters(self):
+        resp_name = self.get_employees("search=Evan", user=self.manager_user)
+        self.assertEqual(resp_name.status_code, 200)
+        self.assertEqual(resp_name.data["count"], 0)
+        self.assertEqual(resp_name.data["results"], [])
+
+        resp_code = self.get_employees("search=FOR-EVAN", user=self.manager_user)
+        self.assertEqual(resp_code.status_code, 200)
+        self.assertEqual(resp_code.data["count"], 0)
+        self.assertEqual(resp_code.data["results"], [])
+
+        resp_dept = self.get_employees(f"department_id={self.dept_sales.pk}", user=self.manager_user)
+        self.assertEqual(resp_dept.status_code, 200)
+        self.assertEqual(resp_dept.data["count"], 1)
+        self.assertEqual(resp_dept.data["results"][0]["id"], self.sub_charlie.pk)
+
+        resp_active = self.get_employees("is_active=true", user=self.manager_user)
+        self.assertEqual(resp_active.status_code, 200)
+        mgr_active_ids = {r["id"] for r in resp_active.data["results"]}
+        self.assertEqual(mgr_active_ids, {self.manager_emp.pk, self.sub_bob.pk, self.sub_charlie.pk})
+        self.assertNotIn(self.foreign_evan.pk, mgr_active_ids)
+
+    def test_invalid_query_parameters_return_400(self):
+        invalid_cases = [
+            ("department_id=invalid", "department_id"),
+            ("department_id=-1", "department_id"),
+            ("department_id=0", "department_id"),
+            ("job_role_id=invalid", "job_role_id"),
+            ("job_role_id=-1", "job_role_id"),
+            ("job_role_id=0", "job_role_id"),
+            ("is_active=not_a_bool", "is_active"),
+            ("search=" + ("x" * 151), "search"),
+        ]
+        for query, field in invalid_cases:
+            with self.subTest(query=query, field=field):
+                response = self.get_employees(query)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("error", response.data)
+                self.assertEqual(response.data["error"]["code"], "validation_error")
+                self.assertIn(field, response.data["error"]["fields"])
+
+    def test_unauthenticated_and_unauthorized_requests(self):
+        unauth_client = APIClient()
+        response = unauth_client.get("/api/v1/management/employees/")
+        self.assertEqual(response.status_code, 401)
+
+        noperm_resp = self.get_employees(user=self.no_perm_user)
+        self.assertEqual(noperm_resp.status_code, 403)
+
+    def test_unrecognized_query_parameters_are_ignored(self):
+        response = self.get_employees("unrecognized_param=123")
+        self.assertEqual(response.status_code, 200)
+        unfiltered = self.get_employees()
+        self.assertEqual(response.data["count"], unfiltered.data["count"])

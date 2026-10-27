@@ -3,6 +3,7 @@ from collections.abc import Mapping
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, serializers
@@ -27,7 +28,7 @@ from training.views import assignment_scope
 
 from .management_serializers import (
     DepartmentWriteSerializer, EmployeeCreateSerializer, EmployeeDeactivationSerializer,
-    EmployeeDirectoryDetailSerializer, EmployeeDirectorySerializer,
+    EmployeeDirectoryDetailSerializer, EmployeeDirectoryFilterSerializer, EmployeeDirectorySerializer,
     EmployeeProfileWriteSerializer, JobRoleWriteSerializer, ManagementDashboardSerializer, OrganizationReferenceSerializer,
 )
 
@@ -64,6 +65,41 @@ class EmployeeDirectoryView(EmployeeDirectoryMixin, generics.ListCreateAPIView):
 
     def get_serializer_class(self):
         return EmployeeCreateSerializer if self.request.method == "POST" else self.serializer_class
+
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        if self.request.method != "GET":
+            return queryset
+
+        raw_params = {}
+        for key in ("search", "department_id", "job_role_id", "is_active"):
+            val = self.request.query_params.get(key)
+            if val is not None and val.strip() != "":
+                raw_params[key] = val
+
+        if not raw_params:
+            return queryset
+
+        query_serializer = EmployeeDirectoryFilterSerializer(data=raw_params)
+        query_serializer.is_valid(raise_exception=True)
+        filters = query_serializer.validated_data
+
+        search = filters.get("search")
+        if search:
+            queryset = queryset.filter(
+                Q(display_name__icontains=search) | Q(employee_code__icontains=search)
+            )
+
+        if "department_id" in filters:
+            queryset = queryset.filter(department_id=filters["department_id"])
+
+        if "job_role_id" in filters:
+            queryset = queryset.filter(job_role_id=filters["job_role_id"])
+
+        if "is_active" in filters:
+            queryset = queryset.filter(is_active=filters["is_active"])
+
+        return queryset
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
