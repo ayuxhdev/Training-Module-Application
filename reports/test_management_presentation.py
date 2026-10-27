@@ -8,6 +8,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.forms.utils import ErrorDict
 from django.template.loader import render_to_string
 from django.test import RequestFactory, SimpleTestCase
+from django.urls import reverse
 
 from organization.forms import EmployeeDeactivateForm, EmployeeForm
 from training.forms import TrainingVersionForm
@@ -184,7 +185,18 @@ class ManagementPresentationTests(SimpleTestCase):
             r'(?=[^>]*\btabindex="0")[^>]*>',
         )
         self.assertIn("&lt;unsafe&gt;", html)
-        self.assertEqual(html.count('scope="col"'), 5)
+        self.assertEqual(html.count('scope="col"'), 6)
+        self.assertIn('<th scope="col">Actions</th>', html)
+        view_url = reverse("organization:employee-detail", args=[employee.pk])
+        edit_url = reverse("organization:employee-update", args=[employee.pk])
+        self.assertIn(
+            f'href="{view_url}" aria-label="View employee: &lt;unsafe&gt; (QA-1)">View</a>',
+            html,
+        )
+        self.assertIn(
+            f'href="{edit_url}" aria-label="Edit employee: &lt;unsafe&gt; (QA-1)">Edit</a>',
+            html,
+        )
         item = SimpleNamespace(pk=1, code="OPS", name="Operations", description="Team", is_active=True)
         for title in ("Departments", "Job roles"):
             html = self.render("organization/reference_list.html", title=title, items=[item],
@@ -193,6 +205,9 @@ class ManagementPresentationTests(SimpleTestCase):
             self.assertIn('aria-label="Edit ', html)
             self.assertIn("management-table-region", html)
         self.permissions = {"organization": {}}
+        employee_html = self.render("organization/employee_list.html", employees=[employee])
+        self.assertIn(f'href="{view_url}"', employee_html)
+        self.assertNotIn(f'href="{edit_url}"', employee_html)
         html = self.render("organization/reference_list.html", title="Departments", items=[item])
         self.assertNotIn('aria-label="Edit department:', html)
 
