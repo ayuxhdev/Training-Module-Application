@@ -1,5 +1,8 @@
 """Mobile discovery only; business endpoints still enforce their own permissions/scope."""
 
+from training.permissions import can_assign_team_training
+
+
 # Deliberately exclude framework User/Group/token administration.
 PORTAL_PERMISSIONS = tuple(
     f"{app}.{action}_{model}"
@@ -39,6 +42,9 @@ def mobile_capabilities(user):
         # Match the existing portal hierarchy gate; this grants no management mutation.
         if user.groups.filter(name="Manager").exists():
             capabilities.add("team_workspace")
+    # This team-only capability must not confer generic management/company access.
+    if can_assign_team_training(user):
+        capabilities.add("team_assignment")
     if user.has_perm("training.add_trainingassignment"):
         capabilities.add("company_dashboard")
         capabilities.add("assignment_report")

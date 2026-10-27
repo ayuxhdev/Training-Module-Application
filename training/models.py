@@ -244,6 +244,9 @@ class TrainingAssignment(TimestampedModel):
     cancellation_reason = models.TextField(blank=True)
 
     class Meta:
+        permissions = [
+            ("assign_team_trainingassignment", "Can assign training to reporting hierarchy"),
+        ]
         constraints = [
             models.UniqueConstraint(fields=["employee", "training_version"], name="unique_employee_version"),
             models.CheckConstraint(condition=(Q(source="MANUAL", role_requirement__isnull=True) | Q(source="ROLE", role_requirement__isnull=False)), name="assignment_source_fields"),

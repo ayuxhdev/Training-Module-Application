@@ -85,7 +85,8 @@ class ContentPermissionTests(TestCase):
         for name in ("Manager", "Trainer", "Supervisor", "Employee"):
             with self.subTest(group=name):
                 self.assertFalse(Group.objects.get(name=name).permissions.filter(
-                    content_type__app_label="training"
+                    content_type__app_label="training",
+                    content_type__model__in=("training", "trainingversion", "module", "lesson"),
                 ).exists())
 
     def test_permission_migration_preserves_existing_grants_and_memberships(self):
@@ -111,6 +112,7 @@ class ContentPermissionTests(TestCase):
         for name in ("Manager", "Trainer", "Supervisor", "Employee"):
             self.assertFalse(Group.objects.get(name=name).permissions.filter(
                 content_type__app_label="training",
+                content_type__model__in=("training", "trainingversion", "module", "lesson"),
             ).exists())
 
     def test_permission_migration_reverse_preserves_groups_grants_and_memberships(self):

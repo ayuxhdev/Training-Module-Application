@@ -11,6 +11,7 @@ from audit.mixins import AuditedFormMixin
 from audit.services import audit_snapshot, record_event
 from .forms import DepartmentForm, EmployeeDeactivateForm, EmployeeForm, JobRoleForm, may_manage_linked_user
 from .models import Department, Employee, JobRole
+from .scopes import employee_scope
 
 
 MANAGE_EMPLOYEES = "organization.change_employee"
@@ -19,21 +20,6 @@ VIEW_EMPLOYEES = "organization.view_employee"
 
 def can_manage(user):
 	return user.is_superuser or user.has_perm(MANAGE_EMPLOYEES)
-
-
-def employee_scope(user):
-	employee = Employee.objects.filter(user=user).first()
-	if not employee:
-		return Employee.objects.none()
-	if not user.groups.filter(name="Manager").exists():
-		return Employee.objects.filter(pk=employee.pk)
-	ids = {employee.pk}
-	pending = {employee.pk}
-	while pending:
-		child_ids = set(Employee.objects.filter(reporting_manager_id__in=pending).values_list("pk", flat=True)) - ids
-		ids.update(child_ids)
-		pending = child_ids
-	return Employee.objects.filter(pk__in=ids)
 
 
 class EmployeeListView(LoginRequiredMixin, ListView):
