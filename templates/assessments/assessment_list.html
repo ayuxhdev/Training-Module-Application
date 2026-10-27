@@ -110,13 +110,14 @@
               <th scope="col">Time limit</th>
               <th scope="col">Questions</th>
               <th scope="col">Requirement</th>
+              <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
             {% for assessment in assessments %}
               <tr>
                 <th scope="row">
-                  <a href="{% url 'assessments:assessment-detail' assessment.pk %}">{{ assessment.title }}</a>
+                  {{ assessment.title }}
                 </th>
                 <td>{{ assessment.get_kind_display }}</td>
                 <td>{{ assessment.module.title|default:"Entire training" }}</td>
@@ -131,6 +132,10 @@
                     <span class="status-badge status-badge--neutral">Optional</span>
                   {% endif %}
                 </td>
+                <td><div class="record-actions">
+                  <a class="btn btn-secondary" href="{% url 'assessments:assessment-detail' assessment.pk %}" aria-label="View assessment: {{ assessment.title }}">View</a>
+                  {% if version.status == 'DRAFT' and perms.assessments.change_assessment %}<a class="btn btn-secondary" href="{% url 'assessments:assessment-update' assessment.pk %}" aria-label="Edit assessment: {{ assessment.title }}">Edit</a>{% endif %}
+                </div></td>
               </tr>
             {% endfor %}
           </tbody>

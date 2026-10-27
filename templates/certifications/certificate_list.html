@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}Certificates | Garden's Need Training{% endblock %}
 {% block content %}
 <style>
   .certificate-catalog-table {
@@ -20,7 +21,7 @@
   .certificate-catalog-table .col-cert {
     min-width: 14rem;
   }
-  .certificate-catalog-table .col-cert .catalog-record-link {
+  .certificate-catalog-table .col-cert .catalog-code {
     font-family: var(--font-family-mono, monospace);
     font-size: var(--font-size-xs);
     white-space: nowrap;
@@ -87,13 +88,14 @@
             <th scope="col" class="col-employee">Employee</th>
             <th scope="col" class="col-issued">Issued</th>
             <th scope="col" class="col-status">Status</th>
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
         {% for certificate in certificates %}
           <tr>
             <th scope="row" class="col-cert">
-              <a class="catalog-record-link catalog-code" href="{% url 'certifications:certificate-detail' certificate.pk %}">{{ certificate.certificate_number }}</a>
+              <span class="catalog-code">{{ certificate.certificate_number }}</span>
             </th>
             <td class="col-training">
               <strong>{{ certificate.training_title_snapshot }}</strong>
@@ -112,9 +114,10 @@
                 <span class="status-badge status-completed">Valid</span>
               {% endif %}
             </td>
+            <td class="catalog-table-actions"><div class="record-actions"><a class="btn btn-secondary" href="{% url 'certifications:certificate-detail' certificate.pk %}" aria-label="View certificate: {{ certificate.certificate_number }}">View</a></div></td>
           </tr>
         {% empty %}
-          <tr><td class="catalog-empty" colspan="5">No certificates are available.</td></tr>
+          <tr><td class="catalog-empty" colspan="6">No certificates are available.</td></tr>
         {% endfor %}
         </tbody>
       </table>

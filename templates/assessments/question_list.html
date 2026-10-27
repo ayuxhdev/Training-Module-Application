@@ -15,7 +15,6 @@
   .question-table th { font-weight: 650; color: var(--color-text-muted); font-size: var(--font-size-sm); background: var(--color-surface-subtle); }
   .question-table th[scope="row"] { font-weight: 600; color: var(--color-text); }
   .question-table td { font-size: var(--font-size-base); }
-  .question-code-link { font-weight: 700; color: var(--color-brand-primary); }
 </style>
 
 <div class="question-workspace">
@@ -48,13 +47,14 @@
             <th scope="col">Revisions</th>
             <th scope="col">Latest prompt</th>
             <th scope="col">Status</th>
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
           {% for question in questions %}
             <tr>
               <th scope="row">
-                <a class="question-code-link" href="{% url 'assessments:question-detail' question.pk %}">{{ question.code }}</a>
+                {{ question.code }}
               </th>
               <td>{{ question.topic|default:"General" }}</td>
               <td>
@@ -72,10 +72,14 @@
                   {% if question.is_active %}Active{% else %}Inactive{% endif %}
                 </span>
               </td>
+              <td><div class="record-actions">
+                <a class="btn btn-secondary" href="{% url 'assessments:question-detail' question.pk %}" aria-label="View question: {{ question.code }}">View</a>
+                {% if perms.assessments.change_question %}<a class="btn btn-secondary" href="{% url 'assessments:question-update' question.pk %}" aria-label="Edit question: {{ question.code }}">Edit</a>{% endif %}
+              </div></td>
             </tr>
           {% empty %}
             <tr>
-              <td colspan="5">
+              <td colspan="6">
                 <div class="empty-state" style="padding: var(--space-6) var(--space-4); text-align: center;">
                   <h2>No questions available.</h2>
                   <p class="muted">The question bank is currently empty. Create questions to begin building training assessments.</p>

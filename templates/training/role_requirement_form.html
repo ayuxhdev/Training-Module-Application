@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}{% if form.instance.pk %}Edit{% else %}Add{% endif %} job-role training requirement | Garden's Need Training{% endblock %}
 {% block content %}
 <div class="catalog-workspace">
   <nav aria-label="Breadcrumb">

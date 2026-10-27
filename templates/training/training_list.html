@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}Training catalog | Garden's Need Training{% endblock %}
 {% block content %}
 <div class="catalog-workspace">
   <header class="page-header">
@@ -14,10 +15,13 @@
         {% for item in trainings %}
           <tr>
             <td class="catalog-code">{{ item.code }}</td>
-            <th scope="row"><a class="catalog-record-link" href="{% url 'training:training-detail' item.pk %}">{{ item.catalog_title }}</a></th>
+            <th scope="row">{{ item.catalog_title }}</th>
             <td class="catalog-description">{{ item.description|default:"Not provided"|truncatewords:18 }}</td>
             <td>{% if item.is_active %}{% include "components/status_badge.html" with status="ACTIVE" label="Active" %}{% else %}{% include "components/status_badge.html" with status="INACTIVE" label="Inactive" %}{% endif %}</td>
-            <td class="catalog-table-actions">{% if perms.training.change_training %}<a class="btn btn-secondary" href="{% url 'training:training-update' item.pk %}" aria-label="Edit training: {{ item.catalog_title }}">Edit</a>{% endif %}</td>
+            <td class="catalog-table-actions"><div class="record-actions">
+              <a class="btn btn-secondary" href="{% url 'training:training-detail' item.pk %}" aria-label="View training: {{ item.catalog_title }}">View</a>
+              {% if perms.training.change_training %}<a class="btn btn-secondary" href="{% url 'training:training-update' item.pk %}" aria-label="Edit training: {{ item.catalog_title }}">Edit</a>{% endif %}
+            </div></td>
           </tr>
         {% empty %}
           <tr><td class="catalog-empty" colspan="5">No training has been added yet.</td></tr>

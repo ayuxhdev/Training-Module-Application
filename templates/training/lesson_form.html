@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}{% if form.instance.pk %}Edit lesson: {{ form.instance.title }}{% else %}Add lesson{% endif %} | Garden's Need Training{% endblock %}
 {% block content %}
 <div class="catalog-workspace">
 <nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li><li><a href="{% url 'training:training-detail' form.instance.module.training_version.training_id %}">{{ form.instance.module.training_version.training.catalog_title }}</a></li><li><a href="{% url 'training:version-detail' form.instance.module.training_version_id %}">Version {{ form.instance.module.training_version.version_number }}</a></li><li>{{ form.instance.module.title }}</li>{% if form.instance.pk %}<li>Edit lesson</li>{% else %}<li>Add lesson</li>{% endif %}</ol></nav>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Sign in | Garden's Need Training Module{% endblock %}
 {% block content %}
 <section class="login-page" aria-labelledby="login-title">
@@ -41,6 +42,7 @@
         <div class="login-field">
           {{ form.password.label_tag }}
           {{ form.password }}
+          <button class="btn btn-secondary password-toggle" type="button" data-password-toggle aria-controls="{{ form.password.id_for_label }}" hidden>Show password</button>
           {% if form.password.errors %}
             <div class="login-field-errors" role="alert">{{ form.password.errors }}</div>
           {% endif %}
@@ -51,4 +53,5 @@
     </div>
   </div>
 </section>
+<script src="{% static 'accounts/password_toggle.js' %}" defer></script>
 {% endblock %}

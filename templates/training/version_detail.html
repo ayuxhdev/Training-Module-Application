@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}{{ version.title }} | Version {{ version.version_number }} | Garden's Need Training{% endblock %}
 {% block content %}
 <div class="catalog-workspace">
   <nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li><li><a href="{% url 'training:training-detail' version.training_id %}">{{ version.training.catalog_title }}</a></li><li><a href="{% url 'training:version-list' version.training_id %}">Versions</a></li><li>Version {{ version.version_number }}</li></ol></nav>

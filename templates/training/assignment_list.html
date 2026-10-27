@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}{% if shell_role == "manager" %}Team assignments{% elif shell_role == "employee" %}My assignments{% else %}Training assignments{% endif %} | Garden's Need Training{% endblock %}
 {% block content %}
 <style>
   .assignment-catalog-table {

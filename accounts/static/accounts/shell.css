@@ -1392,3 +1392,8 @@ button.sidebar-backdrop { display: none; }
   white-space: nowrap !important;
   border: 0 !important;
 }
+
+/* Explicit record navigation and the sign-in password control. */
+.record-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.record-actions .btn { max-width: 100%; white-space: normal; }
+.login-field .password-toggle { justify-self: start; margin-top: var(--space-1); }

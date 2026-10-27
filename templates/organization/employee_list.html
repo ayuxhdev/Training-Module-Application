@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}Employees | Garden's Need Training{% endblock %}
 {% block content %}
 <div class="org-workspace">
   <header class="page-header">
@@ -10,18 +11,22 @@
     <p class="management-scroll-hint" id="employee-table-help">Scroll horizontally if needed. Keyboard: focus this table region and use the arrow keys.</p>
     <div class="table-scroll org-table-scroll management-table-region" role="region" aria-label="Employees" aria-describedby="employee-table-help" tabindex="0">
       <table class="org-table">
-        <thead><tr><th scope="col">Employee</th><th scope="col">Department</th><th scope="col">Job role</th><th scope="col">Reporting manager</th><th scope="col">Status</th></tr></thead>
+        <thead><tr><th scope="col">Employee</th><th scope="col">Department</th><th scope="col">Job role</th><th scope="col">Reporting manager</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
         <tbody>
         {% for employee in employees %}
           <tr>
-            <th scope="row"><a class="org-record-link" href="{% url 'organization:employee-detail' employee.pk %}">{{ employee.display_name }}</a><span class="org-record-code">{{ employee.employee_code }}</span></th>
+            <th scope="row">{{ employee.display_name }}<span class="org-record-code">{{ employee.employee_code }}</span></th>
             <td>{{ employee.department.name }}</td>
             <td>{{ employee.job_role.name }}</td>
             <td>{% if employee.reporting_manager %}{{ employee.reporting_manager.display_name }}{% else %}<span class="muted">Not assigned</span>{% endif %}</td>
             <td>{% if employee.is_active %}{% include "components/status_badge.html" with status="ACTIVE" label="Active" %}{% else %}{% include "components/status_badge.html" with status="INACTIVE" label="Inactive" %}{% endif %}</td>
+            <td class="org-table-actions"><div class="record-actions">
+              <a class="btn btn-secondary" href="{% url 'organization:employee-detail' employee.pk %}" aria-label="View employee: {{ employee.display_name }} ({{ employee.employee_code }})">View</a>
+              {% if perms.organization.change_employee %}<a class="btn btn-secondary" href="{% url 'organization:employee-update' employee.pk %}" aria-label="Edit employee: {{ employee.display_name }} ({{ employee.employee_code }})">Edit</a>{% endif %}
+            </div></td>
           </tr>
         {% empty %}
-          <tr><td class="org-table-empty" colspan="5">No employees available.</td></tr>
+          <tr><td class="org-table-empty" colspan="6">No employees available.</td></tr>
         {% endfor %}
         </tbody>
       </table>

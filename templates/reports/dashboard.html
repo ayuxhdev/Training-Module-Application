@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}{% if role == "company" %}Company dashboard{% elif role == "manager" %}Team dashboard{% else %}Dashboard{% endif %} | Garden's Need Training{% endblock %}
 {% block content %}
 <div class="dashboard-workspace{% if role == 'company' or role == 'manager' %} management-dashboard management-dashboard--{{ role }}{% endif %}">
 {% if role == "unavailable" %}

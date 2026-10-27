@@ -5,10 +5,13 @@
     {% for version in versions %}
       <tr>
         <td class="catalog-code">{{ version.version_number }}</td>
-        <th scope="row"><a class="catalog-record-link" href="{% url 'training:version-detail' version.pk %}">{{ version.title }}</a></th>
+        <th scope="row">{{ version.title }}</th>
         <td>{% include "components/status_badge.html" with status=version.status label=version.get_status_display %}</td>
         <td>{% if version.published_at %}<time datetime="{{ version.published_at|date:'Y-m-d' }}">{{ version.published_at|date:"Y-m-d" }}</time>{% else %}<span class="muted">Not published</span>{% endif %}</td>
-        <td class="catalog-table-actions">{% if version.status == 'DRAFT' and perms.training.change_trainingversion %}<a class="btn btn-secondary" href="{% url 'training:version-update' version.pk %}" aria-label="Edit draft: {{ version.title }}">Edit draft</a>{% endif %}</td>
+        <td class="catalog-table-actions"><div class="record-actions">
+          {% if perms.training.view_trainingversion %}<a class="btn btn-secondary" href="{% url 'training:version-detail' version.pk %}" aria-label="View version {{ version.version_number }}: {{ version.title }}">View</a>{% endif %}
+          {% if version.status == 'DRAFT' and perms.training.change_trainingversion %}<a class="btn btn-secondary" href="{% url 'training:version-update' version.pk %}" aria-label="Edit draft version {{ version.version_number }}: {{ version.title }}">Edit draft</a>{% endif %}
+        </div></td>
       </tr>
     {% empty %}
       <tr><td class="catalog-empty" colspan="5">{{ empty_message }}</td></tr>

@@ -16,6 +16,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _employeeCodeController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  bool _isPasswordVisible = false;
 
   @override
   void dispose() {
@@ -44,6 +45,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     final isLoading = authState is AuthLoading || authState is AuthInitial;
+    final passwordVisibilityTooltip = _isPasswordVisible
+        ? 'Hide password'
+        : 'Show password';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Login')),
@@ -85,10 +89,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           const SizedBox(height: 16),
                           TextFormField(
                             controller: _passwordController,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Password',
+                              suffixIcon: Semantics(
+                                label: passwordVisibilityTooltip,
+                                button: true,
+                                child: IconButton(
+                                  tooltip: passwordVisibilityTooltip,
+                                  onPressed: () {
+                                    setState(() {
+                                      _isPasswordVisible = !_isPasswordVisible;
+                                    });
+                                  },
+                                  icon: Icon(
+                                    _isPasswordVisible
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                  ),
+                                ),
+                              ),
                             ),
-                            obscureText: true,
+                            obscureText: !_isPasswordVisible,
                             enabled: !isLoading,
                             validator: (value) {
                               if (value == null || value.isEmpty) {
