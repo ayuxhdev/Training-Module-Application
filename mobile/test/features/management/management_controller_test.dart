@@ -702,4 +702,285 @@ void main() {
     expect(token.isCancelled, isTrue);
     response.complete(dashboardFixture());
   });
+
+  group('Training assignment controller and permissions', () {
+    test('canAssignTraining requires global or team assignment capability', () {
+      expect(
+        canAssignTraining(
+          managementIdentity(capabilities: {'training.add_trainingassignment'}),
+        ),
+        isTrue,
+      );
+      expect(
+        canAssignTraining(
+          managementIdentity(team: true, capabilities: {'team_assignment'}),
+        ),
+        isTrue,
+      );
+      expect(
+        canAssignTraining(
+          managementIdentity(capabilities: {'company_dashboard'}),
+        ),
+        isFalse,
+      );
+      expect(
+        canAssignTraining(
+          managementIdentity(capabilities: {'organization.view_employee'}),
+        ),
+        isFalse,
+      );
+    });
+
+    test('canAssignTrainingToEmployee blocks inactive employees and manager self-assignment', () {
+      final teamManager = managementIdentity(
+        team: true,
+        capabilities: {'team_assignment'},
+      );
+      final subordinate = DirectoryEmployee.fromJson(employeeJson(10));
+      final selfEmployee = DirectoryEmployee.fromJson(
+        employeeJson(2)..['employee_code'] = 'MGR',
+      );
+      final inactiveSubordinate = DirectoryEmployee.fromJson(
+        employeeJson(11)..['is_active'] = false,
+      );
+
+      // Subordinate is allowed for team manager
+      expect(
+        canAssignTrainingToEmployee(
+          identity: teamManager,
+          employee: subordinate,
+        ),
+        isTrue,
+      );
+
+      // Self-assignment is blocked for team manager
+      expect(
+        canAssignTrainingToEmployee(
+          identity: teamManager,
+          employee: selfEmployee,
+        ),
+        isFalse,
+      );
+
+      // Inactive employee is blocked
+      expect(
+        canAssignTrainingToEmployee(
+          identity: teamManager,
+          employee: inactiveSubordinate,
+        ),
+        isFalse,
+      );
+
+      // Global company assigner can assign to any active employee
+      final companyAdmin = managementIdentity(
+        capabilities: {'training.add_trainingassignment'},
+      );
+      expect(
+        canAssignTrainingToEmployee(
+          identity: companyAdmin,
+          employee: subordinate,
+        ),
+        isTrue,
+      );
+      expect(
+        canAssignTrainingToEmployee(
+          identity: companyAdmin,
+          employee: inactiveSubordinate,
+        ),
+        isFalse,
+      );
+    });
+
+    test('assignableTrainingVersionsProvider rejects unauthorized users', () async {
+      final unauthorizedIdentity = managementIdentity(
+        capabilities: {'organization.view_employee'},
+      );
+      auth.setAuth(AuthAuthenticated.identity(unauthorizedIdentity));
+
+      final target = assignableTrainingVersionsProvider((
+        page: 1,
+        search: null,
+      ));
+      await expectLater(
+        container.read(target.future),
+        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403)),
+      );
+      verifyZeroInteractions(repository);
+    });
+
+    test('assignableTrainingVersionsProvider forwards request parameters and cancels on disposal', () async {
+      final authorizedIdentity = managementIdentity(
+        capabilities: {'training.add_trainingassignment'},
+      );
+      auth.setAuth(AuthAuthenticated.identity(authorizedIdentity));
+
+      final response = Completer<ManagementPage<AssignableTrainingVersion>>();
+      late CancelToken token;
+      when(
+        () => repository.assignableTrainingVersions(
+          page: 2,
+          search: 'safety',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((call) {
+        token = call.namedArguments[#cancelToken] as CancelToken;
+        return response.future;
+      });
+
+      final target = assignableTrainingVersionsProvider((
+        page: 2,
+        search: 'safety',
+      ));
+      final sub = container.listen(target, (_, _) {});
+      addTearDown(sub.close);
+      await Future<void>.delayed(Duration.zero);
+
+      sub.close();
+      await container.pump();
+      expect(token.isCancelled, isTrue);
+      response.complete(assignableVersionPage());
+    });
+
+    test('TrainingAssignmentMutationController rejects unauthorized attempts', () async {
+      final unauthorizedIdentity = managementIdentity(
+        capabilities: {'organization.view_employee'},
+      );
+      final mutationController = TrainingAssignmentMutationController(
+        repository: repository,
+        readAuth: () => AuthAuthenticated.identity(unauthorizedIdentity),
+      );
+
+      await expectLater(
+        mutationController.assign(
+          employeeId: 5,
+          employeeCode: 'EMP5',
+          trainingVersionId: 10,
+        ),
+        throwsA(
+          isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403),
+        ),
+      );
+      verifyZeroInteractions(repository);
+    });
+
+    test('TrainingAssignmentMutationController blocks team manager self-assignment before networking', () async {
+      final teamManager = managementIdentity(
+        team: true,
+        capabilities: {'team_assignment'},
+      );
+      final mutationController = TrainingAssignmentMutationController(
+        repository: repository,
+        readAuth: () => AuthAuthenticated.identity(teamManager),
+      );
+
+      await expectLater(
+        mutationController.assign(
+          employeeId: 2,
+          employeeCode: 'MGR',
+          trainingVersionId: 10,
+        ),
+        throwsA(
+          isA<ApiError>().having((e) => e.statusCode, 'statusCode', 400),
+        ),
+      );
+      verifyZeroInteractions(repository);
+    });
+
+    test('TrainingAssignmentMutationController delegates to repository for authorized manager', () async {
+      final teamManager = managementIdentity(
+        team: true,
+        capabilities: {'team_assignment'},
+      );
+      final mutationController = TrainingAssignmentMutationController(
+        repository: repository,
+        readAuth: () => AuthAuthenticated.identity(teamManager),
+      );
+
+      when(
+        () => repository.assignTraining(
+          employeeId: 5,
+          trainingVersionId: 10,
+          dueDate: '2026-11-30',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => CreatedAssignment.fromJson(
+          createdAssignmentJson(
+            id: 101,
+            employeeId: 5,
+            trainingVersionId: 10,
+            dueDate: '2026-11-30',
+          ),
+        ),
+      );
+
+      final result = await mutationController.assign(
+        employeeId: 5,
+        employeeCode: 'EMP5',
+        trainingVersionId: 10,
+        dueDate: '2026-11-30',
+      );
+
+      expect(result.id, 101);
+      expect(result.employeeId, 5);
+      expect(result.trainingVersionId, 10);
+      expect(result.dueAt, '2026-11-30T23:59:59Z');
+      verify(
+        () => repository.assignTraining(
+          employeeId: 5,
+          trainingVersionId: 10,
+          dueDate: '2026-11-30',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+    });
+
+    test('TrainingAssignmentMutationController discards response if account switches mid-flight', () async {
+      final manager1 = managementIdentity(
+        username: 'manager_one',
+        team: true,
+        capabilities: {'team_assignment'},
+      );
+      final manager2 = managementIdentity(
+        username: 'manager_two',
+        team: true,
+        capabilities: {'team_assignment'},
+      );
+      var currentAuth = AuthAuthenticated.identity(manager1);
+      final mutationController = TrainingAssignmentMutationController(
+        repository: repository,
+        readAuth: () => currentAuth,
+      );
+
+      final responseCompleter = Completer<CreatedAssignment>();
+      when(
+        () => repository.assignTraining(
+          employeeId: 5,
+          trainingVersionId: 10,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => responseCompleter.future);
+
+      final future = mutationController.assign(
+        employeeId: 5,
+        employeeCode: 'EMP5',
+        trainingVersionId: 10,
+      );
+
+      // Account changes mid-flight
+      currentAuth = AuthAuthenticated.identity(manager2);
+      responseCompleter.complete(
+        CreatedAssignment.fromJson(
+          createdAssignmentJson(id: 102, employeeId: 5, trainingVersionId: 10),
+        ),
+      );
+
+      await expectLater(
+        future,
+        throwsA(
+          isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403),
+        ),
+      );
+    });
+  });
 }

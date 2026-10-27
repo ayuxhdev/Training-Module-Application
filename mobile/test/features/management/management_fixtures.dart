@@ -6,10 +6,16 @@ import 'package:training_app/features/management/domain/models/management_models
 
 class ManagementTestAuth extends AuthController {
   final AuthenticatedIdentity identity;
+  bool loggedOut = false;
   ManagementTestAuth(this.identity);
   @override
   AuthState build() => AuthAuthenticated.identity(identity);
   void setAuth(AuthState auth) => state = auth;
+  @override
+  Future<void> logout() async {
+    loggedOut = true;
+    state = AuthUnauthenticated();
+  }
 }
 
 AuthenticatedIdentity managementIdentity({
@@ -170,4 +176,55 @@ ManagementPage<DirectoryEmployee> employeePage({
     next: more ? 'https://example.invalid/next' : null,
   ),
   DirectoryEmployee.fromJson,
+);
+
+Map<String, dynamic> assignableVersionJson(
+  int id, {
+  int trainingId = 1,
+  String code = 'SAFE',
+  String trainingTitle = 'Workplace safety',
+  String? title,
+  int versionNumber = 1,
+  String? publishedAt = '2026-10-27T10:00:00Z',
+}) => {
+  'id': id,
+  'training_id': trainingId,
+  'training_code': code,
+  'training_title': trainingTitle,
+  'title': title ?? '$trainingTitle v$versionNumber',
+  'version_number': versionNumber,
+  'published_at': publishedAt,
+};
+
+Map<String, dynamic> createdAssignmentJson({
+  int id = 1,
+  int employeeId = 1,
+  int trainingVersionId = 1,
+  String? dueDate,
+  String status = 'ASSIGNED',
+  String source = 'MANUAL',
+}) => {
+  'id': id,
+  'employee_id': employeeId,
+  'training_version_id': trainingVersionId,
+  'status': status,
+  'source': source,
+  'assigned_by_id': 1,
+  'department_at_assignment_id': 1,
+  'job_role_at_assignment_id': 1,
+  'assigned_at': '2026-10-27T12:00:00Z',
+  'due_at': dueDate != null ? '${dueDate}T23:59:59Z' : null,
+};
+
+ManagementPage<AssignableTrainingVersion> assignableVersionPage({
+  int id = 1,
+  String trainingTitle = 'Workplace safety',
+  bool more = false,
+}) => ManagementPage.fromJson(
+  pageJson(
+    [assignableVersionJson(id, trainingTitle: trainingTitle)],
+    count: more ? 2 : 1,
+    next: more ? 'https://example.invalid/next' : null,
+  ),
+  AssignableTrainingVersion.fromJson,
 );

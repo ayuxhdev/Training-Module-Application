@@ -94,6 +94,64 @@ class ManagementRepository {
     }, cancelToken: cancelToken);
   }
 
+  Future<ManagementPage<AssignableTrainingVersion>> assignableTrainingVersions({
+    int page = 1,
+    int? pageSize,
+    String? search,
+    CancelToken? cancelToken,
+  }) {
+    final normalizedSearch = search?.trim();
+    return _get(
+      'training-versions/',
+      (json) => ManagementPage.fromJson(
+        json,
+        AssignableTrainingVersion.fromJson,
+      ),
+      page: page,
+      pageSize: pageSize,
+      additionalQueryParameters: {
+        'search': ?(normalizedSearch?.isNotEmpty == true
+            ? normalizedSearch
+            : null),
+      },
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<CreatedAssignment> assignTraining({
+    required int employeeId,
+    required int trainingVersionId,
+    String? dueDate,
+    CancelToken? cancelToken,
+  }) async {
+    if (employeeId <= 0) throw ArgumentError.value(employeeId, 'employeeId');
+    if (trainingVersionId <= 0) {
+      throw ArgumentError.value(trainingVersionId, 'trainingVersionId');
+    }
+    final data = <String, Object?>{
+      'employee_id': employeeId,
+      'training_version_id': trainingVersionId,
+      if (dueDate != null && dueDate.isNotEmpty) 'due_date': dueDate,
+    };
+    try {
+      final response = await apiClient.dio.post(
+        '/management/assignments/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 201 && response.statusCode != 200) {
+        throw const FormatException(
+          'Assignment creation returned an unexpected status.',
+        );
+      }
+      final json = response.data as Map<String, dynamic>;
+      return CreatedAssignment.fromJson(json);
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
   Future<ManagementPage<OrganizationReference>> references(
     ReferenceKind kind, {
     int page = 1,

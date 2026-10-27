@@ -611,6 +611,24 @@ class DirectoryEmployeeScreen extends ConsumerWidget {
             key: ValueKey('deactivate-$employeeId'),
             employee: currentDetail!,
           ),
+        if (currentDetail != null &&
+            canAssignTrainingToEmployee(
+              identity: auth.identity,
+              employee: currentDetail,
+            ))
+          IconButton(
+            tooltip: 'Assign training',
+            onPressed: () async {
+              final assigned = await context.push<bool>(
+                '/workspace/employees/$employeeId/assign',
+                extra: currentDetail,
+              );
+              if (assigned == true) {
+                ref.invalidate(directoryEmployeeProvider(employeeId));
+              }
+            },
+            icon: const Icon(Icons.school_outlined),
+          ),
       ],
       value: employee,
       refresh: () => ref
@@ -651,6 +669,26 @@ class DirectoryEmployeeScreen extends ConsumerWidget {
             ],
           ),
         ),
+        if (canAssignTrainingToEmployee(
+          identity: auth.identity,
+          employee: employee,
+        )) ...[
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            key: const ValueKey('assign-training-button'),
+            onPressed: () async {
+              final assigned = await context.push<bool>(
+                '/workspace/employees/$employeeId/assign',
+                extra: employee,
+              );
+              if (assigned == true) {
+                ref.invalidate(directoryEmployeeProvider(employeeId));
+              }
+            },
+            icon: const Icon(Icons.school_outlined),
+            label: const Text('Assign training'),
+          ),
+        ],
       ],
     );
   }

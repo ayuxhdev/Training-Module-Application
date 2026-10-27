@@ -1088,4 +1088,188 @@ void main() {
       throwsFormatException,
     );
   });
+
+  group('Assignable training versions and assignment creation', () {
+    test('assignableTrainingVersions queries endpoint with pagination and search', () async {
+      reply(
+        '/management/training-versions/',
+        pageJson([
+          assignableVersionJson(
+            10,
+            trainingId: 5,
+            code: 'SAFE',
+            trainingTitle: 'Safety 101',
+            title: 'Safety 101 v1',
+            versionNumber: 1,
+            publishedAt: '2026-10-27T10:00:00Z',
+          ),
+        ]),
+      );
+
+      final page = await repository.assignableTrainingVersions();
+      expect(page.items.length, 1);
+      final item = page.items.single;
+      expect(item.id, 10);
+      expect(item.trainingId, 5);
+      expect(item.trainingCode, 'SAFE');
+      expect(item.trainingTitle, 'Safety 101');
+      expect(item.title, 'Safety 101 v1');
+      expect(item.versionNumber, 1);
+      expect(item.publishedAt, '2026-10-27T10:00:00Z');
+
+      verify(
+        () => dio.get(
+          '/management/training-versions/',
+          queryParameters: null,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+    });
+
+    test('assignableTrainingVersions trims search and forwards page', () async {
+      when(
+        () => dio.get(
+          '/management/training-versions/',
+          queryParameters: {'page': 2, 'search': 'safety'},
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: '/management/training-versions/'),
+          data: pageJson([assignableVersionJson(11)]),
+        ),
+      );
+
+      final page = await repository.assignableTrainingVersions(
+        page: 2,
+        search: '  safety  ',
+      );
+      expect(page.items.single.id, 11);
+    });
+
+    test('assignableTrainingVersions rejects invalid page or page size', () async {
+      await expectLater(
+        repository.assignableTrainingVersions(page: 0),
+        throwsArgumentError,
+      );
+      await expectLater(
+        repository.assignableTrainingVersions(pageSize: 0),
+        throwsArgumentError,
+      );
+      await expectLater(
+        repository.assignableTrainingVersions(pageSize: 101),
+        throwsArgumentError,
+      );
+      verifyZeroInteractions(dio);
+    });
+
+    test('assignTraining posts assignment data and parses created assignment', () async {
+      when(
+        () => dio.post(
+          '/management/assignments/',
+          data: {
+            'employee_id': 42,
+            'training_version_id': 12,
+            'due_date': '2026-11-30',
+          },
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: '/management/assignments/'),
+          statusCode: 201,
+          data: createdAssignmentJson(
+            id: 99,
+            employeeId: 42,
+            trainingVersionId: 12,
+            dueDate: '2026-11-30',
+          ),
+        ),
+      );
+
+      final created = await repository.assignTraining(
+        employeeId: 42,
+        trainingVersionId: 12,
+        dueDate: '2026-11-30',
+      );
+
+      expect(created.id, 99);
+      expect(created.employeeId, 42);
+      expect(created.trainingVersionId, 12);
+      expect(created.status, 'ASSIGNED');
+      expect(created.source, 'MANUAL');
+      expect(created.dueAt, '2026-11-30T23:59:59Z');
+    });
+
+    test('assignTraining omits due_date when null or empty', () async {
+      when(
+        () => dio.post(
+          '/management/assignments/',
+          data: {
+            'employee_id': 42,
+            'training_version_id': 12,
+          },
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: '/management/assignments/'),
+          statusCode: 201,
+          data: createdAssignmentJson(
+            id: 100,
+            employeeId: 42,
+            trainingVersionId: 12,
+          ),
+        ),
+      );
+
+      final created = await repository.assignTraining(
+        employeeId: 42,
+        trainingVersionId: 12,
+      );
+      expect(created.id, 100);
+      expect(created.dueAt, isNull);
+    });
+
+    test('assignTraining rejects non-positive employeeId or trainingVersionId', () async {
+      await expectLater(
+        repository.assignTraining(employeeId: 0, trainingVersionId: 12),
+        throwsArgumentError,
+      );
+      await expectLater(
+        repository.assignTraining(employeeId: 42, trainingVersionId: 0),
+        throwsArgumentError,
+      );
+      verifyZeroInteractions(dio);
+    });
+
+    test('assignTraining maps errors via mapExceptionToApiError', () async {
+      when(
+        () => dio.post(
+          '/management/assignments/',
+          data: any(named: 'data'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(
+        DioException(
+          requestOptions: RequestOptions(path: '/management/assignments/'),
+          response: Response(
+            requestOptions: RequestOptions(path: '/management/assignments/'),
+            statusCode: 400,
+            data: {
+              'error': {
+                'code': 'validation_error',
+                'message': 'This employee already has an assignment for that training version.',
+              },
+            },
+          ),
+        ),
+      );
+
+      await expectLater(
+        repository.assignTraining(employeeId: 42, trainingVersionId: 12),
+        throwsA(isA<ApiError>()),
+      );
+    });
+  });
 }

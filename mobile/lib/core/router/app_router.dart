@@ -12,6 +12,7 @@ import 'package:training_app/features/management/presentation/screens/organizati
 import 'package:training_app/features/management/presentation/screens/organization_reference_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/employee_profile_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/employee_creation_form_screen.dart';
+import 'package:training_app/features/management/presentation/screens/assign_training_screen.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -40,6 +41,9 @@ bool _canAccessWorkspacePath(String path, AuthenticatedIdentity identity) {
     }
     if (RegExp(r'^/workspace/employees/[1-9][0-9]*/edit$').hasMatch(path)) {
       return canEditEmployee(identity);
+    }
+    if (RegExp(r'^/workspace/employees/[1-9][0-9]*/assign$').hasMatch(path)) {
+      return canAssignTraining(identity);
     }
     return identity.capabilities.contains('organization.view_employee');
   }
@@ -188,6 +192,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 );
               }
               return EmployeeProfileFormScreen(
+                employeeId: id,
+                initialEmployee: state.extra is DirectoryEmployee
+                    ? state.extra as DirectoryEmployee
+                    : null,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/employees/:employeeId/assign',
+            builder: (_, state) {
+              final id = int.tryParse(state.pathParameters['employeeId'] ?? '');
+              if (id == null || id <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid employee ID'),
+                );
+              }
+              return AssignTrainingScreen(
                 employeeId: id,
                 initialEmployee: state.extra is DirectoryEmployee
                     ? state.extra as DirectoryEmployee

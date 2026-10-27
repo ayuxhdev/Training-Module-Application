@@ -3,6 +3,7 @@ from django.urls import path, re_path
 from .views import APINotFoundView, APIStatusView
 from .auth_views import EmployeeLoginView, EmployeeRefreshView, EmployeeLogoutView, EmployeeMeView
 from .dashboard_views import EmployeeDashboardView
+from .assignment_management_views import AssignableTrainingVersionListView, ManualAssignmentCreateView
 from .management_views import (
     DepartmentReferenceUpdateView, DepartmentReferenceView, EmployeeDeactivationView,
     EmployeeDirectoryDetailView, EmployeeDirectoryView,
@@ -43,6 +44,8 @@ urlpatterns = [
     path("auth/me/", EmployeeMeView.as_view(), name="auth-me"),
     path("dashboard/", EmployeeDashboardView.as_view(), name="dashboard"),
     path("management/dashboard/", ManagementDashboardView.as_view(), name="management-dashboard"),
+    path("management/training-versions/", AssignableTrainingVersionListView.as_view(), name="management-training-versions"),
+    path("management/assignments/", ManualAssignmentCreateView.as_view(), name="management-assignment-create"),
     path("management/employees/", EmployeeDirectoryView.as_view(), name="management-employees"),
     path("management/employees/<int:pk>/", EmployeeDirectoryDetailView.as_view(), name="management-employee-detail"),
     path("management/employees/<int:pk>/deactivate/", EmployeeDeactivationView.as_view(), name="management-employee-deactivate"),

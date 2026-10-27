@@ -33,6 +33,28 @@ bool canEditEmployee(AuthenticatedIdentity identity) =>
 bool canCreateEmployee(AuthenticatedIdentity identity) =>
     identity.capabilities.contains('organization.add_employee');
 
+bool canAssignTraining(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.add_trainingassignment') ||
+    identity.capabilities.contains('team_assignment');
+
+bool canAssignTrainingToEmployee({
+  required AuthenticatedIdentity identity,
+  required DirectoryEmployee employee,
+}) {
+  if (!employee.isActive) return false;
+  if (identity.capabilities.contains('training.add_trainingassignment')) {
+    return true;
+  }
+  if (identity.capabilities.contains('team_assignment')) {
+    if (identity.employee != null &&
+        identity.employee!.employeeCode == employee.employeeCode) {
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
 class EmployeeProfileMutationController {
   final ManagementRepository repository;
   final AuthState Function() readAuth;
@@ -280,6 +302,69 @@ final organizationReferenceMutationProvider =
       ),
     );
 
+class TrainingAssignmentMutationController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  const TrainingAssignmentMutationController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<CreatedAssignment> assign({
+    required int employeeId,
+    String? employeeCode,
+    required int trainingVersionId,
+    String? dueDate,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canAssignTraining(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot assign training.',
+        statusCode: 403,
+      );
+    }
+    if (!initialAuth.identity.capabilities.contains(
+          'training.add_trainingassignment',
+        ) &&
+        initialAuth.identity.employee != null &&
+        employeeCode != null &&
+        initialAuth.identity.employee!.employeeCode == employeeCode) {
+      throw ApiError(
+        message: 'Managers cannot assign training to themselves.',
+        statusCode: 400,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final created = await repository.assignTraining(
+      employeeId: employeeId,
+      trainingVersionId: trainingVersionId,
+      dueDate: dueDate,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canAssignTraining(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before the assignment completed.',
+        statusCode: 403,
+      );
+    }
+    return created;
+  }
+}
+
+final trainingAssignmentMutationProvider =
+    Provider<TrainingAssignmentMutationController>(
+      (ref) => TrainingAssignmentMutationController(
+        repository: ref.watch(managementRepositoryProvider),
+        readAuth: () => ref.read(authControllerProvider),
+      ),
+    );
+
 CancelToken _request(Ref ref, bool Function(AuthenticatedIdentity) allowed) {
   final account = ref.watch(authControllerProvider.select(managementAccount));
   final auth = ref.read(authControllerProvider);
@@ -341,7 +426,6 @@ final employeeDirectoryProvider = FutureProvider.autoDispose
         cancelToken: cancelToken,
       );
     }, retry: (_, _) => null);
-
 final directoryEmployeeProvider = FutureProvider.autoDispose
     .family<DirectoryEmployee, int>((ref, id) {
       final request = _request(
@@ -406,4 +490,20 @@ final organizationReferenceChoicesProvider = FutureProvider.autoDispose
       return ref
           .watch(managementRepositoryProvider)
           .allReferences(kind, cancelToken: request);
+    }, retry: (_, _) => null);
+
+typedef AssignableVersionsRequest = ({int page, String? search});
+
+final assignableTrainingVersionsProvider = FutureProvider.autoDispose
+    .family<ManagementPage<AssignableTrainingVersion>, AssignableVersionsRequest>((
+      ref,
+      request,
+    ) {
+      final cancelToken = _request(ref, canAssignTraining);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.assignableTrainingVersions(
+        page: request.page,
+        search: request.search,
+        cancelToken: cancelToken,
+      );
     }, retry: (_, _) => null);

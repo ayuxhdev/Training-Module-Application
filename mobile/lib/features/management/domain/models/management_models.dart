@@ -240,3 +240,80 @@ class ManagementDashboard {
     );
   }
 }
+
+class AssignableTrainingVersion {
+  final int id;
+  final int trainingId;
+  final String trainingCode;
+  final String trainingTitle;
+  final int versionNumber;
+  final String title;
+  final String description;
+  final String status;
+  final String? publishedAt;
+
+  const AssignableTrainingVersion({
+    required this.id,
+    required this.trainingId,
+    required this.trainingCode,
+    required this.trainingTitle,
+    required this.versionNumber,
+    required this.title,
+    this.description = '',
+    this.status = 'PUBLISHED',
+    this.publishedAt,
+  });
+
+  factory AssignableTrainingVersion.fromJson(Map<String, dynamic> json) =>
+      AssignableTrainingVersion(
+        id: json['id'] as int,
+        trainingId: (json['training_id'] ?? json['training']) as int,
+        trainingCode: (json['training_code'] ?? '') as String,
+        trainingTitle: (json['training_title'] ?? '') as String,
+        versionNumber: json['version_number'] as int,
+        title: (json['title'] ?? '') as String,
+        description: (json['description'] ?? '') as String,
+        status: (json['status'] ?? 'PUBLISHED') as String,
+        publishedAt: json['published_at'] as String?,
+      );
+}
+
+class CreatedAssignment {
+  final int id;
+  final int employeeId;
+  final int trainingVersionId;
+  final String status;
+  final String source;
+  final String assignedAt;
+  final String? dueAt;
+
+  const CreatedAssignment({
+    required this.id,
+    required this.employeeId,
+    required this.trainingVersionId,
+    required this.status,
+    required this.source,
+    required this.assignedAt,
+    this.dueAt,
+  });
+
+  factory CreatedAssignment.fromJson(Map<String, dynamic> json) {
+    final emp = json['employee'];
+    final employeeId = emp is Map<String, dynamic>
+        ? (emp['id'] as int)
+        : (json['employee_id'] as int? ?? 0);
+    final ver = json['training_version'];
+    final trainingVersionId = ver is Map<String, dynamic>
+        ? (ver['id'] as int)
+        : (json['training_version_id'] as int? ?? 0);
+    return CreatedAssignment(
+      id: json['id'] as int,
+      employeeId: employeeId,
+      trainingVersionId: trainingVersionId,
+      status: (json['status'] ?? 'ASSIGNED') as String,
+      source: (json['source'] ?? 'MANUAL') as String,
+      assignedAt: (json['assigned_at'] ?? '') as String,
+      dueAt: json['due_at'] as String?,
+    );
+  }
+}

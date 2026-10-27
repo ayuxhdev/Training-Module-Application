@@ -141,9 +141,10 @@ class TrainingAssignmentForm(forms.ModelForm):
         model = TrainingAssignment
         fields = ["employee", "training_version", "due_date"]
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, user=None, require_active_training=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.user = user
+        self.require_active_training = require_active_training
         self.fields["employee"].queryset = assignable_employees(user).select_related("department", "job_role")
         if not can_assign_company_training(user):
             self.fields["employee"].help_text = "Only active employees in your reporting hierarchy can be assigned training."
@@ -151,6 +152,8 @@ class TrainingAssignmentForm(forms.ModelForm):
         self.fields["training_version"].queryset = TrainingVersion.objects.filter(
             status=TrainingVersion.Status.PUBLISHED,
         ).select_related("training")
+        if require_active_training:
+            self.fields["training_version"].queryset = self.fields["training_version"].queryset.filter(training__is_active=True)
         self.fields["training_version"].empty_label = "Select a training version"
         self.fields["training_version"].label_from_instance = lambda version: (
             f"{version.training.catalog_title} — {version.title} "
@@ -204,7 +207,13 @@ class TrainingAssignmentForm(forms.ModelForm):
                 employee = Employee.objects.select_for_update().get(pk=assignment.employee_id)
                 # Existing assignment inserts lock the version before the actor's
                 # User FK. Preserve that order to avoid a manual/role lock cycle.
-                TrainingVersion.objects.select_for_update().get(pk=assignment.training_version_id)
+                version = TrainingVersion.objects.select_for_update().get(pk=assignment.training_version_id)
+                if self.require_active_training:
+                    # API eligibility is stricter; retain the website default.
+                    # Lock the catalog before User, just as Training's FK does.
+                    training = Training.objects.select_for_update().get(pk=version.training_id)
+                    if not training.is_active:
+                        raise forms.ValidationError({"training_version": "Choose published training from an active catalog entry."})
                 actor = get_user_model().objects.select_for_update().filter(pk=self.user.pk).first()
                 if company_scope and not can_assign_company_training(actor):
                     # Switching to team scope now would require earlier hierarchy locks.
