@@ -25,6 +25,7 @@ from organization.views import employee_scope
 from .forms import (LessonForm, ModuleForm, RoleTrainingAssignmentForm,
 					RoleTrainingRequirementCreateForm, RoleTrainingRequirementUpdateForm,
 					TrainingAssignmentForm, TrainingForm, TrainingVersionForm)
+from .permissions import can_assign_company_training, can_assign_team_training
 from .models import (Lesson, LessonProgress, Module, RoleTrainingRequirement, Training, TrainingAssignment,
 						 TrainingVersion, VideoWatchSession, VIDEO_HEARTBEAT_TOLERANCE)
 
@@ -639,6 +640,13 @@ class TrainingAssignmentListView(AssignmentAccessMixin, ListView):
 		).filter(employee__in=assignment_scope(self.request.user)).order_by("due_at", "pk")
 		return _with_assignment_overdue(queryset)
 
+	def get_context_data(self, **kwargs):
+		context = super().get_context_data(**kwargs)
+		context["can_assign_training"] = (
+			can_assign_company_training(self.request.user) or can_assign_team_training(self.request.user)
+		)
+		return context
+
 
 class TrainingAssignmentDetailView(AssignmentAccessMixin, DetailView):
 	model = TrainingAssignment
@@ -724,11 +732,26 @@ class TrainingAssignmentCreateView(AuditedFormMixin, LoginRequiredMixin, Permiss
 	form_class = TrainingAssignmentForm
 	template_name = "training/assignment_form.html"
 
+	def has_permission(self):
+		return can_assign_company_training(self.request.user) or can_assign_team_training(self.request.user)
+
+	def get_form_kwargs(self):
+		kwargs = super().get_form_kwargs()
+		kwargs["user"] = self.request.user
+		return kwargs
+
 	def form_valid(self, form):
 		try:
 			self.object = form.save(assigned_by=self.request.user)
-		except (ValidationError, IntegrityError) as exc:
-			form.add_error(None, "This assignment could not be created: " + str(exc))
+		except ValidationError as exc:
+			if hasattr(exc, "error_dict"):
+				for field, errors in exc.error_dict.items():
+					form.add_error(field if field in form.fields else None, errors)
+			else:
+				form.add_error(None, exc)
+			return self.form_invalid(form)
+		except IntegrityError:
+			form.add_error(None, "This assignment conflicts with an existing record. Reload the page and try again.")
 			return self.form_invalid(form)
 		record_event(
 			self.request.user,

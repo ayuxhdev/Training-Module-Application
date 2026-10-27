@@ -196,9 +196,9 @@ class TeamAssignmentPermissionTests(TestCase):
         self.assertIn(self.inactive.pk, assignment_scope(user).values_list("pk", flat=True))
         self.assertNotIn(self.foreign.pk, assignment_scope(user).values_list("pk", flat=True))
 
-    def test_new_permission_does_not_enable_existing_global_creation_routes(self):
+    def test_team_permission_does_not_enable_company_wide_assignment_configuration(self):
         self.client.force_login(self.user(self.manager))
-        for path in ("/assignments/new/", "/assignments/role/new/", "/assignments/requirements/"):
+        for path in ("/assignments/role/new/", "/assignments/requirements/"):
             with self.subTest(path=path):
                 self.assertEqual(self.client.get(path).status_code, 403)
         self.assertEqual(TrainingAssignment.objects.count(), 0)

@@ -1,6 +1,7 @@
 from datetime import datetime, time
 
 from django import forms
+from django.contrib.auth import get_user_model
 from django.core.exceptions import NON_FIELD_ERRORS
 from django.db import transaction
 from django.db.models import Max
@@ -12,6 +13,7 @@ from notifications.models import Notification
 from notifications.services import create_assignment_notification
 from .models import Lesson, Module, RoleTrainingRequirement, Training, TrainingAssignment, TrainingVersion
 from organization.models import Employee, JobRole
+from .permissions import assignable_employees, can_assign_company_training
 
 
 class TrainingForm(forms.ModelForm):
@@ -139,9 +141,12 @@ class TrainingAssignmentForm(forms.ModelForm):
         model = TrainingAssignment
         fields = ["employee", "training_version", "due_date"]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["employee"].queryset = Employee.objects.filter(is_active=True).select_related("department", "job_role")
+        self.user = user
+        self.fields["employee"].queryset = assignable_employees(user).select_related("department", "job_role")
+        if not can_assign_company_training(user):
+            self.fields["employee"].help_text = "Only active employees in your reporting hierarchy can be assigned training."
         self.fields["employee"].empty_label = "Select an employee"
         self.fields["training_version"].queryset = TrainingVersion.objects.filter(
             status=TrainingVersion.Status.PUBLISHED,
@@ -161,8 +166,8 @@ class TrainingAssignmentForm(forms.ModelForm):
         cleaned = super().clean()
         employee = cleaned.get("employee")
         version = cleaned.get("training_version")
-        if employee and not employee.is_active:
-            self.add_error("employee", "Inactive employees cannot receive assignments.")
+        if employee and not assignable_employees(self.user).filter(pk=employee.pk).exists():
+            self.add_error("employee", "Choose an active employee you are authorized to assign training to.")
         if version and version.status != TrainingVersion.Status.PUBLISHED:
             self.add_error("training_version", "Assignments require a published training version.")
         if employee and version and TrainingAssignment.objects.filter(employee=employee, training_version=version).exists():
@@ -178,6 +183,8 @@ class TrainingAssignmentForm(forms.ModelForm):
         return cleaned
 
     def save(self, commit=True, *, assigned_by):
+        if not self.user or assigned_by.pk != self.user.pk:
+            raise forms.ValidationError("The assigning account must match the authenticated user.")
         assignment = super().save(commit=False)
         assignment.source = TrainingAssignment.Source.MANUAL
         assignment.assigned_by = assigned_by
@@ -189,6 +196,27 @@ class TrainingAssignmentForm(forms.ModelForm):
             )
         if commit:
             with transaction.atomic():
+                company_scope = can_assign_company_training(self.user)
+                if not company_scope:
+                    # Match hierarchy edits: ordered Employee locks first.
+                    # Recheck scope only after acquiring these locks.
+                    list(Employee.objects.order_by("pk").select_for_update().values_list("pk", flat=True))
+                employee = Employee.objects.select_for_update().get(pk=assignment.employee_id)
+                # Existing assignment inserts lock the version before the actor's
+                # User FK. Preserve that order to avoid a manual/role lock cycle.
+                TrainingVersion.objects.select_for_update().get(pk=assignment.training_version_id)
+                actor = get_user_model().objects.select_for_update().filter(pk=self.user.pk).first()
+                if company_scope and not can_assign_company_training(actor):
+                    # Switching to team scope now would require earlier hierarchy locks.
+                    raise forms.ValidationError("Your assignment permissions changed. Reload the page and try again.")
+                if not assignable_employees(actor).filter(pk=employee.pk).exists():
+                    raise forms.ValidationError({
+                        "employee": "You can no longer assign training to this employee. Reload the page and try again.",
+                    })
+                assignment.employee = employee
+                assignment.assigned_by = actor
+                assignment.department_at_assignment = employee.department
+                assignment.job_role_at_assignment = employee.job_role
                 creating = assignment._state.adding
                 assignment.save()
                 if creating:

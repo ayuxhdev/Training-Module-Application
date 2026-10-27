@@ -25,13 +25,14 @@ class NotificationTests(CurriculumTestCase):
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
+        cls.user.groups.add(Group.objects.get(name="Training Coordinator"))
         cls.recipient = Employee.objects.create(
             employee_code="NOTICE-002", display_name="Notification recipient",
             department=cls.department, job_role=cls.role, date_joined=cls.now.date(),
         )
 
     def assignment_form(self, employee=None, version=None):
-        return TrainingAssignmentForm(data={
+        return TrainingAssignmentForm(user=self.user, data={
             "employee": (employee or self.recipient).pk,
             "training_version": (version or self.version).pk,
         })

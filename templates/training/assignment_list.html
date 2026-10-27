@@ -67,11 +67,13 @@
         {% else %}Training assigned to employees, with current status and deadlines.{% endif %}
       </p>
     </div>
-    {% if perms.training.add_trainingassignment %}
+    {% if can_assign_training %}
       <nav class="catalog-actions" aria-label="Assignment management">
         <a class="btn btn-primary" href="{% url 'training:assignment-create' %}">Assign to one employee</a>
-        <a class="btn btn-secondary" href="{% url 'training:role-assignment-create' %}">Assign by job role</a>
-        <a class="btn btn-secondary" href="{% url 'training:role-requirement-list' %}">Job-role requirements</a>
+        {% if perms.training.add_trainingassignment %}
+          <a class="btn btn-secondary" href="{% url 'training:role-assignment-create' %}">Assign by job role</a>
+          <a class="btn btn-secondary" href="{% url 'training:role-requirement-list' %}">Job-role requirements</a>
+        {% endif %}
       </nav>
     {% endif %}
   </header>
