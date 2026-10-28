@@ -1,0 +1,46 @@
+{% extends "accounts/system_admin/base.html" %}
+{% block title %}User Account Directory | Garden's Need Training{% endblock %}
+{% block system_heading %}User Account Directory{% endblock %}
+{% block system_content %}
+<section class="org-panel" aria-labelledby="account-search-heading">
+  <header class="org-panel-heading"><h2 id="account-search-heading">Find accounts</h2></header>
+  <form method="get" class="form-stack">
+    {{ search_form.non_field_errors }}
+    <p><label for="id_q">{{ search_form.q.label }}</label>
+      <input type="search" id="id_q" name="q" maxlength="150" value="{{ search_form.q.value|default_if_none:'' }}" autocomplete="off" aria-describedby="account-search-help{% if search_form.q.errors %} account-search-errors{% endif %}"{% if search_form.q.errors %} aria-invalid="true"{% endif %}>
+      <span class="helptext" id="account-search-help">{{ search_form.q.help_text }}</span>
+    </p>
+    {% if search_form.q.errors %}<div id="account-search-errors" role="alert">{{ search_form.q.errors }}</div>{% endif %}
+    <div class="record-actions"><button class="btn btn-primary" type="submit">Search accounts</button><a class="btn btn-secondary" href="{% url 'accounts:system-user-list' %}">Clear search</a></div>
+  </form>
+</section>
+<section class="org-panel" aria-labelledby="account-directory-heading">
+  <header class="org-panel-heading"><h2 id="account-directory-heading">User accounts</h2><p>{{ paginator.count }} matching account{{ paginator.count|pluralize }}</p></header>
+  <p class="management-scroll-hint" id="account-table-help">Scroll horizontally if needed. Keyboard: focus this table region and use the arrow keys.</p>
+  <div class="table-scroll org-table-scroll management-table-region" role="region" aria-label="User accounts" aria-describedby="account-table-help" tabindex="0">
+    <table class="org-table">
+      <thead><tr><th scope="col">Username</th><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Status</th><th scope="col">System access</th><th scope="col">Groups</th><th scope="col">Linked Employee</th><th scope="col">Last login</th><th scope="col">Actions</th></tr></thead>
+      <tbody>
+      {% for account in accounts %}
+        <tr>
+          <th scope="row">{{ account.username }}</th>
+          <td>{{ account.get_full_name|default:"Not provided" }}</td>
+          <td>{{ account.email|default:"Not provided" }}</td>
+          <td>{% if account.is_active %}{% include "components/status_badge.html" with status="ACTIVE" label="Active" %}{% else %}{% include "components/status_badge.html" with status="INACTIVE" label="Inactive" %}{% endif %}</td>
+          <td>{% if account.is_superuser %}<span class="status-badge">Superuser</span>{% endif %}{% if account.is_staff %}<span class="status-badge">Staff</span>{% endif %}{% if not account.is_superuser and not account.is_staff %}Standard{% endif %}</td>
+          <td>{% for group in account.groups.all %}<span class="status-badge">{{ group.name }}</span>{% empty %}<span class="muted">None</span>{% endfor %}</td>
+          <td>{% if account.employee %}{{ account.employee.display_name }}<span class="org-record-code">{{ account.employee.employee_code }}</span>{% else %}<span class="muted">Not linked</span>{% endif %}</td>
+          <td>{% if account.last_login %}<time datetime="{{ account.last_login|date:'c' }}">{{ account.last_login|date:"M j, Y, g:i A T" }}</time>{% else %}<span class="muted">Never</span>{% endif %}</td>
+          <td class="org-table-actions"><div class="record-actions"><a class="btn btn-secondary" href="{% url 'accounts:system-user-detail' account.pk %}" aria-label="View user account: {{ account.username }}">View</a></div></td>
+        </tr>
+      {% empty %}<tr><td class="org-table-empty" colspan="9">No user accounts match this search.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <nav class="record-actions" aria-label="User account pages">
+    {% if page_obj.has_previous %}<a class="btn btn-secondary" href="?q={{ search_term|urlencode }}&amp;page={{ page_obj.previous_page_number }}">Previous page</a>{% endif %}
+    <p aria-live="polite">Page {{ page_obj.number }} of {{ paginator.num_pages }}</p>
+    {% if page_obj.has_next %}<a class="btn btn-secondary" href="?q={{ search_term|urlencode }}&amp;page={{ page_obj.next_page_number }}">Next page</a>{% endif %}
+  </nav>
+</section>
+{% endblock %}

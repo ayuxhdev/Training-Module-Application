@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}System Administration | Garden's Need Training{% endblock %}
+{% block content %}
+<div class="org-workspace">
+  <header class="page-header">
+    <div class="page-header-main"><h1>{% block system_heading %}System Administration{% endblock %}</h1><p class="muted">Restricted to active Django Superusers. Account oversight is read-only.</p></div>
+  </header>
+  <nav class="record-actions" aria-label="System Administration navigation">
+    <a class="btn btn-secondary" href="{% url 'accounts:system-dashboard' %}"{% if request.resolver_match.url_name == 'system-dashboard' %} aria-current="page"{% endif %}>System overview</a>
+    <a class="btn btn-secondary" href="{% url 'accounts:system-user-list' %}"{% if request.resolver_match.url_name == 'system-user-list' %} aria-current="page"{% endif %}>User accounts</a>
+    {% if user.is_staff %}<a class="btn btn-secondary" href="{% url 'admin:index' %}">Django admin (technical)</a>{% endif %}
+  </nav>
+  {% block system_content %}{% endblock %}
+</div>
+{% endblock %}

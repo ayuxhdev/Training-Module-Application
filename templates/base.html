@@ -93,6 +93,14 @@
               </ul>
             </section>
           {% endif %}
+          {% if user.is_active and user.is_superuser %}
+            <section class="nav-section" aria-labelledby="nav-system-heading">
+              <h2 id="nav-system-heading" class="nav-section-heading">System</h2>
+              <ul>
+                <li><a class="nav-link{% if current_route == 'system-dashboard' or current_route == 'system-user-list' or current_route == 'system-user-detail' %} is-active{% endif %}" href="{% url 'accounts:system-dashboard' %}"{% if current_route == 'system-dashboard' or current_route == 'system-user-list' or current_route == 'system-user-detail' %} aria-current="page"{% endif %}>{% include "components/nav_icon.html" with icon="roles" %}System Administration</a></li>
+              </ul>
+            </section>
+          {% endif %}
         {% endwith %}
       </nav>
     </aside>
