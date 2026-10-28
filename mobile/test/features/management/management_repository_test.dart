@@ -1271,5 +1271,84 @@ void main() {
         throwsA(isA<ApiError>()),
       );
     });
+
+    test('employeeAssignments requests /management/employees/{id}/assignments/ and parses page', () async {
+      reply(
+        '/management/employees/42/assignments/',
+        pageJson([
+          employeeAssignmentSummaryJson(
+            id: 101,
+            trainingTitle: 'Hazard Communication',
+            versionNumber: 2,
+            status: 'IN_PROGRESS',
+            assignedAt: '2026-10-01T08:00:00Z',
+            dueAt: '2026-10-15T23:59:59Z',
+            isOverdue: true,
+            progressSummary: {
+              'required_lessons_completed': 3,
+              'required_lessons_total': 5,
+            },
+          ),
+        ], count: 1),
+        page: 1,
+      );
+
+      final page = await repository.employeeAssignments(42);
+      expect(page.count, 1);
+      expect(page.hasMore, isFalse);
+      expect(page.items.length, 1);
+      final item = page.items.first;
+      expect(item.id, 101);
+      expect(item.trainingTitle, 'Hazard Communication');
+      expect(item.versionNumber, 2);
+      expect(item.status, 'IN_PROGRESS');
+      expect(item.isOverdue, isTrue);
+      expect(item.assignedAt, DateTime.utc(2026, 10, 1, 8, 0, 0));
+      expect(item.dueAt, DateTime.utc(2026, 10, 15, 23, 59, 59));
+      expect(item.progressSummary?.requiredLessonsCompleted, 3);
+      expect(item.progressSummary?.requiredLessonsTotal, 5);
+    });
+
+    test('employeeAssignments validates arguments', () async {
+      expect(() => repository.employeeAssignments(0), throwsArgumentError);
+      expect(() => repository.employeeAssignments(-1), throwsArgumentError);
+      await expectLater(
+        repository.employeeAssignments(42, page: 0),
+        throwsArgumentError,
+      );
+      await expectLater(
+        repository.employeeAssignments(42, pageSize: 0),
+        throwsArgumentError,
+      );
+      await expectLater(
+        repository.employeeAssignments(42, pageSize: 101),
+        throwsArgumentError,
+      );
+      verifyZeroInteractions(dio);
+    });
+
+    test('employeeAssignments maps DioException to ApiError', () async {
+      when(
+        () => dio.get(
+          '/management/employees/42/assignments/',
+          queryParameters: any(named: 'queryParameters'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(
+        DioException(
+          requestOptions: RequestOptions(path: '/management/employees/42/assignments/'),
+          response: Response(
+            requestOptions: RequestOptions(path: '/management/employees/42/assignments/'),
+            statusCode: 404,
+            data: {'detail': 'Employee not found or outside reporting scope.'},
+          ),
+        ),
+      );
+
+      await expectLater(
+        repository.employeeAssignments(42),
+        throwsA(isA<ApiError>()),
+      );
+    });
   });
 }

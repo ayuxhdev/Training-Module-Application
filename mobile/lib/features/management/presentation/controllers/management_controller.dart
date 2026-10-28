@@ -37,6 +37,22 @@ bool canAssignTraining(AuthenticatedIdentity identity) =>
     identity.capabilities.contains('training.add_trainingassignment') ||
     identity.capabilities.contains('team_assignment');
 
+bool hasCompanyAssignmentAuthority(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.add_trainingassignment');
+
+bool canViewEmployeeAssignments(
+  AuthenticatedIdentity identity, {
+  bool isCurrentEmployee = false,
+}) {
+  if (isCurrentEmployee && !hasCompanyAssignmentAuthority(identity)) {
+    return false;
+  }
+  return hasCompanyAssignmentAuthority(identity) ||
+      identity.capabilities.contains('team_assignment') ||
+      identity.capabilities.contains('assignment_report') ||
+      identity.canViewTeam;
+}
+
 bool canAssignTrainingToEmployee({
   required AuthenticatedIdentity identity,
   required DirectoryEmployee employee,
@@ -504,6 +520,22 @@ final assignableTrainingVersionsProvider = FutureProvider.autoDispose
       return repository.assignableTrainingVersions(
         page: request.page,
         search: request.search,
+        cancelToken: cancelToken,
+      );
+    }, retry: (_, _) => null);
+
+typedef EmployeeAssignmentsRequest = ({int employeeId, int page});
+
+final employeeAssignmentsProvider = FutureProvider.autoDispose
+    .family<ManagementPage<EmployeeAssignmentSummary>, EmployeeAssignmentsRequest>((
+      ref,
+      request,
+    ) {
+      final cancelToken = _request(ref, canViewEmployeeAssignments);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.employeeAssignments(
+        request.employeeId,
+        page: request.page,
         cancelToken: cancelToken,
       );
     }, retry: (_, _) => null);

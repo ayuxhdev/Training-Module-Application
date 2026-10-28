@@ -983,4 +983,155 @@ void main() {
       );
     });
   });
+
+  group('employeeAssignmentsProvider and canViewEmployeeAssignments', () {
+    test('canViewEmployeeAssignments grants managers and admins, denies directory-only viewers', () {
+      final admin = managementIdentity(
+        capabilities: {'training.add_trainingassignment'},
+      );
+      final managerWithTeam = managementIdentity(
+        team: true,
+        capabilities: {'team_workspace', 'assignment_report'},
+      );
+      final managerWithTeamAssignment = managementIdentity(
+        team: true,
+        capabilities: {'team_assignment'},
+      );
+      final directoryOnlyViewer = managementIdentity(
+        capabilities: {'organization.view_employee'},
+      );
+
+      expect(canViewEmployeeAssignments(admin), isTrue);
+      expect(canViewEmployeeAssignments(managerWithTeam), isTrue);
+      expect(canViewEmployeeAssignments(managerWithTeamAssignment), isTrue);
+      expect(canViewEmployeeAssignments(directoryOnlyViewer), isFalse);
+
+      expect(hasCompanyAssignmentAuthority(admin), isTrue);
+      expect(hasCompanyAssignmentAuthority(managerWithTeam), isFalse);
+
+      // Self-monitoring visibility (isCurrentEmployee = true)
+      expect(canViewEmployeeAssignments(admin, isCurrentEmployee: true), isTrue);
+      expect(canViewEmployeeAssignments(managerWithTeam, isCurrentEmployee: true), isFalse);
+      expect(canViewEmployeeAssignments(managerWithTeamAssignment, isCurrentEmployee: true), isFalse);
+      expect(canViewEmployeeAssignments(directoryOnlyViewer, isCurrentEmployee: true), isFalse);
+
+      final mixedRoleManager = managementIdentity(
+        team: true,
+        capabilities: {
+          'team_workspace',
+          'team_assignment',
+          'training.add_trainingassignment',
+        },
+      );
+      expect(hasCompanyAssignmentAuthority(mixedRoleManager), isTrue);
+      expect(canViewEmployeeAssignments(mixedRoleManager, isCurrentEmployee: true), isTrue);
+      expect(canViewEmployeeAssignments(mixedRoleManager, isCurrentEmployee: false), isTrue);
+    });
+
+    test('employeeAssignmentsProvider queries repository when authorized', () async {
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            team: true,
+            capabilities: {'team_assignment', 'organization.view_employee'},
+          ),
+        ),
+      );
+
+      when(
+        () => repository.employeeAssignments(
+          15,
+          page: 1,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => employeeAssignmentPage(
+          id: 201,
+          trainingTitle: 'Safety Induction',
+          status: 'COMPLETED',
+        ),
+      );
+
+      final page = await container.read(
+        employeeAssignmentsProvider((employeeId: 15, page: 1)).future,
+      );
+
+      expect(page.items.length, 1);
+      expect(page.items.first.trainingTitle, 'Safety Induction');
+      expect(page.items.first.status, 'COMPLETED');
+      verify(
+        () => repository.employeeAssignments(
+          15,
+          page: 1,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+    });
+
+    test('employeeAssignmentsProvider throws 403 when user lacks assignment viewing authority', () async {
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            capabilities: {'organization.view_employee'},
+          ),
+        ),
+      );
+
+      await expectLater(
+        container.read(
+          employeeAssignmentsProvider((employeeId: 15, page: 1)).future,
+        ),
+        throwsA(
+          isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403),
+        ),
+      );
+      verifyZeroInteractions(repository);
+    });
+
+    test('employeeAssignmentsProvider cancels request when account switches', () async {
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            username: 'manager_a',
+            team: true,
+            capabilities: {'team_assignment', 'organization.view_employee'},
+          ),
+        ),
+      );
+
+      final tokens = <CancelToken>[];
+      final completer = Completer<ManagementPage<EmployeeAssignmentSummary>>();
+      when(
+        () => repository.employeeAssignments(
+          15,
+          page: 1,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((call) {
+        tokens.add(call.namedArguments[#cancelToken] as CancelToken);
+        return completer.future;
+      });
+
+      final sub = container.listen(
+        employeeAssignmentsProvider((employeeId: 15, page: 1)),
+        (_, _) {},
+      );
+      addTearDown(sub.close);
+      await Future<void>.delayed(Duration.zero);
+
+      // Account switches to another user
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            username: 'manager_b',
+            team: true,
+            capabilities: {'team_assignment', 'organization.view_employee'},
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(tokens.first.isCancelled, isTrue);
+    });
+  });
 }

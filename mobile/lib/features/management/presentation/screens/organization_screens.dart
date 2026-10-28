@@ -15,6 +15,7 @@ import 'package:training_app/features/auth/presentation/controllers/auth_control
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/management/presentation/widgets/employee_deactivation_action.dart';
+import 'package:training_app/features/management/presentation/widgets/employee_assignments_section.dart';
 import 'package:training_app/features/management/presentation/widgets/read_only_page.dart';
 
 class OrganizationListScreen extends ConsumerStatefulWidget {
@@ -625,15 +626,19 @@ class DirectoryEmployeeScreen extends ConsumerWidget {
               );
               if (assigned == true) {
                 ref.invalidate(directoryEmployeeProvider(employeeId));
+                ref.invalidate(employeeAssignmentsProvider);
               }
             },
             icon: const Icon(Icons.school_outlined),
           ),
       ],
       value: employee,
-      refresh: () => ref
-          .refresh(directoryEmployeeProvider(employeeId).future)
-          .then<void>((_) {}),
+      refresh: () async {
+        ref.invalidate(employeeAssignmentsProvider);
+        await ref
+            .refresh(directoryEmployeeProvider(employeeId).future)
+            .then<void>((_) {});
+      },
       content: (employee) => [
         CinematicHero(
           eyebrow: employee.employeeCode,
@@ -683,11 +688,21 @@ class DirectoryEmployeeScreen extends ConsumerWidget {
               );
               if (assigned == true) {
                 ref.invalidate(directoryEmployeeProvider(employeeId));
+                ref.invalidate(employeeAssignmentsProvider);
               }
             },
             icon: const Icon(Icons.school_outlined),
             label: const Text('Assign training'),
           ),
+        ],
+        if (canViewEmployeeAssignments(
+          auth.identity,
+          isCurrentEmployee: isCurrentEmployee ||
+              (auth.identity.employee != null &&
+                  auth.identity.employee!.employeeCode == employee.employeeCode),
+        )) ...[
+          const SizedBox(height: 24),
+          EmployeeAssignmentsSection(employeeId: employeeId),
         ],
       ],
     );

@@ -1,3 +1,5 @@
+import 'package:training_app/features/learning/domain/models/assignment.dart';
+
 enum ReferenceKind { departments, jobRoles }
 
 extension ReferenceKindLabels on ReferenceKind {
@@ -314,6 +316,80 @@ class CreatedAssignment {
       source: (json['source'] ?? 'MANUAL') as String,
       assignedAt: (json['assigned_at'] ?? '') as String,
       dueAt: json['due_at'] as String?,
+    );
+  }
+}
+
+class EmployeeAssignmentSummary {
+  final int id;
+  final String trainingTitle;
+  final int versionNumber;
+  final String status;
+  final DateTime? assignedAt;
+  final DateTime? dueAt;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+  final bool isOverdue;
+  final ProgressSummary? progressSummary;
+  final int? trainingId;
+  final int? trainingVersionId;
+
+  const EmployeeAssignmentSummary({
+    required this.id,
+    required this.trainingTitle,
+    required this.versionNumber,
+    required this.status,
+    this.assignedAt,
+    this.dueAt,
+    this.startedAt,
+    this.completedAt,
+    this.isOverdue = false,
+    this.progressSummary,
+    this.trainingId,
+    this.trainingVersionId,
+  });
+
+  factory EmployeeAssignmentSummary.fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] as num?)?.toInt() ?? 0;
+    final trainingId = (json['training_id'] as num?)?.toInt();
+    final trainingVersionId = (json['training_version_id'] as num?)?.toInt();
+    final trainingTitle =
+        (json['training_title'] ?? json['trainingTitle'] ?? '') as String;
+    final versionNumber =
+        (json['version_number'] ??
+                json['version_identifier'] ??
+                json['versionNumber'] ??
+                1)
+            as int;
+    final status = (json['status'] ?? 'ASSIGNED') as String;
+    final assignedAtStr = json['assigned_at'] ?? json['assigned_date'];
+    final dueAtStr = json['due_at'] ?? json['due_date'];
+    final startedAtStr = json['started_at'];
+    final completedAtStr = json['completed_at'] ?? json['completion_date'];
+    final isOverdue = json['is_overdue'] as bool? ?? false;
+    final progressJson = json['progress_summary'];
+
+    return EmployeeAssignmentSummary(
+      id: id,
+      trainingTitle: trainingTitle,
+      versionNumber: versionNumber,
+      status: status,
+      assignedAt: assignedAtStr != null
+          ? DateTime.tryParse(assignedAtStr.toString())
+          : null,
+      dueAt: dueAtStr != null ? DateTime.tryParse(dueAtStr.toString()) : null,
+      startedAt: startedAtStr != null
+          ? DateTime.tryParse(startedAtStr.toString())
+          : null,
+      completedAt: completedAtStr != null
+          ? DateTime.tryParse(completedAtStr.toString())
+          : null,
+      isOverdue: isOverdue,
+      progressSummary: progressJson is Map<String, dynamic>
+          ? ProgressSummary.fromJson(progressJson)
+          : null,
+      trainingId: trainingId,
+      trainingVersionId: trainingVersionId,
     );
   }
 }

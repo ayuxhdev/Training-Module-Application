@@ -2,7 +2,7 @@ import json
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
-from django.db.models import BooleanField, Case, Count, Q, Value, When
+from django.db.models import BooleanField, Case, Value, When
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -28,6 +28,7 @@ from training.views import (
 )
 
 from .learning_serializers import AssignmentDetailSerializer, AssignmentListSerializer
+from .assignment_queries import with_assignment_summary
 
 
 class LearningConflict(APIException):
@@ -47,29 +48,10 @@ class AssignmentListView(generics.ListAPIView):
 	serializer_class = AssignmentListSerializer
 
 	def get_queryset(self):
-		now = timezone.now()
-		return TrainingAssignment.objects.filter(employee=self.request.user.employee).select_related(
+		assignments = TrainingAssignment.objects.filter(employee=self.request.user.employee).select_related(
 			"training_version",
-		).annotate(
-			is_overdue=Case(
-				When(overdue_condition(now), then=Value(True)),
-				default=Value(False),
-				output_field=BooleanField(),
-			),
-			required_lessons_total=Count(
-				"training_version__modules__lessons",
-				filter=Q(training_version__modules__lessons__is_required=True),
-				distinct=True,
-			),
-			required_lessons_completed=Count(
-				"lesson_progress__lesson_id",
-				filter=Q(
-					lesson_progress__completed_at__isnull=False,
-					lesson_progress__lesson__is_required=True,
-				),
-				distinct=True,
-			),
-		).order_by("due_at", "pk")
+		)
+		return with_assignment_summary(assignments).order_by("due_at", "pk")
 
 
 class AssignmentDetailView(JWTActiveEmployeeAPIView):

@@ -94,6 +94,25 @@ class ManagementRepository {
     }, cancelToken: cancelToken);
   }
 
+  Future<ManagementPage<EmployeeAssignmentSummary>> employeeAssignments(
+    int employeeId, {
+    int page = 1,
+    int? pageSize,
+    CancelToken? cancelToken,
+  }) {
+    if (employeeId <= 0) throw ArgumentError.value(employeeId, 'employeeId');
+    return _get(
+      'employees/$employeeId/assignments/',
+      (json) => ManagementPage.fromJson(
+        json,
+        EmployeeAssignmentSummary.fromJson,
+      ),
+      page: page,
+      pageSize: pageSize,
+      cancelToken: cancelToken,
+    );
+  }
+
   Future<ManagementPage<AssignableTrainingVersion>> assignableTrainingVersions({
     int page = 1,
     int? pageSize,

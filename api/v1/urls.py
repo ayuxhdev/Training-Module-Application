@@ -4,6 +4,7 @@ from .views import APINotFoundView, APIStatusView
 from .auth_views import EmployeeLoginView, EmployeeRefreshView, EmployeeLogoutView, EmployeeMeView
 from .dashboard_views import EmployeeDashboardView
 from .assignment_management_views import AssignableTrainingVersionListView, ManualAssignmentCreateView
+from .assignment_monitoring_views import EmployeeAssignmentListView
 from .management_views import (
     DepartmentReferenceUpdateView, DepartmentReferenceView, EmployeeDeactivationView,
     EmployeeDirectoryDetailView, EmployeeDirectoryView,
@@ -48,6 +49,7 @@ urlpatterns = [
     path("management/assignments/", ManualAssignmentCreateView.as_view(), name="management-assignment-create"),
     path("management/employees/", EmployeeDirectoryView.as_view(), name="management-employees"),
     path("management/employees/<int:pk>/", EmployeeDirectoryDetailView.as_view(), name="management-employee-detail"),
+    path("management/employees/<int:employee_id>/assignments/", EmployeeAssignmentListView.as_view(), name="management-employee-assignments"),
     path("management/employees/<int:pk>/deactivate/", EmployeeDeactivationView.as_view(), name="management-employee-deactivate"),
     path("management/departments/", DepartmentReferenceView.as_view(), name="management-departments"),
     path("management/departments/<int:pk>/", DepartmentReferenceUpdateView.as_view(), name="management-department-update"),

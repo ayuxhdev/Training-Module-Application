@@ -228,3 +228,51 @@ ManagementPage<AssignableTrainingVersion> assignableVersionPage({
   ),
   AssignableTrainingVersion.fromJson,
 );
+
+Map<String, dynamic> employeeAssignmentSummaryJson({
+  int id = 1,
+  String trainingTitle = 'Workplace Safety',
+  int versionNumber = 1,
+  String status = 'ASSIGNED',
+  String assignedAt = '2026-10-27T10:00:00Z',
+  String? dueAt = '2026-11-15T23:59:59Z',
+  String? completedAt,
+  bool isOverdue = false,
+  Map<String, dynamic>? progressSummary,
+}) => {
+  'id': id,
+  'training_title': trainingTitle,
+  'version_number': versionNumber,
+  'status': status,
+  'assigned_at': assignedAt,
+  'due_at': dueAt,
+  'completed_at': completedAt,
+  'is_overdue': isOverdue,
+  'progress_summary': ?progressSummary,
+};
+
+ManagementPage<EmployeeAssignmentSummary> employeeAssignmentPage({
+  int id = 1,
+  String trainingTitle = 'Workplace Safety',
+  String status = 'ASSIGNED',
+  bool more = false,
+  bool isOverdue = false,
+  String? completedAt,
+  Map<String, dynamic>? progressSummary,
+}) => ManagementPage.fromJson(
+  pageJson(
+    [
+      employeeAssignmentSummaryJson(
+        id: id,
+        trainingTitle: trainingTitle,
+        status: status,
+        isOverdue: isOverdue,
+        completedAt: completedAt,
+        progressSummary: progressSummary,
+      ),
+    ],
+    count: more ? 2 : 1,
+    next: more ? 'https://example.invalid/next' : null,
+  ),
+  EmployeeAssignmentSummary.fromJson,
+);
