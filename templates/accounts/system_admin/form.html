@@ -1,0 +1,24 @@
+{% extends "accounts/system_admin/base.html" %}
+{% block title %}{{ screen_title }} | Garden's Need Training{% endblock %}
+{% block system_heading %}{{ screen_title }}{% endblock %}
+{% block system_content %}
+<section class="org-panel org-editor" aria-labelledby="account-operation-heading">
+  <header class="org-panel-heading"><h2 id="account-operation-heading">{% if account %}{{ account.username }}{% else %}Account information{% endif %}</h2><p>Fields marked with an asterisk are required.</p></header>
+  <p class="muted">This center does not set passwords, deliver credentials, activate accounts or grant technical staff/Superuser access. Employee links cannot be replaced.</p>
+  <form method="post" class="form-stack org-form">
+    {% csrf_token %}
+    {% if form.errors %}<p class="org-validation" role="alert">Please correct the errors below. Your entries have been preserved.</p>{% endif %}
+    {{ form.non_field_errors }}
+    <fieldset class="management-form-section">
+      <legend>{{ screen_title }}</legend>
+      <div class="org-fields management-fields">
+        {% for field in form %}{% include "components/management_field.html" with field=field %}{% endfor %}
+      </div>
+    </fieldset>
+    <div class="org-form-actions">
+      <button class="btn btn-primary" type="submit">{{ submit_label }}</button>
+      <a class="btn btn-secondary" href="{% if account %}{% url 'accounts:system-user-detail' account.pk %}{% else %}{% url 'accounts:system-user-list' %}{% endif %}">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

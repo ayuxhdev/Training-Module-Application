@@ -17,4 +17,16 @@
     <div><dt>Account created</dt><dd><time datetime="{{ account.date_joined|date:'c' }}">{{ account.date_joined|date:"M j, Y, g:i A T" }}</time></dd></div>
   </dl>
 </section>
+<section class="org-panel" aria-labelledby="account-provisioning-heading">
+  <header class="org-panel-heading"><h2 id="account-provisioning-heading">Account provisioning</h2></header>
+  {% if account.is_active %}<p>Active account. Sign-in remains subject to existing authentication and Employee eligibility checks.</p>{% else %}<p>Inactive account: sign-in is disabled. This center does not set credentials or activate accounts.</p>{% endif %}
+  {% if account.is_superuser or account.pk == user.pk %}
+    <p class="muted">Protected account. Business Group and Employee-link changes are unavailable here.</p>
+  {% else %}
+    <div class="record-actions">
+      <a class="btn btn-secondary" href="{% url 'accounts:system-user-groups' account.pk %}">Edit business Groups</a>
+      {% if not account.employee %}<a class="btn btn-secondary" href="{% url 'accounts:system-user-link-employee' account.pk %}">Link Employee</a>{% endif %}
+    </div>
+  {% endif %}
+</section>
 {% endblock %}

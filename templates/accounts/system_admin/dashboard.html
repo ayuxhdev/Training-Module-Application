@@ -15,7 +15,7 @@
   <p class="muted">Counts describe Django User accounts. Staff and Superuser counts may overlap. Employee linking does not imply that the Employee is active.</p>
 </section>
 <section class="org-panel" aria-labelledby="system-access-heading">
-  <header class="org-panel-heading"><h2 id="system-access-heading">Account oversight</h2></header>
+  <header class="org-panel-heading"><h2 id="system-access-heading">Account oversight and provisioning</h2></header>
   <p>Review account status, assigned Groups and Employee links in the User Account Directory. Business Administrator membership does not grant access to this system area.</p>
   <div class="record-actions"><a class="btn btn-primary" href="{% url 'accounts:system-user-list' %}">View user accounts</a></div>
   {% if not user.is_staff %}<p class="muted">The separate Django admin additionally requires staff access.</p>{% endif %}
