@@ -5,6 +5,10 @@ from .auth_views import EmployeeLoginView, EmployeeRefreshView, EmployeeLogoutVi
 from .dashboard_views import EmployeeDashboardView
 from .assignment_management_views import AssignableTrainingVersionListView, ManualAssignmentCreateView
 from .assignment_monitoring_views import EmployeeAssignmentListView
+from .training_management_views import (
+    TrainingCatalogDetailView, TrainingCatalogView,
+    TrainingVersionDetailView, TrainingVersionHistoryView, TrainingVersionDiscoveryView,
+)
 from .management_views import (
     DepartmentReferenceUpdateView, DepartmentReferenceView, EmployeeDeactivationView,
     EmployeeDirectoryDetailView, EmployeeDirectoryView,
@@ -45,6 +49,11 @@ urlpatterns = [
     path("auth/me/", EmployeeMeView.as_view(), name="auth-me"),
     path("dashboard/", EmployeeDashboardView.as_view(), name="dashboard"),
     path("management/dashboard/", ManagementDashboardView.as_view(), name="management-dashboard"),
+    path("management/trainings/", TrainingCatalogView.as_view(), name="management-trainings"),
+    path("management/trainings/<int:pk>/", TrainingCatalogDetailView.as_view(), name="management-training-detail"),
+    path("management/trainings/<int:pk>/versions/", TrainingVersionHistoryView.as_view(), name="management-training-history"),
+    path("management/versions/", TrainingVersionDiscoveryView.as_view(), name="management-versions"),
+    path("management/versions/<int:pk>/", TrainingVersionDetailView.as_view(), name="management-version-detail"),
     path("management/training-versions/", AssignableTrainingVersionListView.as_view(), name="management-training-versions"),
     path("management/assignments/", ManualAssignmentCreateView.as_view(), name="management-assignment-create"),
     path("management/employees/", EmployeeDirectoryView.as_view(), name="management-employees"),
