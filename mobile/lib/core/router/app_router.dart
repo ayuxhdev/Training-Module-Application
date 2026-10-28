@@ -13,6 +13,7 @@ import 'package:training_app/features/management/presentation/screens/organizati
 import 'package:training_app/features/management/presentation/screens/employee_profile_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/employee_creation_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/assign_training_screen.dart';
+import 'package:training_app/features/management/presentation/screens/training_management_screen.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -33,6 +34,10 @@ import 'package:training_app/features/notifications/presentation/screens/notific
 bool _canAccessWorkspacePath(String path, AuthenticatedIdentity identity) {
   if (path == '/workspace/dashboard') {
     return canViewManagementDashboard(identity);
+  }
+  if (path == '/workspace/training' ||
+      path.startsWith('/workspace/training/')) {
+    return canManageTraining(identity);
   }
   if (path == '/workspace/employees' ||
       path.startsWith('/workspace/employees/')) {
@@ -109,7 +114,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         if (path == '/workspace' &&
             !identity.canManage &&
-            !identity.canViewTeam) {
+            !identity.canViewTeam &&
+            !identity.canManageTraining) {
           return identity.homePath;
         }
         return null;
@@ -161,6 +167,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/workspace/dashboard',
             builder: (_, _) => const ManagementDashboardScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/training',
+            builder: (_, _) => const TrainingManagementScreen(),
           ),
           GoRoute(
             path: '/workspace/employees',

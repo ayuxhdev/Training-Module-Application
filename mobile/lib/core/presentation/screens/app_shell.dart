@@ -35,10 +35,12 @@ class AppShell extends ConsumerWidget {
 
     if (authState is! AuthAuthenticated) return const SizedBox.shrink();
     final identity = authState.identity;
+    final canAccessWorkspace =
+        identity.canManage || identity.canViewTeam || identity.canManageTraining;
     final paths = [
       if (identity.canLearn) '/dashboard',
       if (identity.canLearn) '/learning',
-      if (identity.canManage || identity.canViewTeam) '/workspace',
+      if (canAccessWorkspace) '/workspace',
       '/profile',
     ];
     final destinations = [
@@ -54,11 +56,13 @@ class AppShell extends ConsumerWidget {
           selectedIcon: Icon(Icons.school_rounded),
           label: 'Learning',
         ),
-      if (identity.canManage || identity.canViewTeam)
+      if (canAccessWorkspace)
         NavigationDestination(
           icon: const Icon(Icons.workspaces_outline),
           selectedIcon: const Icon(Icons.workspaces),
-          label: identity.canManage ? 'Management' : 'Team',
+          label: identity.canManage || identity.canManageTraining
+              ? 'Management'
+              : 'Team',
         ),
       const NavigationDestination(
         icon: Icon(Icons.person_outline_rounded),

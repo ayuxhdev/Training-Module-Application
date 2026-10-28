@@ -47,9 +47,23 @@ class AuthenticatedIdentity {
       employee?.isActive == true && capabilities.contains('personal_learning');
   bool get canManage => capabilities.contains('management_workspace');
   bool get canViewTeam => capabilities.contains('team_workspace');
+  bool get canManageTraining =>
+      capabilities.contains('training.view_training') ||
+      capabilities.contains('training.add_training') ||
+      capabilities.contains('training.change_training') ||
+      capabilities.contains('training.view_trainingversion') ||
+      capabilities.contains('training.add_trainingversion') ||
+      capabilities.contains('training.change_trainingversion') ||
+      capabilities.contains('training.view_module') ||
+      capabilities.contains('training.add_module') ||
+      capabilities.contains('training.change_module') ||
+      capabilities.contains('training.view_lesson') ||
+      capabilities.contains('training.add_lesson') ||
+      capabilities.contains('training.change_lesson');
+
   String get homePath => canLearn
       ? '/dashboard'
-      : canManage || canViewTeam
+      : canManage || canViewTeam || canManageTraining
       ? '/workspace'
       : '/profile';
   String? get personalAccount =>

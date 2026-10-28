@@ -37,6 +37,50 @@ bool canAssignTraining(AuthenticatedIdentity identity) =>
     identity.capabilities.contains('training.add_trainingassignment') ||
     identity.capabilities.contains('team_assignment');
 
+bool canManageTraining(AuthenticatedIdentity identity) =>
+    identity.canManageTraining;
+
+bool canViewTraining(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.view_training');
+
+bool canCreateTraining(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.add_training');
+
+bool canEditTraining(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.change_training');
+
+bool canViewVersions(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.view_trainingversion');
+
+bool canCreateVersions(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.add_trainingversion');
+
+bool canEditVersions(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.change_trainingversion');
+
+bool canManageVersions(AuthenticatedIdentity identity) =>
+    canViewVersions(identity) ||
+    canCreateVersions(identity) ||
+    canEditVersions(identity);
+
+bool canViewModules(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.view_module');
+
+bool canCreateModules(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.add_module');
+
+bool canEditModules(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.change_module');
+
+bool canViewLessons(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.view_lesson');
+
+bool canCreateLessons(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.add_lesson');
+
+bool canEditLessons(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.change_lesson');
+
 bool hasCompanyAssignmentAuthority(AuthenticatedIdentity identity) =>
     identity.capabilities.contains('training.add_trainingassignment');
 

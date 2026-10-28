@@ -73,6 +73,21 @@ class WorkspaceScreen extends ConsumerWidget {
                 ),
               ),
             ),
+          if (canManageTraining(identity))
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.auto_stories_outlined),
+                  title: const Text('Training management'),
+                  subtitle: const Text(
+                    'Course catalog, version lifecycle, and curriculum authoring.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/workspace/training'),
+                ),
+              ),
+            ),
           if (identity.capabilities.contains('organization.view_employee'))
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.md),

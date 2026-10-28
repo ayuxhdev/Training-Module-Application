@@ -703,6 +703,92 @@ void main() {
     response.complete(dashboardFixture());
   });
 
+  group('Training management capabilities', () {
+    test('canManageTraining grants course, version, module, and lesson capabilities', () {
+      final courseViewer = managementIdentity(
+        capabilities: {'training.view_training'},
+      );
+      final courseAuthor = managementIdentity(
+        capabilities: {'training.add_training'},
+      );
+      final courseEditor = managementIdentity(
+        capabilities: {'training.change_training'},
+      );
+      final versionViewer = managementIdentity(
+        capabilities: {'training.view_trainingversion'},
+      );
+      final versionAuthor = managementIdentity(
+        capabilities: {'training.add_trainingversion'},
+      );
+      final versionEditor = managementIdentity(
+        capabilities: {'training.change_trainingversion'},
+      );
+      final moduleAuthor = managementIdentity(
+        capabilities: {'training.add_module'},
+      );
+      final lessonEditor = managementIdentity(
+        capabilities: {'training.change_lesson'},
+      );
+      final teamManager = managementIdentity(
+        team: true,
+        capabilities: {'team_workspace', 'team_assignment'},
+      );
+      final directoryViewer = managementIdentity(
+        capabilities: {'organization.view_employee'},
+      );
+
+      expect(canManageTraining(courseViewer), isTrue);
+      expect(canManageTraining(courseAuthor), isTrue);
+      expect(canManageTraining(courseEditor), isTrue);
+      expect(canManageTraining(versionViewer), isTrue);
+      expect(canManageTraining(versionAuthor), isTrue);
+      expect(canManageTraining(versionEditor), isTrue);
+      expect(canManageTraining(moduleAuthor), isTrue);
+      expect(canManageTraining(lessonEditor), isTrue);
+      expect(canManageTraining(teamManager), isFalse);
+      expect(canManageTraining(directoryViewer), isFalse);
+
+      expect(canViewTraining(courseViewer), isTrue);
+      expect(canViewTraining(versionViewer), isFalse);
+      expect(canCreateTraining(courseAuthor), isTrue);
+      expect(canCreateTraining(courseViewer), isFalse);
+      expect(canEditTraining(courseEditor), isTrue);
+      expect(canEditTraining(courseViewer), isFalse);
+
+      expect(canViewVersions(versionViewer), isTrue);
+      expect(canViewVersions(courseViewer), isFalse);
+      expect(canCreateVersions(versionAuthor), isTrue);
+      expect(canCreateVersions(versionViewer), isFalse);
+      expect(canEditVersions(versionEditor), isTrue);
+      expect(canEditVersions(versionViewer), isFalse);
+
+      expect(canManageVersions(versionViewer), isTrue);
+      expect(canManageVersions(versionAuthor), isTrue);
+      expect(canManageVersions(versionEditor), isTrue);
+      expect(canManageVersions(courseViewer), isFalse);
+
+      expect(canCreateModules(moduleAuthor), isTrue);
+      expect(canCreateModules(courseViewer), isFalse);
+      expect(canEditLessons(lessonEditor), isTrue);
+      expect(canEditLessons(courseViewer), isFalse);
+    });
+
+    test('training-only identity resolves homePath to /workspace', () {
+      final pureVersionViewer = managementIdentity(
+        capabilities: {'training.view_trainingversion'},
+      );
+      expect(pureVersionViewer.canManage, isFalse);
+      expect(pureVersionViewer.canViewTeam, isFalse);
+      expect(pureVersionViewer.canManageTraining, isTrue);
+      expect(pureVersionViewer.homePath, '/workspace');
+
+      final nonLearnerCoordinator = managementIdentity(
+        capabilities: {'training.view_training'},
+      );
+      expect(nonLearnerCoordinator.homePath, '/workspace');
+    });
+  });
+
   group('Training assignment controller and permissions', () {
     test('canAssignTraining requires global or team assignment capability', () {
       expect(
