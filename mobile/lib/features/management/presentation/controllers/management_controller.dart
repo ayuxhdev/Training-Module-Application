@@ -555,10 +555,10 @@ final organizationReferenceChoicesProvider = FutureProvider.autoDispose
 typedef AssignableVersionsRequest = ({int page, String? search});
 
 final assignableTrainingVersionsProvider = FutureProvider.autoDispose
-    .family<ManagementPage<AssignableTrainingVersion>, AssignableVersionsRequest>((
-      ref,
-      request,
-    ) {
+    .family<
+      ManagementPage<AssignableTrainingVersion>,
+      AssignableVersionsRequest
+    >((ref, request) {
       final cancelToken = _request(ref, canAssignTraining);
       final repository = ref.watch(managementRepositoryProvider);
       return repository.assignableTrainingVersions(
@@ -571,15 +571,77 @@ final assignableTrainingVersionsProvider = FutureProvider.autoDispose
 typedef EmployeeAssignmentsRequest = ({int employeeId, int page});
 
 final employeeAssignmentsProvider = FutureProvider.autoDispose
-    .family<ManagementPage<EmployeeAssignmentSummary>, EmployeeAssignmentsRequest>((
-      ref,
-      request,
-    ) {
+    .family<
+      ManagementPage<EmployeeAssignmentSummary>,
+      EmployeeAssignmentsRequest
+    >((ref, request) {
       final cancelToken = _request(ref, canViewEmployeeAssignments);
       final repository = ref.watch(managementRepositoryProvider);
       return repository.employeeAssignments(
         request.employeeId,
         page: request.page,
+        cancelToken: cancelToken,
+      );
+    }, retry: (_, _) => null);
+
+typedef TrainingCatalogRequest = ({int page, String? search});
+
+final managedTrainingsProvider = FutureProvider.autoDispose
+    .family<ManagementPage<ManagedTraining>, TrainingCatalogRequest>((
+      ref,
+      request,
+    ) {
+      final cancelToken = _request(ref, canViewTraining);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.trainings(
+        page: request.page,
+        search: request.search,
+        cancelToken: cancelToken,
+      );
+    }, retry: (_, _) => null);
+
+final managedTrainingDetailProvider = FutureProvider.autoDispose
+    .family<ManagedTraining, int>((ref, id) {
+      if (id <= 0) throw ArgumentError.value(id, 'id');
+      final cancelToken = _request(ref, canViewTraining);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.training(id, cancelToken: cancelToken);
+    }, retry: (_, _) => null);
+
+typedef TrainingVersionsRequest = ({int trainingId, int page});
+
+final managedTrainingVersionsProvider = FutureProvider.autoDispose
+    .family<
+      ManagementPage<ManagedTrainingVersionItem>,
+      TrainingVersionsRequest
+    >((ref, request) {
+      if (request.trainingId <= 0) {
+        throw ArgumentError.value(request.trainingId, 'trainingId');
+      }
+      final cancelToken = _request(ref, canViewVersions);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.trainingVersions(
+        request.trainingId,
+        page: request.page,
+        cancelToken: cancelToken,
+      );
+    }, retry: (_, _) => null);
+
+final managedVersionDetailProvider = FutureProvider.autoDispose
+    .family<ManagedVersionDetail, int>((ref, id) {
+      if (id <= 0) throw ArgumentError.value(id, 'id');
+      final cancelToken = _request(ref, canViewVersions);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.versionDetail(id, cancelToken: cancelToken);
+    }, retry: (_, _) => null);
+
+final allTrainingVersionsProvider = FutureProvider.autoDispose
+    .family<ManagementPage<ManagedTrainingVersionItem>, int>((ref, page) {
+      if (page <= 0) throw ArgumentError.value(page, 'page');
+      final cancelToken = _request(ref, canViewVersions);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.allTrainingVersions(
+        page: page,
         cancelToken: cancelToken,
       );
     }, retry: (_, _) => null);

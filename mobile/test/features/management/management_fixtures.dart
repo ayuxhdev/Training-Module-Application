@@ -276,3 +276,148 @@ ManagementPage<EmployeeAssignmentSummary> employeeAssignmentPage({
   ),
   EmployeeAssignmentSummary.fromJson,
 );
+
+Map<String, dynamic> managedTrainingJson({
+  int id = 1,
+  String code = 'TR-SAFE-001',
+  String title = 'Workplace Safety Fundamentals',
+  String description = 'Core safety compliance training.',
+  bool isActive = true,
+  int? latestVersionNumber = 2,
+  String? latestVersionStatus = 'PUBLISHED',
+}) => {
+  'id': id,
+  'code': code,
+  'title': title,
+  'description': description,
+  'is_active': isActive,
+  'latest_version_number': latestVersionNumber,
+  'latest_version_status': latestVersionStatus,
+};
+
+ManagementPage<ManagedTraining> managedTrainingPage({
+  int id = 1,
+  String title = 'Workplace Safety Fundamentals',
+  bool more = false,
+  bool isActive = true,
+}) => ManagementPage.fromJson(
+  pageJson(
+    [managedTrainingJson(id: id, title: title, isActive: isActive)],
+    count: more ? 2 : 1,
+    next: more ? 'https://example.invalid/next' : null,
+  ),
+  ManagedTraining.fromJson,
+);
+
+Map<String, dynamic> managedTrainingVersionJson({
+  int id = 10,
+  int trainingId = 1,
+  String? trainingTitle,
+  int versionNumber = 1,
+  String title = 'Workplace Safety v1',
+  String status = 'PUBLISHED',
+  String description = 'Initial published safety version.',
+  String? publishedAt = '2026-01-01T00:00:00Z',
+}) => {
+  'id': id,
+  'training_id': trainingId,
+  'training_title': ?trainingTitle,
+  'version_number': versionNumber,
+  'title': title,
+  'status': status,
+  'description': description,
+  'published_at': publishedAt,
+};
+
+ManagementPage<ManagedTrainingVersionItem> managedTrainingVersionPage({
+  int id = 10,
+  int trainingId = 1,
+  String? trainingTitle,
+  int versionNumber = 1,
+  String status = 'PUBLISHED',
+  bool more = false,
+}) => ManagementPage.fromJson(
+  pageJson(
+    [
+      managedTrainingVersionJson(
+        id: id,
+        trainingId: trainingId,
+        trainingTitle: trainingTitle,
+        versionNumber: versionNumber,
+        status: status,
+      ),
+    ],
+    count: more ? 2 : 1,
+    next: more ? 'https://example.invalid/next' : null,
+  ),
+  ManagedTrainingVersionItem.fromJson,
+);
+
+Map<String, dynamic> managedLessonSummaryJson({
+  int id = 101,
+  String title = 'Safety Orientation Video',
+  String lessonType = 'VIDEO',
+  int order = 1,
+  bool isRequired = true,
+}) => {
+  'id': id,
+  'title': title,
+  'lesson_type': lessonType,
+  'order': order,
+  'is_required': isRequired,
+};
+
+Map<String, dynamic> managedModuleJson({
+  int id = 51,
+  String title = 'Introduction to Site Safety',
+  String description = 'Basic workplace protocols.',
+  int order = 1,
+  List<Map<String, dynamic>>? lessons,
+}) => {
+  'id': id,
+  'title': title,
+  'description': description,
+  'order': order,
+  'lessons':
+      lessons ??
+      [
+        managedLessonSummaryJson(
+          id: 101,
+          title: 'Safety Orientation Video',
+          lessonType: 'VIDEO',
+          order: 1,
+          isRequired: true,
+        ),
+        managedLessonSummaryJson(
+          id: 102,
+          title: 'Hazard Reading Guide',
+          lessonType: 'TEXT',
+          order: 2,
+          isRequired: false,
+        ),
+      ],
+};
+
+Map<String, dynamic> managedVersionDetailJson({
+  int id = 10,
+  int trainingId = 1,
+  String trainingTitle = 'Workplace Safety Fundamentals',
+  String trainingCode = 'TR-SAFE-001',
+  int versionNumber = 1,
+  String title = 'Workplace Safety v1',
+  String status = 'PUBLISHED',
+  String description = 'Initial published safety version.',
+  String? publishedAt = '2026-01-01T00:00:00Z',
+  List<Map<String, dynamic>>? modules,
+}) => {
+  'id': id,
+  'training_id': trainingId,
+  'training_title': trainingTitle,
+  'training_code': trainingCode,
+  'version_number': versionNumber,
+  'title': title,
+  'status': status,
+  'description': description,
+  'published_at': publishedAt,
+  'modules': modules ?? [managedModuleJson()],
+};

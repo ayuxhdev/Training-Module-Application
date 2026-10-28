@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/content_skeleton.dart';
@@ -46,7 +47,8 @@ class TrainingManagementScreen extends ConsumerWidget {
     final canCreateLes = canCreateLessons(identity);
     final canEditLes = canEditLessons(identity);
 
-    final canAuthor = canCreateCourses ||
+    final canAuthor =
+        canCreateCourses ||
         canEditCourses ||
         canCreateVers ||
         canEditVers ||
@@ -82,8 +84,7 @@ class TrainingManagementScreen extends ConsumerWidget {
     } else {
       versionControlValue = 'No version access';
     }
-    final versionControlGranted =
-        canCreateVers || canEditVers || canViewVers;
+    final versionControlGranted = canCreateVers || canEditVers || canViewVers;
 
     String moduleManagementValue;
     if (canCreateMod && canEditMod) {
@@ -97,8 +98,7 @@ class TrainingManagementScreen extends ConsumerWidget {
     } else {
       moduleManagementValue = 'No module access';
     }
-    final moduleManagementGranted =
-        canCreateMod || canEditMod || canViewMod;
+    final moduleManagementGranted = canCreateMod || canEditMod || canViewMod;
 
     String lessonManagementValue;
     if (canCreateLes && canEditLes) {
@@ -112,8 +112,7 @@ class TrainingManagementScreen extends ConsumerWidget {
     } else {
       lessonManagementValue = 'No lesson access';
     }
-    final lessonManagementGranted =
-        canCreateLes || canEditLes || canViewLes;
+    final lessonManagementGranted = canCreateLes || canEditLes || canViewLes;
 
     String assignmentValue;
     if (hasCompanyAssign) {
@@ -164,7 +163,9 @@ class TrainingManagementScreen extends ConsumerWidget {
                 children: [
                   StatusBadge(
                     text: canAuthor ? 'Authoring permitted' : 'Catalog view',
-                    status: canAuthor ? BadgeStatus.success : BadgeStatus.neutral,
+                    status: canAuthor
+                        ? BadgeStatus.success
+                        : BadgeStatus.neutral,
                   ),
                   if (canAssign)
                     const StatusBadge(
@@ -223,6 +224,106 @@ class TrainingManagementScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
+
+            if (canViewCourses) ...[
+              const SectionHeading(
+                'Course catalog',
+                subtitle: 'Browse all training courses, search catalog, and inspect version history.',
+              ),
+              CustomCard(
+                onTap: () => context.push('/workspace/training/catalog'),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.menu_book_outlined,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Browse training catalog',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Inspect active courses, search catalog, and view version history.',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+
+            if (canViewVers) ...[
+              const SectionHeading(
+                'Training versions',
+                subtitle: 'Browse all training versions across courses and review lifecycle status.',
+              ),
+              CustomCard(
+                onTap: () => context.push('/workspace/training/versions'),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.history_outlined,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Browse training versions',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Inspect all versions, lifecycle status, and curriculum structure.',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
 
             // 2. Version Lifecycle Architectural Rules
             const SectionHeading(
@@ -283,9 +384,8 @@ class TrainingManagementScreen extends ConsumerWidget {
                       Expanded(
                         child: Text(
                           'Stage 2 Authoring API in preparation',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                       ),
                     ],
@@ -296,16 +396,16 @@ class TrainingManagementScreen extends ConsumerWidget {
                     'module ordering, video uploads, and version publication — will be '
                     'enabled in Stage 2 following backend REST endpoint deployment.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   if (!canAuthor)
                     Text(
                       'Your account has view-only curriculum access. Authoring and mutation controls remain restricted.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     )
                   else
                     Wrap(
@@ -331,18 +431,25 @@ class TrainingManagementScreen extends ConsumerWidget {
                             avatar: const Icon(Icons.post_add, size: 16),
                             label: const Text('New version'),
                             onPressed: null,
-                            tooltip: 'Version authoring REST API pending Stage 2',
+                            tooltip:
+                                'Version authoring REST API pending Stage 2',
                           ),
                         if (canEditVers)
                           ActionChip(
-                            avatar: const Icon(Icons.edit_calendar_outlined, size: 16),
+                            avatar: const Icon(
+                              Icons.edit_calendar_outlined,
+                              size: 16,
+                            ),
                             label: const Text('Edit version'),
                             onPressed: null,
                             tooltip: 'Version editing REST API pending Stage 2',
                           ),
                         if (canCreateMod)
                           ActionChip(
-                            avatar: const Icon(Icons.view_module_outlined, size: 16),
+                            avatar: const Icon(
+                              Icons.view_module_outlined,
+                              size: 16,
+                            ),
                             label: const Text('Create module'),
                             onPressed: null,
                             tooltip: 'Module creation REST API pending Stage 2',
@@ -356,7 +463,10 @@ class TrainingManagementScreen extends ConsumerWidget {
                           ),
                         if (canCreateLes)
                           ActionChip(
-                            avatar: const Icon(Icons.note_add_outlined, size: 16),
+                            avatar: const Icon(
+                              Icons.note_add_outlined,
+                              size: 16,
+                            ),
                             label: const Text('Create lesson'),
                             onPressed: null,
                             tooltip: 'Lesson creation REST API pending Stage 2',
@@ -370,7 +480,10 @@ class TrainingManagementScreen extends ConsumerWidget {
                           ),
                         if (canCreateLes || canEditLes)
                           ActionChip(
-                            avatar: const Icon(Icons.video_call_outlined, size: 16),
+                            avatar: const Icon(
+                              Icons.video_call_outlined,
+                              size: 16,
+                            ),
                             label: const Text('Upload video'),
                             onPressed: null,
                             tooltip: 'Video upload REST API pending Stage 2',
@@ -405,13 +518,15 @@ class TrainingManagementScreen extends ConsumerWidget {
                 error: (error, _) => ApiErrorView(
                   error: error,
                   onRetry: () => ref.refresh(
-                    assignableTrainingVersionsProvider(assignableRequest).future,
+                    assignableTrainingVersionsProvider(assignableRequest)
+                        .future,
                   ),
                 ),
                 data: (page) {
                   if (page.items.isEmpty) {
                     return const EmptyView(
-                      message: 'No published training versions currently available.',
+                      message:
+                          'No published training versions currently available.',
                       icon: Icons.school_outlined,
                     );
                   }
@@ -422,8 +537,11 @@ class TrainingManagementScreen extends ConsumerWidget {
                         padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                         child: Text(
                           '${page.count} published assignable version(s) in catalog',
-                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
                               ),
                         ),
                       ),
@@ -448,100 +566,89 @@ class TrainingManagementScreen extends ConsumerWidget {
     required String label,
     required String value,
     required bool granted,
-  }) =>
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
-              ],
+  }) => Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
-          ),
-          StatusBadge(
-            text: granted ? 'Granted' : 'Restricted',
-            status: granted ? BadgeStatus.success : BadgeStatus.neutral,
-          ),
-        ],
-      );
+          ],
+        ),
+      ),
+      StatusBadge(
+        text: granted ? 'Granted' : 'Restricted',
+        status: granted ? BadgeStatus.success : BadgeStatus.neutral,
+      ),
+    ],
+  );
 
   Widget _lifecycleStage(
     BuildContext context, {
     required String title,
     required BadgeStatus badgeStatus,
     required String description,
-  }) =>
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              StatusBadge(text: title, status: badgeStatus),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            description,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ],
-      );
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [StatusBadge(text: title, status: badgeStatus)],
+      ),
+      const SizedBox(height: 6),
+      Text(
+        description,
+        style: Theme.of(context).textTheme.bodySmall
+            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    ],
+  );
 
-  Widget _versionCard(BuildContext context, AssignableTrainingVersion version) =>
-      CustomCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _versionCard(
+    BuildContext context,
+    AssignableTrainingVersion version,
+  ) => CustomCard(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          version.title,
+          style: Theme.of(context).textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${version.trainingTitle} · Code: ${version.trainingCode}',
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
           children: [
-            Text(
-              version.title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+            StatusBadge(
+              text: 'Version ${version.versionNumber}',
+              status: BadgeStatus.neutral,
             ),
-            const SizedBox(height: 4),
-            Text(
-              '${version.trainingTitle} · Code: ${version.trainingCode}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                StatusBadge(
-                  text: 'Version ${version.versionNumber}',
-                  status: BadgeStatus.neutral,
-                ),
-                StatusBadge(
-                  text: version.status,
-                  status: BadgeStatus.info,
-                ),
-              ],
-            ),
-            if (version.description.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                version.description,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
+            StatusBadge(text: version.status, status: BadgeStatus.info),
           ],
         ),
-      );
+        if (version.description.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            version.description,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ],
+    ),
+  );
 }

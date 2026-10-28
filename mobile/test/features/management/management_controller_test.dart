@@ -877,22 +877,27 @@ void main() {
       );
     });
 
-    test('assignableTrainingVersionsProvider rejects unauthorized users', () async {
-      final unauthorizedIdentity = managementIdentity(
-        capabilities: {'organization.view_employee'},
-      );
-      auth.setAuth(AuthAuthenticated.identity(unauthorizedIdentity));
+    test(
+      'assignableTrainingVersionsProvider rejects unauthorized users',
+      () async {
+        final unauthorizedIdentity = managementIdentity(
+          capabilities: {'organization.view_employee'},
+        );
+        auth.setAuth(AuthAuthenticated.identity(unauthorizedIdentity));
 
-      final target = assignableTrainingVersionsProvider((
-        page: 1,
-        search: null,
-      ));
-      await expectLater(
-        container.read(target.future),
-        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403)),
-      );
-      verifyZeroInteractions(repository);
-    });
+        final target = assignableTrainingVersionsProvider((
+          page: 1,
+          search: null,
+        ));
+        await expectLater(
+          container.read(target.future),
+          throwsA(
+            isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403),
+          ),
+        );
+        verifyZeroInteractions(repository);
+      },
+    );
 
     test('assignableTrainingVersionsProvider forwards request parameters and cancels on disposal', () async {
       final authorizedIdentity = managementIdentity(
@@ -927,27 +932,30 @@ void main() {
       response.complete(assignableVersionPage());
     });
 
-    test('TrainingAssignmentMutationController rejects unauthorized attempts', () async {
-      final unauthorizedIdentity = managementIdentity(
-        capabilities: {'organization.view_employee'},
-      );
-      final mutationController = TrainingAssignmentMutationController(
-        repository: repository,
-        readAuth: () => AuthAuthenticated.identity(unauthorizedIdentity),
-      );
+    test(
+      'TrainingAssignmentMutationController rejects unauthorized attempts',
+      () async {
+        final unauthorizedIdentity = managementIdentity(
+          capabilities: {'organization.view_employee'},
+        );
+        final mutationController = TrainingAssignmentMutationController(
+          repository: repository,
+          readAuth: () => AuthAuthenticated.identity(unauthorizedIdentity),
+        );
 
-      await expectLater(
-        mutationController.assign(
-          employeeId: 5,
-          employeeCode: 'EMP5',
-          trainingVersionId: 10,
-        ),
-        throwsA(
-          isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403),
-        ),
-      );
-      verifyZeroInteractions(repository);
-    });
+        await expectLater(
+          mutationController.assign(
+            employeeId: 5,
+            employeeCode: 'EMP5',
+            trainingVersionId: 10,
+          ),
+          throwsA(
+            isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403),
+          ),
+        );
+        verifyZeroInteractions(repository);
+      },
+    );
 
     test('TrainingAssignmentMutationController blocks team manager self-assignment before networking', () async {
       final teamManager = managementIdentity(
@@ -965,9 +973,7 @@ void main() {
           employeeCode: 'MGR',
           trainingVersionId: 10,
         ),
-        throwsA(
-          isA<ApiError>().having((e) => e.statusCode, 'statusCode', 400),
-        ),
+        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 400)),
       );
       verifyZeroInteractions(repository);
     });
@@ -1063,9 +1069,7 @@ void main() {
 
       await expectLater(
         future,
-        throwsA(
-          isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403),
-        ),
+        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403)),
       );
     });
   });
@@ -1096,10 +1100,28 @@ void main() {
       expect(hasCompanyAssignmentAuthority(managerWithTeam), isFalse);
 
       // Self-monitoring visibility (isCurrentEmployee = true)
-      expect(canViewEmployeeAssignments(admin, isCurrentEmployee: true), isTrue);
-      expect(canViewEmployeeAssignments(managerWithTeam, isCurrentEmployee: true), isFalse);
-      expect(canViewEmployeeAssignments(managerWithTeamAssignment, isCurrentEmployee: true), isFalse);
-      expect(canViewEmployeeAssignments(directoryOnlyViewer, isCurrentEmployee: true), isFalse);
+      expect(
+        canViewEmployeeAssignments(admin, isCurrentEmployee: true),
+        isTrue,
+      );
+      expect(
+        canViewEmployeeAssignments(managerWithTeam, isCurrentEmployee: true),
+        isFalse,
+      );
+      expect(
+        canViewEmployeeAssignments(
+          managerWithTeamAssignment,
+          isCurrentEmployee: true,
+        ),
+        isFalse,
+      );
+      expect(
+        canViewEmployeeAssignments(
+          directoryOnlyViewer,
+          isCurrentEmployee: true,
+        ),
+        isFalse,
+      );
 
       final mixedRoleManager = managementIdentity(
         team: true,
@@ -1110,56 +1132,63 @@ void main() {
         },
       );
       expect(hasCompanyAssignmentAuthority(mixedRoleManager), isTrue);
-      expect(canViewEmployeeAssignments(mixedRoleManager, isCurrentEmployee: true), isTrue);
-      expect(canViewEmployeeAssignments(mixedRoleManager, isCurrentEmployee: false), isTrue);
+      expect(
+        canViewEmployeeAssignments(mixedRoleManager, isCurrentEmployee: true),
+        isTrue,
+      );
+      expect(
+        canViewEmployeeAssignments(mixedRoleManager, isCurrentEmployee: false),
+        isTrue,
+      );
     });
 
-    test('employeeAssignmentsProvider queries repository when authorized', () async {
-      auth.setAuth(
-        AuthAuthenticated.identity(
-          managementIdentity(
-            team: true,
-            capabilities: {'team_assignment', 'organization.view_employee'},
+    test(
+      'employeeAssignmentsProvider queries repository when authorized',
+      () async {
+        auth.setAuth(
+          AuthAuthenticated.identity(
+            managementIdentity(
+              team: true,
+              capabilities: {'team_assignment', 'organization.view_employee'},
+            ),
           ),
-        ),
-      );
+        );
 
-      when(
-        () => repository.employeeAssignments(
-          15,
-          page: 1,
-          cancelToken: any(named: 'cancelToken'),
-        ),
-      ).thenAnswer(
-        (_) async => employeeAssignmentPage(
-          id: 201,
-          trainingTitle: 'Safety Induction',
-          status: 'COMPLETED',
-        ),
-      );
+        when(
+          () => repository.employeeAssignments(
+            15,
+            page: 1,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => employeeAssignmentPage(
+            id: 201,
+            trainingTitle: 'Safety Induction',
+            status: 'COMPLETED',
+          ),
+        );
 
-      final page = await container.read(
-        employeeAssignmentsProvider((employeeId: 15, page: 1)).future,
-      );
+        final page = await container.read(
+          employeeAssignmentsProvider((employeeId: 15, page: 1)).future,
+        );
 
-      expect(page.items.length, 1);
-      expect(page.items.first.trainingTitle, 'Safety Induction');
-      expect(page.items.first.status, 'COMPLETED');
-      verify(
-        () => repository.employeeAssignments(
-          15,
-          page: 1,
-          cancelToken: any(named: 'cancelToken'),
-        ),
-      ).called(1);
-    });
+        expect(page.items.length, 1);
+        expect(page.items.first.trainingTitle, 'Safety Induction');
+        expect(page.items.first.status, 'COMPLETED');
+        verify(
+          () => repository.employeeAssignments(
+            15,
+            page: 1,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+      },
+    );
 
     test('employeeAssignmentsProvider throws 403 when user lacks assignment viewing authority', () async {
       auth.setAuth(
         AuthAuthenticated.identity(
-          managementIdentity(
-            capabilities: {'organization.view_employee'},
-          ),
+          managementIdentity(capabilities: {'organization.view_employee'}),
         ),
       );
 
@@ -1167,29 +1196,342 @@ void main() {
         container.read(
           employeeAssignmentsProvider((employeeId: 15, page: 1)).future,
         ),
-        throwsA(
-          isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403),
-        ),
+        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403)),
       );
       verifyZeroInteractions(repository);
     });
 
-    test('employeeAssignmentsProvider cancels request when account switches', () async {
+    test(
+      'employeeAssignmentsProvider cancels request when account switches',
+      () async {
+        auth.setAuth(
+          AuthAuthenticated.identity(
+            managementIdentity(
+              username: 'manager_a',
+              team: true,
+              capabilities: {'team_assignment', 'organization.view_employee'},
+            ),
+          ),
+        );
+
+        final tokens = <CancelToken>[];
+        final completer =
+            Completer<ManagementPage<EmployeeAssignmentSummary>>();
+        when(
+          () => repository.employeeAssignments(
+            15,
+            page: 1,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((call) {
+          tokens.add(call.namedArguments[#cancelToken] as CancelToken);
+          return completer.future;
+        });
+
+        final sub = container.listen(
+          employeeAssignmentsProvider((employeeId: 15, page: 1)),
+          (_, _) {},
+        );
+        addTearDown(sub.close);
+        await Future<void>.delayed(Duration.zero);
+
+        // Account switches to another user
+        auth.setAuth(
+          AuthAuthenticated.identity(
+            managementIdentity(
+              username: 'manager_b',
+              team: true,
+              capabilities: {'team_assignment', 'organization.view_employee'},
+            ),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(tokens.first.isCancelled, isTrue);
+      },
+    );
+  });
+
+  group('managedTrainingsProvider & detail', () {
+    test(
+      'managedTrainingsProvider rejects accounts without view_training',
+      () async {
+        auth.setAuth(
+          AuthAuthenticated.identity(
+            managementIdentity(capabilities: {'management_workspace'}),
+          ),
+        );
+
+        await expectLater(
+          container.read(
+            managedTrainingsProvider((page: 1, search: null)).future,
+          ),
+          throwsA(
+            isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403),
+          ),
+        );
+        verifyZeroInteractions(repository);
+      },
+    );
+
+    test('managedTrainingsProvider loads courses when authorized', () async {
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(capabilities: {'training.view_training'}),
+        ),
+      );
+
+      when(
+        () => repository.trainings(
+          page: 1,
+          search: 'Forklift',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => managedTrainingPage(title: 'Forklift Safety'));
+
+      final page = await container.read(
+        managedTrainingsProvider((page: 1, search: 'Forklift')).future,
+      );
+
+      expect(page.count, 1);
+      expect(page.items.single.title, 'Forklift Safety');
+    });
+
+    test(
+      'managedTrainingDetailProvider rejects unauthorized accounts',
+      () async {
+        auth.setAuth(
+          AuthAuthenticated.identity(
+            managementIdentity(capabilities: {'management_workspace'}),
+          ),
+        );
+
+        await expectLater(
+          container.read(managedTrainingDetailProvider(42).future),
+          throwsA(
+            isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403),
+          ),
+        );
+        verifyZeroInteractions(repository);
+      },
+    );
+
+    test(
+      'managedTrainingDetailProvider loads training when authorized',
+      () async {
+        auth.setAuth(
+          AuthAuthenticated.identity(
+            managementIdentity(capabilities: {'training.view_training'}),
+          ),
+        );
+
+        when(
+          () => repository.training(42, cancelToken: any(named: 'cancelToken')),
+        ).thenAnswer(
+          (_) async => ManagedTraining.fromJson(
+            managedTrainingJson(id: 42, title: 'Electrical Safety'),
+          ),
+        );
+
+        final course = await container.read(
+          managedTrainingDetailProvider(42).future,
+        );
+        expect(course.id, 42);
+        expect(course.title, 'Electrical Safety');
+      },
+    );
+  });
+
+  group('managedTrainingVersionsProvider & detail', () {
+    test('managedTrainingVersionsProvider rejects accounts without view_trainingversion', () async {
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(capabilities: {'training.view_training'}),
+        ),
+      );
+
+      await expectLater(
+        container.read(
+          managedTrainingVersionsProvider((trainingId: 5, page: 1)).future,
+        ),
+        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403)),
+      );
+      verifyZeroInteractions(repository);
+    });
+
+    test(
+      'managedTrainingVersionsProvider loads versions when authorized',
+      () async {
+        auth.setAuth(
+          AuthAuthenticated.identity(
+            managementIdentity(capabilities: {'training.view_trainingversion'}),
+          ),
+        );
+
+        when(
+          () => repository.trainingVersions(
+            5,
+            page: 1,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => managedTrainingVersionPage(id: 99, trainingId: 5),
+        );
+
+        final page = await container.read(
+          managedTrainingVersionsProvider((trainingId: 5, page: 1)).future,
+        );
+
+        expect(page.count, 1);
+        expect(page.items.single.id, 99);
+        expect(page.items.single.trainingId, 5);
+      },
+    );
+
+    test('managedVersionDetailProvider rejects accounts without view_trainingversion', () async {
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(capabilities: {'training.view_training'}),
+        ),
+      );
+
+      await expectLater(
+        container.read(managedVersionDetailProvider(77).future),
+        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403)),
+      );
+      verifyZeroInteractions(repository);
+    });
+
+    test(
+      'managedVersionDetailProvider loads version detail when authorized',
+      () async {
+        auth.setAuth(
+          AuthAuthenticated.identity(
+            managementIdentity(capabilities: {'training.view_trainingversion'}),
+          ),
+        );
+
+        when(
+          () => repository.versionDetail(
+            77,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedVersionDetail.fromJson(
+            managedVersionDetailJson(id: 77, title: 'Forklift v1'),
+          ),
+        );
+
+        final detail = await container.read(
+          managedVersionDetailProvider(77).future,
+        );
+        expect(detail.id, 77);
+        expect(detail.title, 'Forklift v1');
+        expect(detail.modules.length, 1);
+        expect(detail.modules.single.lessons.length, 2);
+      },
+    );
+
+    test('managedVersionDetailProvider cancels on account change', () async {
       auth.setAuth(
         AuthAuthenticated.identity(
           managementIdentity(
-            username: 'manager_a',
-            team: true,
-            capabilities: {'team_assignment', 'organization.view_employee'},
+            username: 'user_a',
+            capabilities: {'training.view_trainingversion'},
           ),
         ),
       );
 
       final tokens = <CancelToken>[];
-      final completer = Completer<ManagementPage<EmployeeAssignmentSummary>>();
+      final completer = Completer<ManagedVersionDetail>();
       when(
-        () => repository.employeeAssignments(
-          15,
+        () => repository.versionDetail(
+          88,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((call) {
+        tokens.add(call.namedArguments[#cancelToken] as CancelToken);
+        return completer.future;
+      });
+
+      final sub = container.listen(managedVersionDetailProvider(88), (_, _) {});
+      addTearDown(sub.close);
+      await Future<void>.delayed(Duration.zero);
+
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            username: 'user_b',
+            capabilities: {'training.view_trainingversion'},
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(tokens.first.isCancelled, isTrue);
+    });
+
+    test('allTrainingVersionsProvider rejects accounts without view_trainingversion', () async {
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(capabilities: {'training.view_training'}),
+        ),
+      );
+
+      await expectLater(
+        container.read(allTrainingVersionsProvider(1).future),
+        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403)),
+      );
+      verifyZeroInteractions(repository);
+    });
+
+    test(
+      'allTrainingVersionsProvider loads versions when authorized',
+      () async {
+        auth.setAuth(
+          AuthAuthenticated.identity(
+            managementIdentity(capabilities: {'training.view_trainingversion'}),
+          ),
+        );
+
+        when(
+          () => repository.allTrainingVersions(
+            page: 1,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => managedTrainingVersionPage(
+            id: 101,
+            trainingId: 12,
+            trainingTitle: 'Forklift Operations',
+            versionNumber: 3,
+          ),
+        );
+
+        final page = await container.read(
+          allTrainingVersionsProvider(1).future,
+        );
+        expect(page.count, 1);
+        expect(page.items.single.id, 101);
+        expect(page.items.single.trainingId, 12);
+        expect(page.items.single.trainingTitle, 'Forklift Operations');
+      },
+    );
+
+    test('allTrainingVersionsProvider cancels on account change', () async {
+      auth.setAuth(
+        AuthAuthenticated.identity(
+          managementIdentity(
+            username: 'user_a',
+            capabilities: {'training.view_trainingversion'},
+          ),
+        ),
+      );
+
+      final tokens = <CancelToken>[];
+      final completer = Completer<ManagementPage<ManagedTrainingVersionItem>>();
+      when(
+        () => repository.allTrainingVersions(
           page: 1,
           cancelToken: any(named: 'cancelToken'),
         ),
@@ -1198,20 +1540,15 @@ void main() {
         return completer.future;
       });
 
-      final sub = container.listen(
-        employeeAssignmentsProvider((employeeId: 15, page: 1)),
-        (_, _) {},
-      );
+      final sub = container.listen(allTrainingVersionsProvider(1), (_, _) {});
       addTearDown(sub.close);
       await Future<void>.delayed(Duration.zero);
 
-      // Account switches to another user
       auth.setAuth(
         AuthAuthenticated.identity(
           managementIdentity(
-            username: 'manager_b',
-            team: true,
-            capabilities: {'team_assignment', 'organization.view_employee'},
+            username: 'user_b',
+            capabilities: {'training.view_trainingversion'},
           ),
         ),
       );

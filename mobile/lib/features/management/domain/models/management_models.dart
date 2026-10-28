@@ -393,3 +393,174 @@ class EmployeeAssignmentSummary {
     );
   }
 }
+
+class ManagedTraining {
+  final int id;
+  final String code;
+  final String title;
+  final String description;
+  final bool isActive;
+  final int? latestVersionNumber;
+  final String? latestVersionStatus;
+
+  const ManagedTraining({
+    required this.id,
+    required this.code,
+    required this.title,
+    this.description = '',
+    this.isActive = true,
+    this.latestVersionNumber,
+    this.latestVersionStatus,
+  });
+
+  factory ManagedTraining.fromJson(Map<String, dynamic> json) =>
+      ManagedTraining(
+        id: json['id'] as int,
+        code: (json['code'] ?? '') as String,
+        title: (json['catalog_title'] ?? json['title'] ?? '') as String,
+        description: (json['description'] ?? '') as String,
+        isActive: (json['is_active'] ?? true) as bool,
+        latestVersionNumber: (json['latest_version_number'] as num?)?.toInt(),
+        latestVersionStatus: json['latest_version_status'] as String?,
+      );
+}
+
+class ManagedTrainingVersionItem {
+  final int id;
+  final int trainingId;
+  final String? trainingTitle;
+  final int versionNumber;
+  final String title;
+  final String status;
+  final String description;
+
+  const ManagedTrainingVersionItem({
+    required this.id,
+    required this.trainingId,
+    this.trainingTitle,
+    required this.versionNumber,
+    required this.title,
+    required this.status,
+    this.description = '',
+  });
+
+  factory ManagedTrainingVersionItem.fromJson(Map<String, dynamic> json) =>
+      ManagedTrainingVersionItem(
+        id: json['id'] as int,
+        trainingId: (json['training_id'] ?? json['training']) as int? ?? 0,
+        trainingTitle:
+            (json['training_title'] ?? json['trainingTitle']) as String?,
+        versionNumber:
+            (json['version_number'] ?? json['versionNumber'] ?? 1) as int,
+        title: (json['title'] ?? '') as String,
+        status: (json['status'] ?? 'DRAFT') as String,
+        description: (json['description'] ?? '') as String,
+      );
+}
+
+class ManagedLessonSummary {
+  final int id;
+  final String title;
+  final String lessonType;
+  final int order;
+  final bool isRequired;
+
+  const ManagedLessonSummary({
+    required this.id,
+    required this.title,
+    required this.lessonType,
+    required this.order,
+    this.isRequired = true,
+  });
+
+  factory ManagedLessonSummary.fromJson(Map<String, dynamic> json) =>
+      ManagedLessonSummary(
+        id: json['id'] as int,
+        title: (json['title'] ?? '') as String,
+        lessonType:
+            (json['lesson_type'] ?? json['lessonType'] ?? 'TEXT') as String,
+        order: (json['order'] as num?)?.toInt() ?? 0,
+        isRequired: (json['is_required'] ?? json['isRequired'] ?? true) as bool,
+      );
+}
+
+class ManagedModule {
+  final int id;
+  final String title;
+  final String description;
+  final int order;
+  final List<ManagedLessonSummary> lessons;
+
+  const ManagedModule({
+    required this.id,
+    required this.title,
+    this.description = '',
+    required this.order,
+    this.lessons = const [],
+  });
+
+  factory ManagedModule.fromJson(Map<String, dynamic> json) {
+    final rawLessons = json['lessons'] as List<dynamic>? ?? [];
+    final lessons =
+        rawLessons
+            .map(
+              (l) => ManagedLessonSummary.fromJson(l as Map<String, dynamic>),
+            )
+            .toList()
+          ..sort((a, b) => a.order.compareTo(b.order));
+
+    return ManagedModule(
+      id: json['id'] as int,
+      title: (json['title'] ?? '') as String,
+      description: (json['description'] ?? '') as String,
+      order: (json['order'] as num?)?.toInt() ?? 0,
+      lessons: List.unmodifiable(lessons),
+    );
+  }
+}
+
+class ManagedVersionDetail {
+  final int id;
+  final int? trainingId;
+  final String? trainingTitle;
+  final String? trainingCode;
+  final int versionNumber;
+  final String title;
+  final String status;
+  final String description;
+  final List<ManagedModule> modules;
+
+  const ManagedVersionDetail({
+    required this.id,
+    this.trainingId,
+    this.trainingTitle,
+    this.trainingCode,
+    required this.versionNumber,
+    required this.title,
+    required this.status,
+    this.description = '',
+    this.modules = const [],
+  });
+
+  factory ManagedVersionDetail.fromJson(Map<String, dynamic> json) {
+    final rawModules = json['modules'] as List<dynamic>? ?? [];
+    final modules =
+        rawModules
+            .map((m) => ManagedModule.fromJson(m as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => a.order.compareTo(b.order));
+
+    return ManagedVersionDetail(
+      id: json['id'] as int,
+      trainingId: (json['training_id'] ?? json['training']) as int?,
+      trainingTitle: json['training_title'] as String?,
+      trainingCode: json['training_code'] as String?,
+      versionNumber:
+          (json['version_number'] ?? json['versionNumber'] ?? 1) as int,
+      title: (json['title'] ?? '') as String,
+      status: (json['status'] ?? 'DRAFT') as String,
+      description: (json['description'] ?? '') as String,
+      modules: List.unmodifiable(modules),
+    );
+  }
+}

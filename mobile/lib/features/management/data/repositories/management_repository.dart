@@ -103,10 +103,8 @@ class ManagementRepository {
     if (employeeId <= 0) throw ArgumentError.value(employeeId, 'employeeId');
     return _get(
       'employees/$employeeId/assignments/',
-      (json) => ManagementPage.fromJson(
-        json,
-        EmployeeAssignmentSummary.fromJson,
-      ),
+      (json) =>
+          ManagementPage.fromJson(json, EmployeeAssignmentSummary.fromJson),
       page: page,
       pageSize: pageSize,
       cancelToken: cancelToken,
@@ -122,10 +120,8 @@ class ManagementRepository {
     final normalizedSearch = search?.trim();
     return _get(
       'training-versions/',
-      (json) => ManagementPage.fromJson(
-        json,
-        AssignableTrainingVersion.fromJson,
-      ),
+      (json) =>
+          ManagementPage.fromJson(json, AssignableTrainingVersion.fromJson),
       page: page,
       pageSize: pageSize,
       additionalQueryParameters: {
@@ -133,6 +129,80 @@ class ManagementRepository {
             ? normalizedSearch
             : null),
       },
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagementPage<ManagedTraining>> trainings({
+    int page = 1,
+    int? pageSize,
+    String? search,
+    CancelToken? cancelToken,
+  }) {
+    final normalizedSearch = search?.trim();
+    return _get(
+      'trainings/',
+      (json) => ManagementPage.fromJson(json, ManagedTraining.fromJson),
+      page: page,
+      pageSize: pageSize,
+      additionalQueryParameters: {
+        'search': ?(normalizedSearch?.isNotEmpty == true
+            ? normalizedSearch
+            : null),
+      },
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedTraining> training(int id, {CancelToken? cancelToken}) async {
+    if (id <= 0) throw ArgumentError.value(id, 'id');
+    return _get(
+      'trainings/$id/',
+      ManagedTraining.fromJson,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagementPage<ManagedTrainingVersionItem>> trainingVersions(
+    int trainingId, {
+    int page = 1,
+    int? pageSize,
+    CancelToken? cancelToken,
+  }) async {
+    if (trainingId <= 0) throw ArgumentError.value(trainingId, 'trainingId');
+    return _get(
+      'trainings/$trainingId/versions/',
+      (json) =>
+          ManagementPage.fromJson(json, ManagedTrainingVersionItem.fromJson),
+      page: page,
+      pageSize: pageSize,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagementPage<ManagedTrainingVersionItem>> allTrainingVersions({
+    int page = 1,
+    int? pageSize,
+    CancelToken? cancelToken,
+  }) async {
+    return _get(
+      'versions/',
+      (json) =>
+          ManagementPage.fromJson(json, ManagedTrainingVersionItem.fromJson),
+      page: page,
+      pageSize: pageSize,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedVersionDetail> versionDetail(
+    int id, {
+    CancelToken? cancelToken,
+  }) async {
+    if (id <= 0) throw ArgumentError.value(id, 'id');
+    return _get(
+      'versions/$id/',
+      ManagedVersionDetail.fromJson,
       cancelToken: cancelToken,
     );
   }

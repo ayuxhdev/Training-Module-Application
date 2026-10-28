@@ -14,6 +14,11 @@ import 'package:training_app/features/management/presentation/screens/employee_p
 import 'package:training_app/features/management/presentation/screens/employee_creation_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/assign_training_screen.dart';
 import 'package:training_app/features/management/presentation/screens/training_management_screen.dart';
+import 'package:training_app/features/management/presentation/screens/training_catalog_screen.dart';
+import 'package:training_app/features/management/presentation/screens/managed_training_detail_screen.dart';
+import 'package:training_app/features/management/presentation/screens/managed_training_versions_screen.dart';
+import 'package:training_app/features/management/presentation/screens/training_version_directory_screen.dart';
+import 'package:training_app/features/management/presentation/screens/managed_version_detail_screen.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -35,9 +40,24 @@ bool _canAccessWorkspacePath(String path, AuthenticatedIdentity identity) {
   if (path == '/workspace/dashboard') {
     return canViewManagementDashboard(identity);
   }
-  if (path == '/workspace/training' ||
-      path.startsWith('/workspace/training/')) {
+  if (path == '/workspace/training') {
     return canManageTraining(identity);
+  }
+  if (path == '/workspace/training/catalog') {
+    return canViewTraining(identity);
+  }
+  if (RegExp(r'^/workspace/training/catalog/[1-9][0-9]*/versions$')
+      .hasMatch(path)) {
+    return canViewVersions(identity);
+  }
+  if (RegExp(r'^/workspace/training/catalog/[1-9][0-9]*$').hasMatch(path)) {
+    return canViewTraining(identity);
+  }
+  if (path == '/workspace/training/versions') {
+    return canViewVersions(identity);
+  }
+  if (RegExp(r'^/workspace/training/versions/[1-9][0-9]*$').hasMatch(path)) {
+    return canViewVersions(identity);
   }
   if (path == '/workspace/employees' ||
       path.startsWith('/workspace/employees/')) {
@@ -171,6 +191,50 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/workspace/training',
             builder: (_, _) => const TrainingManagementScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/training/catalog',
+            builder: (_, _) => const TrainingCatalogScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/training/catalog/:id',
+            builder: (_, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null || id <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid course ID'),
+                );
+              }
+              return ManagedTrainingDetailScreen(trainingId: id);
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/catalog/:id/versions',
+            builder: (_, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null || id <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid course ID'),
+                );
+              }
+              return ManagedTrainingVersionsScreen(trainingId: id);
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/versions',
+            builder: (_, _) => const TrainingVersionDirectoryScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/training/versions/:id',
+            builder: (_, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null || id <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid version ID'),
+                );
+              }
+              return ManagedVersionDetailScreen(versionId: id);
+            },
           ),
           GoRoute(
             path: '/workspace/employees',

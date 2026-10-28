@@ -1,0 +1,441 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:training_app/core/errors/api_error.dart';
+import 'package:training_app/core/presentation/components/api_error_view.dart';
+import 'package:training_app/core/presentation/components/empty_view.dart';
+import 'package:training_app/core/router/app_router.dart';
+import 'package:training_app/core/theme/app_theme.dart';
+import 'package:training_app/features/auth/domain/models/authenticated_identity.dart';
+import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:training_app/features/management/data/repositories/management_repository.dart';
+import 'package:training_app/features/management/domain/models/management_models.dart';
+import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
+
+import 'management_fixtures.dart';
+
+class MockManagementRepository extends Mock implements ManagementRepository {}
+
+class ZeroUnread extends NotificationUnreadController {
+  @override
+  Future<int?> build() async => 0;
+}
+
+void main() {
+  late MockManagementRepository repository;
+  late ManagementTestAuth auth;
+  late GoRouter router;
+
+  setUpAll(() {
+    registerFallbackValue(ReferenceKind.departments);
+  });
+
+  setUp(() {
+    repository = MockManagementRepository();
+
+    when(
+      () => repository.training(any(), cancelToken: any(named: 'cancelToken')),
+    ).thenAnswer(
+      (_) async => ManagedTraining.fromJson(
+        managedTrainingJson(
+          id: 1,
+          code: 'TR-SAFE-001',
+          title: 'Workplace Safety Fundamentals',
+          description: 'Core safety curriculum.',
+          isActive: true,
+          latestVersionNumber: 2,
+          latestVersionStatus: 'PUBLISHED',
+        ),
+      ),
+    );
+
+    when(
+      () => repository.trainingVersions(
+        any(),
+        page: any(named: 'page'),
+        pageSize: any(named: 'pageSize'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => ManagementPage.fromJson(
+        pageJson([
+          managedTrainingVersionJson(
+            id: 20,
+            trainingId: 1,
+            versionNumber: 2,
+            title: 'Workplace Safety v2',
+            status: 'PUBLISHED',
+          ),
+          managedTrainingVersionJson(
+            id: 10,
+            trainingId: 1,
+            versionNumber: 1,
+            title: 'Workplace Safety v1',
+            status: 'RETIRED',
+          ),
+        ], count: 2),
+        ManagedTrainingVersionItem.fromJson,
+      ),
+    );
+
+    when(
+      () => repository.versionDetail(
+        any(),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => ManagedVersionDetail.fromJson(
+        managedVersionDetailJson(
+          id: 20,
+          trainingId: 1,
+          trainingCode: 'TR-SAFE-001',
+          trainingTitle: 'Workplace Safety Fundamentals',
+          versionNumber: 2,
+          title: 'Workplace Safety v2',
+          status: 'PUBLISHED',
+          modules: [
+            managedModuleJson(
+              id: 101,
+              title: 'Site Safety Protocols',
+              description: 'Standard operating safety procedures.',
+              order: 1,
+              lessons: [
+                managedLessonSummaryJson(
+                  id: 201,
+                  title: 'PPE Orientation',
+                  lessonType: 'VIDEO',
+                  order: 1,
+                  isRequired: true,
+                ),
+                managedLessonSummaryJson(
+                  id: 202,
+                  title: 'Hazard Documentation Guide',
+                  lessonType: 'TEXT',
+                  order: 2,
+                  isRequired: false,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  });
+
+  Future<ProviderContainer> launch(
+    WidgetTester tester, {
+    AuthenticatedIdentity? identity,
+    required String path,
+    ThemeMode themeMode = ThemeMode.light,
+    Size size = const Size(800, 2400),
+    double textScale = 1.0,
+  }) async {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    auth = ManagementTestAuth(
+      identity ??
+          managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_training',
+              'training.view_trainingversion',
+              'training.view_module',
+              'training.view_lesson',
+            },
+          ),
+    );
+
+    final container = ProviderContainer(
+      overrides: [
+        authControllerProvider.overrideWith(() => auth),
+        managementRepositoryProvider.overrideWithValue(repository),
+        notificationUnreadCountProvider.overrideWith(ZeroUnread.new),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    router = container.read(appRouterProvider)..go(path);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(
+          routerConfig: router,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeMode,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              disableAnimations: true,
+              textScaler: TextScaler.linear(textScale),
+            ),
+            child: child!,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return container;
+  }
+
+  group('ManagedTrainingDetailScreen', () {
+    testWidgets('router redirects away when account lacks view_training', (
+      tester,
+    ) async {
+      await launch(
+        tester,
+        path: '/workspace/training/catalog/1',
+        identity: managementIdentity(
+          capabilities: {
+            'management_workspace',
+            'training.view_trainingversion',
+          },
+        ),
+      );
+
+      expect(router.state.matchedLocation, '/workspace');
+    });
+
+    testWidgets('renders course specifications and latest version status', (
+      tester,
+    ) async {
+      await launch(tester, path: '/workspace/training/catalog/1');
+
+      expect(find.text('Course details'), findsWidgets);
+      expect(find.text('Workplace Safety Fundamentals'), findsOneWidget);
+      expect(find.text('TR-SAFE-001'), findsOneWidget);
+      expect(find.text('Active for training'), findsOneWidget);
+      expect(find.text('Version 2 (PUBLISHED)'), findsOneWidget);
+      expect(find.text('Core safety curriculum.'), findsWidgets);
+    });
+
+    testWidgets(
+      'shows clickable version history card when authorized and navigates',
+      (tester) async {
+        await launch(tester, path: '/workspace/training/catalog/1');
+
+        expect(find.text('View version history'), findsOneWidget);
+        await tester.tap(find.text('View version history'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Version history'), findsWidgets);
+        expect(
+          router.state.matchedLocation,
+          '/workspace/training/catalog/1/versions',
+        );
+      },
+    );
+
+    testWidgets(
+      'shows restricted notice when account lacks view_trainingversion',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/catalog/1',
+          identity: managementIdentity(
+            capabilities: {'management_workspace', 'training.view_training'},
+          ),
+        );
+
+        expect(find.text('View version history'), findsNothing);
+        expect(
+          find.text('Version history requires version view permissions.'),
+          findsOneWidget,
+        );
+      },
+    );
+  });
+
+  group('ManagedTrainingVersionsScreen', () {
+    testWidgets(
+      'router redirects away when account lacks view_trainingversion',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/catalog/1/versions',
+          identity: managementIdentity(
+            capabilities: {'management_workspace', 'training.view_training'},
+          ),
+        );
+
+        expect(router.state.matchedLocation, '/workspace');
+      },
+    );
+
+    testWidgets(
+      'renders version pinning notice and version list with lifecycle badges',
+      (tester) async {
+        await launch(tester, path: '/workspace/training/catalog/1/versions');
+
+        expect(find.text('Version history'), findsWidgets);
+        expect(find.text('Version Pinning & Immutability'), findsOneWidget);
+        expect(find.text('Workplace Safety v2'), findsOneWidget);
+        expect(find.text('Workplace Safety v1'), findsOneWidget);
+        expect(find.text('PUBLISHED'), findsOneWidget);
+        expect(find.text('RETIRED'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'tapping version card navigates to /workspace/training/versions/:id',
+      (tester) async {
+        await launch(tester, path: '/workspace/training/catalog/1/versions');
+
+        expect(find.text('Workplace Safety v2'), findsOneWidget);
+        await tester.tap(find.text('Workplace Safety v2'));
+        await tester.pumpAndSettle();
+
+        expect(router.state.matchedLocation, '/workspace/training/versions/20');
+        expect(find.text('Curriculum structure'), findsOneWidget);
+      },
+    );
+
+    testWidgets('renders empty state when course has no versions recorded', (
+      tester,
+    ) async {
+      when(
+        () => repository.trainingVersions(
+          any(),
+          page: any(named: 'page'),
+          pageSize: any(named: 'pageSize'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ManagementPage.fromJson(
+          pageJson([], count: 0),
+          ManagedTrainingVersionItem.fromJson,
+        ),
+      );
+
+      await launch(tester, path: '/workspace/training/catalog/1/versions');
+
+      expect(find.byType(EmptyView), findsOneWidget);
+      expect(find.text('No versions found for this course.'), findsOneWidget);
+    });
+  });
+
+  group('ManagedVersionDetailScreen curriculum and permission gating', () {
+    testWidgets(
+      'router redirects away when account lacks view_trainingversion',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/versions/20',
+          identity: managementIdentity(
+            capabilities: {'management_workspace', 'training.view_training'},
+          ),
+        );
+
+        expect(router.state.matchedLocation, '/workspace');
+      },
+    );
+
+    testWidgets(
+      'renders hero, lifecycle notice, and full module/lesson tree when fully authorized',
+      (tester) async {
+        await launch(tester, path: '/workspace/training/versions/20');
+
+        expect(find.text('Version details'), findsWidgets);
+        expect(find.text('VERSION 2'), findsOneWidget);
+        expect(find.text('Workplace Safety v2'), findsOneWidget);
+        expect(find.text('PUBLISHED'), findsWidgets);
+        expect(find.text('MANAGEMENT VIEW'), findsOneWidget);
+
+        // Lifecycle status summary
+        expect(find.text('Lifecycle status'), findsOneWidget);
+        expect(find.text('1 module(s) · 2 lesson(s) recorded'), findsOneWidget);
+
+        // Module
+        expect(find.text('Module 1: Site Safety Protocols'), findsOneWidget);
+        expect(
+          find.text('Standard operating safety procedures.'),
+          findsOneWidget,
+        );
+
+        // Lessons
+        expect(find.text('1. PPE Orientation'), findsOneWidget);
+        expect(find.text('VIDEO'), findsOneWidget);
+        expect(find.text('REQUIRED'), findsOneWidget);
+
+        expect(find.text('2. Hazard Documentation Guide'), findsOneWidget);
+        expect(find.text('TEXT'), findsOneWidget);
+        expect(find.text('OPTIONAL'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'renders modules and lessons for version-view-only account without extra module/lesson permissions',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/versions/20',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_trainingversion',
+              // No training.view_module or training.view_lesson
+            },
+          ),
+        );
+
+        // Does not show false restriction notices
+        expect(
+          find.text(
+            'Curriculum module details require module view permissions.',
+          ),
+          findsNothing,
+        );
+        expect(
+          find.text('Lesson details require lesson view permissions.'),
+          findsNothing,
+        );
+
+        // Shows module and lesson summaries returned with version detail
+        expect(find.text('Module 1: Site Safety Protocols'), findsOneWidget);
+        expect(find.text('1. PPE Orientation'), findsOneWidget);
+        expect(find.text('VIDEO'), findsOneWidget);
+        expect(find.text('REQUIRED'), findsOneWidget);
+      },
+    );
+
+    testWidgets('renders error state and retries on action tap', (
+      tester,
+    ) async {
+      when(
+        () => repository.versionDetail(
+          20,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(ApiError.networkFailure());
+
+      await launch(tester, path: '/workspace/training/versions/20');
+
+      expect(find.byType(ApiErrorView), findsOneWidget);
+
+      // Reset stub for successful response on retry
+      when(
+        () => repository.versionDetail(
+          20,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ManagedVersionDetail.fromJson(
+          managedVersionDetailJson(id: 20, title: 'Version After Retry'),
+        ),
+      );
+
+      final retryButton = find.text('Retry');
+      expect(retryButton, findsOneWidget);
+      await tester.tap(retryButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Version After Retry'), findsOneWidget);
+    });
+  });
+}
