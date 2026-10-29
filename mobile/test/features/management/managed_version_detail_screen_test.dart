@@ -680,4 +680,326 @@ void main() {
       expect(find.text('Version After Retry'), findsOneWidget);
     });
   });
+
+  group('ManagedVersionDetailScreen - DRAFT Authoring Actions and Immutability', () {
+    testWidgets(
+      'renders authoring action buttons on DRAFT version with full permissions',
+      (tester) async {
+        when(
+          () => repository.versionDetail(
+            20,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedVersionDetail.fromJson(
+            managedVersionDetailJson(
+              id: 20,
+              status: 'DRAFT',
+              modules: [
+                managedModuleJson(
+                  id: 101,
+                  title: 'Draft Module 1',
+                  lessons: [
+                    managedLessonSummaryJson(
+                      id: 201,
+                      title: 'Intro Video',
+                      lessonType: 'VIDEO',
+                    ),
+                    managedLessonSummaryJson(
+                      id: 202,
+                      title: 'Policy Text',
+                      lessonType: 'TEXT',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+
+        await launch(
+          tester,
+          path: '/workspace/training/versions/20',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_trainingversion',
+              'training.add_module',
+              'training.change_module',
+              'training.add_lesson',
+              'training.view_lesson',
+              'training.change_lesson',
+            },
+          ),
+        );
+
+        // Create module buttons (AppBar action and curriculum structure section)
+        expect(find.byTooltip('Create module'), findsOneWidget);
+        expect(
+          find.widgetWithText(OutlinedButton, 'Create module'),
+          findsOneWidget,
+        );
+
+        // Module card actions
+        expect(find.byTooltip('Edit module'), findsOneWidget);
+        expect(find.byTooltip('Add text lesson'), findsOneWidget);
+
+        // Lesson actions: only TEXT lesson has edit button, VIDEO lesson does not
+        expect(find.byTooltip('Edit lesson'), findsOneWidget);
+      },
+    );
+
+    testWidgets('respects granular permissions on DRAFT version', (
+      tester,
+    ) async {
+      when(
+        () => repository.versionDetail(
+          20,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ManagedVersionDetail.fromJson(
+          managedVersionDetailJson(
+            id: 20,
+            status: 'DRAFT',
+            modules: [
+              managedModuleJson(
+                id: 101,
+                title: 'Draft Module 1',
+                lessons: [
+                  managedLessonSummaryJson(
+                    id: 202,
+                    title: 'Policy Text',
+                    lessonType: 'TEXT',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+
+      // Identity with only add_module (no change_module, add_lesson, change_lesson)
+      await launch(
+        tester,
+        path: '/workspace/training/versions/20',
+        identity: managementIdentity(
+          capabilities: {
+            'management_workspace',
+            'training.view_trainingversion',
+            'training.add_module',
+          },
+        ),
+      );
+
+      expect(find.byTooltip('Create module'), findsOneWidget);
+      expect(find.byTooltip('Edit module'), findsNothing);
+      expect(find.byTooltip('Add text lesson'), findsNothing);
+      expect(find.byTooltip('Edit lesson'), findsNothing);
+    });
+
+    testWidgets(
+      'hides edit lesson action when identity has change_lesson but lacks view_lesson',
+      (tester) async {
+        when(
+          () => repository.versionDetail(
+            20,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedVersionDetail.fromJson(
+            managedVersionDetailJson(
+              id: 20,
+              status: 'DRAFT',
+              modules: [
+                managedModuleJson(
+                  id: 101,
+                  title: 'Draft Module 1',
+                  lessons: [
+                    managedLessonSummaryJson(
+                      id: 202,
+                      title: 'Policy Text',
+                      lessonType: 'TEXT',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+
+        // Identity with change_lesson but NO view_lesson
+        await launch(
+          tester,
+          path: '/workspace/training/versions/20',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_trainingversion',
+              'training.change_lesson',
+            },
+          ),
+        );
+
+        expect(find.byTooltip('Edit lesson'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'hides edit lesson action when identity has view_lesson but lacks change_lesson',
+      (tester) async {
+        when(
+          () => repository.versionDetail(
+            20,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedVersionDetail.fromJson(
+            managedVersionDetailJson(
+              id: 20,
+              status: 'DRAFT',
+              modules: [
+                managedModuleJson(
+                  id: 101,
+                  title: 'Draft Module 1',
+                  lessons: [
+                    managedLessonSummaryJson(
+                      id: 202,
+                      title: 'Policy Text',
+                      lessonType: 'TEXT',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+
+        // Identity with view_lesson but NO change_lesson
+        await launch(
+          tester,
+          path: '/workspace/training/versions/20',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_trainingversion',
+              'training.view_lesson',
+            },
+          ),
+        );
+
+        expect(find.byTooltip('Edit lesson'), findsNothing);
+      },
+    );
+
+    testWidgets('hides all authoring action buttons on PUBLISHED version', (
+      tester,
+    ) async {
+      when(
+        () => repository.versionDetail(
+          20,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ManagedVersionDetail.fromJson(
+          managedVersionDetailJson(
+            id: 20,
+            status: 'PUBLISHED',
+            modules: [
+              managedModuleJson(
+                id: 101,
+                title: 'Published Module 1',
+                lessons: [
+                  managedLessonSummaryJson(
+                    id: 202,
+                    title: 'Policy Text',
+                    lessonType: 'TEXT',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+
+      await launch(
+        tester,
+        path: '/workspace/training/versions/20',
+        identity: managementIdentity(
+          capabilities: {
+            'management_workspace',
+            'training.view_trainingversion',
+            'training.add_module',
+            'training.change_module',
+            'training.add_lesson',
+            'training.change_lesson',
+          },
+        ),
+      );
+
+      expect(find.byTooltip('Create module'), findsNothing);
+      expect(
+        find.widgetWithText(OutlinedButton, 'Create module'),
+        findsNothing,
+      );
+      expect(find.byTooltip('Edit module'), findsNothing);
+      expect(find.byTooltip('Add text lesson'), findsNothing);
+      expect(find.byTooltip('Edit lesson'), findsNothing);
+    });
+
+    testWidgets('hides all authoring action buttons on RETIRED version', (
+      tester,
+    ) async {
+      when(
+        () => repository.versionDetail(
+          20,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ManagedVersionDetail.fromJson(
+          managedVersionDetailJson(
+            id: 20,
+            status: 'RETIRED',
+            modules: [
+              managedModuleJson(
+                id: 101,
+                title: 'Retired Module 1',
+                lessons: [
+                  managedLessonSummaryJson(
+                    id: 202,
+                    title: 'Policy Text',
+                    lessonType: 'TEXT',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+
+      await launch(
+        tester,
+        path: '/workspace/training/versions/20',
+        identity: managementIdentity(
+          capabilities: {
+            'management_workspace',
+            'training.view_trainingversion',
+            'training.add_module',
+            'training.change_module',
+            'training.add_lesson',
+            'training.change_lesson',
+          },
+        ),
+      );
+
+      expect(find.byTooltip('Create module'), findsNothing);
+      expect(
+        find.widgetWithText(OutlinedButton, 'Create module'),
+        findsNothing,
+      );
+      expect(find.byTooltip('Edit module'), findsNothing);
+      expect(find.byTooltip('Add text lesson'), findsNothing);
+      expect(find.byTooltip('Edit lesson'), findsNothing);
+    });
+  });
 }

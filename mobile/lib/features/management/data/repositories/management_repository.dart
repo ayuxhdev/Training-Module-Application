@@ -328,6 +328,235 @@ class ManagementRepository {
     }
   }
 
+  Future<ManagedModuleDetail> createModule(
+    int versionId, {
+    required String title,
+    String description = '',
+    required int position,
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    final normalizedTitle = title.trim();
+    if (normalizedTitle.isEmpty || normalizedTitle.length > 200) {
+      throw ArgumentError.value(title, 'title');
+    }
+    if (position < 1 || position > 2147483647) {
+      throw ArgumentError.value(position, 'position');
+    }
+    final data = <String, Object?>{
+      'title': normalizedTitle,
+      'description': description.trim(),
+      'position': position,
+    };
+    try {
+      final response = await apiClient.dio.post(
+        '/management/versions/$versionId/modules/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 201) {
+        throw const FormatException(
+          'Module creation returned an unexpected status.',
+        );
+      }
+      return ManagedModuleDetail.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagedModuleDetail> moduleDetail(
+    int versionId,
+    int moduleId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (moduleId <= 0) throw ArgumentError.value(moduleId, 'moduleId');
+    return _get(
+      'versions/$versionId/modules/$moduleId/',
+      ManagedModuleDetail.fromJson,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedModuleDetail> updateModule(
+    int versionId,
+    int moduleId, {
+    String? title,
+    String? description,
+    int? position,
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (moduleId <= 0) throw ArgumentError.value(moduleId, 'moduleId');
+    final data = <String, Object?>{};
+    if (title != null) {
+      final normalizedTitle = title.trim();
+      if (normalizedTitle.isEmpty || normalizedTitle.length > 200) {
+        throw ArgumentError.value(title, 'title');
+      }
+      data['title'] = normalizedTitle;
+    }
+    if (description != null) {
+      data['description'] = description.trim();
+    }
+    if (position != null) {
+      if (position < 1 || position > 2147483647) {
+        throw ArgumentError.value(position, 'position');
+      }
+      data['position'] = position;
+    }
+    if (data.isEmpty) {
+      throw ArgumentError('At least one field must be provided for update.');
+    }
+    try {
+      final response = await apiClient.dio.patch(
+        '/management/versions/$versionId/modules/$moduleId/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 200) {
+        throw const FormatException(
+          'Module update returned an unexpected status.',
+        );
+      }
+      return ManagedModuleDetail.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagedTextLessonDetail> createTextLesson(
+    int versionId,
+    int moduleId, {
+    required String title,
+    required String body,
+    required int position,
+    bool isRequired = true,
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (moduleId <= 0) throw ArgumentError.value(moduleId, 'moduleId');
+    final normalizedTitle = title.trim();
+    if (normalizedTitle.isEmpty || normalizedTitle.length > 200) {
+      throw ArgumentError.value(title, 'title');
+    }
+    final normalizedBody = body.trim();
+    if (normalizedBody.isEmpty) {
+      throw ArgumentError.value(body, 'body');
+    }
+    if (position < 1 || position > 2147483647) {
+      throw ArgumentError.value(position, 'position');
+    }
+    final data = <String, Object?>{
+      'title': normalizedTitle,
+      'body': body,
+      'position': position,
+      'is_required': isRequired,
+      'content_type': 'TEXT',
+    };
+    try {
+      final response = await apiClient.dio.post(
+        '/management/versions/$versionId/modules/$moduleId/text-lessons/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 201) {
+        throw const FormatException(
+          'Text lesson creation returned an unexpected status.',
+        );
+      }
+      return ManagedTextLessonDetail.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagedTextLessonDetail> textLessonDetail(
+    int versionId,
+    int moduleId,
+    int lessonId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (moduleId <= 0) throw ArgumentError.value(moduleId, 'moduleId');
+    if (lessonId <= 0) throw ArgumentError.value(lessonId, 'lessonId');
+    return _get(
+      'versions/$versionId/modules/$moduleId/text-lessons/$lessonId/',
+      ManagedTextLessonDetail.fromJson,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedTextLessonDetail> updateTextLesson(
+    int versionId,
+    int moduleId,
+    int lessonId, {
+    String? title,
+    String? body,
+    int? position,
+    bool? isRequired,
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (moduleId <= 0) throw ArgumentError.value(moduleId, 'moduleId');
+    if (lessonId <= 0) throw ArgumentError.value(lessonId, 'lessonId');
+    final data = <String, Object?>{};
+    if (title != null) {
+      final normalizedTitle = title.trim();
+      if (normalizedTitle.isEmpty || normalizedTitle.length > 200) {
+        throw ArgumentError.value(title, 'title');
+      }
+      data['title'] = normalizedTitle;
+    }
+    if (body != null) {
+      final normalizedBody = body.trim();
+      if (normalizedBody.isEmpty) {
+        throw ArgumentError.value(body, 'body');
+      }
+      data['body'] = body;
+    }
+    if (position != null) {
+      if (position < 1 || position > 2147483647) {
+        throw ArgumentError.value(position, 'position');
+      }
+      data['position'] = position;
+    }
+    if (isRequired != null) {
+      data['is_required'] = isRequired;
+    }
+    if (data.isEmpty) {
+      throw ArgumentError('At least one field must be provided for update.');
+    }
+    try {
+      final response = await apiClient.dio.patch(
+        '/management/versions/$versionId/modules/$moduleId/text-lessons/$lessonId/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 200) {
+        throw const FormatException(
+          'Text lesson update returned an unexpected status.',
+        );
+      }
+      return ManagedTextLessonDetail.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
   Future<CreatedAssignment> assignTraining({
     required int employeeId,
     required int trainingVersionId,

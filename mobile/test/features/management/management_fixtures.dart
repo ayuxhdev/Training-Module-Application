@@ -398,6 +398,40 @@ Map<String, dynamic> managedModuleJson({
       ],
 };
 
+Map<String, dynamic> managedModuleDetailJson({
+  int id = 70,
+  int trainingVersionId = 42,
+  String title = 'Site safety',
+  String description = 'Before starting work',
+  int position = 1,
+}) => {
+  'id': id,
+  'training_version_id': trainingVersionId,
+  'title': title,
+  'description': description,
+  'position': position,
+};
+
+Map<String, dynamic> managedTextLessonDetailJson({
+  int id = 90,
+  int moduleId = 70,
+  int trainingVersionId = 42,
+  String title = 'Before work',
+  String contentType = 'TEXT',
+  String body = 'Check your equipment.\nReport unsafe conditions.',
+  int position = 1,
+  bool isRequired = true,
+}) => {
+  'id': id,
+  'module_id': moduleId,
+  'training_version_id': trainingVersionId,
+  'title': title,
+  'content_type': contentType,
+  'body': body,
+  'position': position,
+  'is_required': isRequired,
+};
+
 Map<String, dynamic> managedVersionDetailJson({
   int id = 10,
   int trainingId = 1,

@@ -26,8 +26,9 @@ class VersionLifecycleBadge extends StatelessWidget {
 /// Reusable read-only summary row for a curriculum lesson.
 class ManagedLessonSummaryRow extends StatelessWidget {
   final ManagedLessonSummary lesson;
+  final VoidCallback? onEdit;
 
-  const ManagedLessonSummaryRow({super.key, required this.lesson});
+  const ManagedLessonSummaryRow({super.key, required this.lesson, this.onEdit});
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +66,17 @@ class ManagedLessonSummaryRow extends StatelessWidget {
             text: lesson.isRequired ? 'REQUIRED' : 'OPTIONAL',
             status: lesson.isRequired ? BadgeStatus.neutral : BadgeStatus.info,
           ),
+          if (onEdit != null && !isVideo) ...[
+            const SizedBox(width: AppSpacing.xs),
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              tooltip: 'Edit lesson',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: onEdit,
+            ),
+          ],
         ],
       ),
     );
@@ -76,8 +88,14 @@ class ManagedLessonSummaryRow extends StatelessWidget {
 class ManagedModuleCard extends StatelessWidget {
   final ManagedModule module;
   final Widget? actionSlot;
+  final void Function(ManagedLessonSummary lesson)? onEditLesson;
 
-  const ManagedModuleCard({super.key, required this.module, this.actionSlot});
+  const ManagedModuleCard({
+    super.key,
+    required this.module,
+    this.actionSlot,
+    this.onEditLesson,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +165,12 @@ class ManagedModuleCard extends StatelessWidget {
             )
           else
             ...module.lessons.map(
-              (lesson) => ManagedLessonSummaryRow(lesson: lesson),
+              (lesson) => ManagedLessonSummaryRow(
+                lesson: lesson,
+                onEdit: onEditLesson != null
+                    ? () => onEditLesson!(lesson)
+                    : null,
+              ),
             ),
         ],
       ),

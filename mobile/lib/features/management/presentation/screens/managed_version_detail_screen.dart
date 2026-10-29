@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/content_skeleton.dart';
@@ -31,11 +32,22 @@ class ManagedVersionDetailScreen extends ConsumerWidget {
 
     final asyncVersion = ref.watch(managedVersionDetailProvider(versionId));
     final theme = Theme.of(context);
+    final identity = auth.identity;
+    final isDraft = asyncVersion.asData?.value.status.toUpperCase() == 'DRAFT';
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Version details'),
         actions: [
+          if (isDraft && canCreateModules(identity))
+            IconButton(
+              tooltip: 'Create module',
+              onPressed: () => context.push(
+                '/workspace/training/versions/$versionId/modules/new',
+                extra: asyncVersion.asData?.value,
+              ),
+              icon: const Icon(Icons.add_box_outlined),
+            ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: () =>
@@ -153,6 +165,18 @@ class ManagedVersionDetailScreen extends ConsumerWidget {
                   subtitle:
                       'Ordered modules and lesson summaries for this version.',
                 ),
+                if (status == 'DRAFT' && canCreateModules(identity))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.add),
+                      label: const Text('Create module'),
+                      onPressed: () => context.push(
+                        '/workspace/training/versions/$versionId/modules/new',
+                        extra: version,
+                      ),
+                    ),
+                  ),
                 if (version.modules.isEmpty)
                   const EmptyView(
                     message: 'No modules defined in this version.',
@@ -162,7 +186,56 @@ class ManagedVersionDetailScreen extends ConsumerWidget {
                   ...version.modules.map(
                     (module) => Padding(
                       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                      child: ManagedModuleCard(module: module),
+                      child: ManagedModuleCard(
+                        module: module,
+                        actionSlot: status == 'DRAFT'
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (canEditModules(identity))
+                                    IconButton(
+                                      tooltip: 'Edit module',
+                                      icon: const Icon(
+                                        Icons.edit_outlined,
+                                        size: 20,
+                                      ),
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => context.push(
+                                        '/workspace/training/versions/$versionId/modules/${module.id}/edit',
+                                        extra: module,
+                                      ),
+                                    ),
+                                  if (canCreateLessons(identity)) ...[
+                                    const SizedBox(width: AppSpacing.xs),
+                                    IconButton(
+                                      tooltip: 'Add text lesson',
+                                      icon: const Icon(
+                                        Icons.add_circle_outline,
+                                        size: 20,
+                                      ),
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => context.push(
+                                        '/workspace/training/versions/$versionId/modules/${module.id}/lessons/new',
+                                        extra: module,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              )
+                            : null,
+                        onEditLesson:
+                            status == 'DRAFT' &&
+                                canAccessLessonEditForm(identity)
+                            ? (lesson) => context.push(
+                                '/workspace/training/versions/$versionId/modules/${module.id}/lessons/${lesson.id}/edit',
+                                extra: lesson,
+                              )
+                            : null,
+                      ),
                     ),
                   ),
               ],

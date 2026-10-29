@@ -81,6 +81,9 @@ bool canCreateLessons(AuthenticatedIdentity identity) =>
 bool canEditLessons(AuthenticatedIdentity identity) =>
     identity.capabilities.contains('training.change_lesson');
 
+bool canAccessLessonEditForm(AuthenticatedIdentity identity) =>
+    canViewLessons(identity) && canEditLessons(identity);
+
 bool hasCompanyAssignmentAuthority(AuthenticatedIdentity identity) =>
     identity.capabilities.contains('training.add_trainingassignment');
 
@@ -569,6 +572,192 @@ final draftVersionMutationProvider = Provider<DraftVersionMutationController>(
   ),
 );
 
+class ModuleMutationController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  const ModuleMutationController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<ManagedModuleDetail> create({
+    required int versionId,
+    required String title,
+    String description = '',
+    required int position,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canCreateModules(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot create modules.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final created = await repository.createModule(
+      versionId,
+      title: title,
+      description: description,
+      position: position,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canCreateModules(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before module creation completed. Reopen the form to continue.',
+        statusCode: 403,
+      );
+    }
+    return created;
+  }
+
+  Future<ManagedModuleDetail> update({
+    required int versionId,
+    required int moduleId,
+    String? title,
+    String? description,
+    int? position,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canEditModules(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot edit modules.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final updated = await repository.updateModule(
+      versionId,
+      moduleId,
+      title: title,
+      description: description,
+      position: position,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canEditModules(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before module update completed. Reopen the form to continue.',
+        statusCode: 403,
+      );
+    }
+    return updated;
+  }
+}
+
+final moduleMutationProvider = Provider<ModuleMutationController>(
+  (ref) => ModuleMutationController(
+    repository: ref.watch(managementRepositoryProvider),
+    readAuth: () => ref.read(authControllerProvider),
+  ),
+);
+
+class TextLessonMutationController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  const TextLessonMutationController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<ManagedTextLessonDetail> create({
+    required int versionId,
+    required int moduleId,
+    required String title,
+    required String body,
+    required int position,
+    bool isRequired = true,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canCreateLessons(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot create lessons.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final created = await repository.createTextLesson(
+      versionId,
+      moduleId,
+      title: title,
+      body: body,
+      position: position,
+      isRequired: isRequired,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canCreateLessons(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before lesson creation completed. Reopen the form to continue.',
+        statusCode: 403,
+      );
+    }
+    return created;
+  }
+
+  Future<ManagedTextLessonDetail> update({
+    required int versionId,
+    required int moduleId,
+    required int lessonId,
+    String? title,
+    String? body,
+    int? position,
+    bool? isRequired,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canEditLessons(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot edit lessons.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final updated = await repository.updateTextLesson(
+      versionId,
+      moduleId,
+      lessonId,
+      title: title,
+      body: body,
+      position: position,
+      isRequired: isRequired,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canEditLessons(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before lesson update completed. Reopen the form to continue.',
+        statusCode: 403,
+      );
+    }
+    return updated;
+  }
+}
+
+final textLessonMutationProvider = Provider<TextLessonMutationController>(
+  (ref) => TextLessonMutationController(
+    repository: ref.watch(managementRepositoryProvider),
+    readAuth: () => ref.read(authControllerProvider),
+  ),
+);
+
 CancelToken _request(Ref ref, bool Function(AuthenticatedIdentity) allowed) {
   final account = ref.watch(authControllerProvider.select(managementAccount));
   final auth = ref.read(authControllerProvider);
@@ -786,6 +975,52 @@ final allTrainingVersionsProvider = FutureProvider.autoDispose
       final repository = ref.watch(managementRepositoryProvider);
       return repository.allTrainingVersions(
         page: page,
+        cancelToken: cancelToken,
+      );
+    }, retry: (_, _) => null);
+
+typedef ManagedModuleDetailKey = ({int versionId, int moduleId});
+
+final managedModuleDetailProvider = FutureProvider.autoDispose
+    .family<ManagedModuleDetail, ManagedModuleDetailKey>((ref, key) {
+      if (key.versionId <= 0) {
+        throw ArgumentError.value(key.versionId, 'versionId');
+      }
+      if (key.moduleId <= 0) {
+        throw ArgumentError.value(key.moduleId, 'moduleId');
+      }
+      final cancelToken = _request(ref, canViewModules);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.moduleDetail(
+        key.versionId,
+        key.moduleId,
+        cancelToken: cancelToken,
+      );
+    }, retry: (_, _) => null);
+
+typedef ManagedTextLessonDetailKey = ({
+  int versionId,
+  int moduleId,
+  int lessonId,
+});
+
+final managedTextLessonDetailProvider = FutureProvider.autoDispose
+    .family<ManagedTextLessonDetail, ManagedTextLessonDetailKey>((ref, key) {
+      if (key.versionId <= 0) {
+        throw ArgumentError.value(key.versionId, 'versionId');
+      }
+      if (key.moduleId <= 0) {
+        throw ArgumentError.value(key.moduleId, 'moduleId');
+      }
+      if (key.lessonId <= 0) {
+        throw ArgumentError.value(key.lessonId, 'lessonId');
+      }
+      final cancelToken = _request(ref, canViewLessons);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.textLessonDetail(
+        key.versionId,
+        key.moduleId,
+        key.lessonId,
         cancelToken: cancelToken,
       );
     }, retry: (_, _) => null);

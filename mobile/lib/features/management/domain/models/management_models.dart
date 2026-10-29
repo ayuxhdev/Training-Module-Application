@@ -570,3 +570,64 @@ class ManagedVersionDetail {
     );
   }
 }
+
+class ManagedModuleDetail {
+  final int id;
+  final int trainingVersionId;
+  final String title;
+  final String description;
+  final int position;
+
+  const ManagedModuleDetail({
+    required this.id,
+    required this.trainingVersionId,
+    required this.title,
+    this.description = '',
+    required this.position,
+  });
+
+  factory ManagedModuleDetail.fromJson(Map<String, dynamic> json) =>
+      ManagedModuleDetail(
+        id: json['id'] as int,
+        trainingVersionId:
+            (json['training_version_id'] ?? json['training_version']) as int,
+        title: (json['title'] ?? '') as String,
+        description: (json['description'] ?? '') as String,
+        position: (json['position'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class ManagedTextLessonDetail {
+  final int id;
+  final int moduleId;
+  final int trainingVersionId;
+  final String title;
+  final String contentType;
+  final String body;
+  final int position;
+  final bool isRequired;
+
+  const ManagedTextLessonDetail({
+    required this.id,
+    required this.moduleId,
+    required this.trainingVersionId,
+    required this.title,
+    this.contentType = 'TEXT',
+    required this.body,
+    required this.position,
+    this.isRequired = true,
+  });
+
+  factory ManagedTextLessonDetail.fromJson(Map<String, dynamic> json) =>
+      ManagedTextLessonDetail(
+        id: json['id'] as int,
+        moduleId: (json['module_id'] ?? json['module']) as int,
+        trainingVersionId:
+            (json['training_version_id'] ?? json['training_version']) as int,
+        title: (json['title'] ?? '') as String,
+        contentType: (json['content_type'] ?? 'TEXT') as String,
+        body: (json['body'] ?? '') as String,
+        position: (json['position'] as num?)?.toInt() ?? 0,
+        isRequired: (json['is_required'] ?? true) as bool,
+      );
+}

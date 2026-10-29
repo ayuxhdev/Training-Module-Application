@@ -565,5 +565,303 @@ void main() {
         throwsA(isA<ApiError>()),
       );
     });
+
+    test('createModule posts payload and parses module detail', () async {
+      when(
+        () => dio.post(
+          '/management/versions/42/modules/',
+          data: {
+            'title': 'Site safety',
+            'description': 'Before starting work',
+            'position': 1,
+          },
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(
+            path: '/management/versions/42/modules/',
+          ),
+          statusCode: 201,
+          data: managedModuleDetailJson(
+            id: 70,
+            trainingVersionId: 42,
+            title: 'Site safety',
+            description: 'Before starting work',
+            position: 1,
+          ),
+        ),
+      );
+
+      final module = await repository.createModule(
+        42,
+        title: 'Site safety',
+        description: 'Before starting work',
+        position: 1,
+      );
+
+      expect(module.id, 70);
+      expect(module.trainingVersionId, 42);
+      expect(module.title, 'Site safety');
+      expect(module.description, 'Before starting work');
+      expect(module.position, 1);
+    });
+
+    test('createModule validates inputs before network call', () {
+      expect(
+        () => repository.createModule(0, title: 'T', position: 1),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createModule(42, title: '', position: 1),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createModule(42, title: 'A' * 201, position: 1),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createModule(42, title: 'Valid', position: 0),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('moduleDetail fetches and parses module detail', () async {
+      when(
+        () => dio.get(
+          '/management/versions/42/modules/70/',
+          queryParameters: any(named: 'queryParameters'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(
+            path: '/management/versions/42/modules/70/',
+          ),
+          statusCode: 200,
+          data: managedModuleDetailJson(id: 70, trainingVersionId: 42),
+        ),
+      );
+
+      final module = await repository.moduleDetail(42, 70);
+      expect(module.id, 70);
+      expect(module.trainingVersionId, 42);
+    });
+
+    test('updateModule patches payload and parses updated module', () async {
+      when(
+        () => dio.patch(
+          '/management/versions/42/modules/70/',
+          data: {'title': 'Updated Title', 'position': 3},
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(
+            path: '/management/versions/42/modules/70/',
+          ),
+          statusCode: 200,
+          data: managedModuleDetailJson(
+            id: 70,
+            trainingVersionId: 42,
+            title: 'Updated Title',
+            position: 3,
+          ),
+        ),
+      );
+
+      final updated = await repository.updateModule(
+        42,
+        70,
+        title: 'Updated Title',
+        position: 3,
+      );
+
+      expect(updated.id, 70);
+      expect(updated.title, 'Updated Title');
+      expect(updated.position, 3);
+    });
+
+    test('updateModule throws ArgumentError when no fields provided', () {
+      expect(
+        () => repository.updateModule(42, 70),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('createTextLesson posts payload and parses lesson detail', () async {
+      when(
+        () => dio.post(
+          '/management/versions/42/modules/70/text-lessons/',
+          data: {
+            'title': 'Before work',
+            'body': 'Check equipment.',
+            'position': 1,
+            'is_required': true,
+            'content_type': 'TEXT',
+          },
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(
+            path: '/management/versions/42/modules/70/text-lessons/',
+          ),
+          statusCode: 201,
+          data: managedTextLessonDetailJson(
+            id: 90,
+            moduleId: 70,
+            trainingVersionId: 42,
+            title: 'Before work',
+            body: 'Check equipment.',
+            position: 1,
+            isRequired: true,
+          ),
+        ),
+      );
+
+      final lesson = await repository.createTextLesson(
+        42,
+        70,
+        title: 'Before work',
+        body: 'Check equipment.',
+        position: 1,
+        isRequired: true,
+      );
+
+      expect(lesson.id, 90);
+      expect(lesson.moduleId, 70);
+      expect(lesson.title, 'Before work');
+      expect(lesson.body, 'Check equipment.');
+      expect(lesson.contentType, 'TEXT');
+      expect(lesson.position, 1);
+      expect(lesson.isRequired, isTrue);
+    });
+
+    test('createTextLesson validates inputs before network call', () {
+      expect(
+        () => repository.createTextLesson(
+          0,
+          70,
+          title: 'T',
+          body: 'B',
+          position: 1,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createTextLesson(
+          42,
+          0,
+          title: 'T',
+          body: 'B',
+          position: 1,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createTextLesson(
+          42,
+          70,
+          title: '',
+          body: 'B',
+          position: 1,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createTextLesson(
+          42,
+          70,
+          title: 'T',
+          body: '',
+          position: 1,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createTextLesson(
+          42,
+          70,
+          title: 'T',
+          body: 'B',
+          position: 0,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('textLessonDetail fetches and parses text lesson detail', () async {
+      when(
+        () => dio.get(
+          '/management/versions/42/modules/70/text-lessons/90/',
+          queryParameters: any(named: 'queryParameters'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(
+            path: '/management/versions/42/modules/70/text-lessons/90/',
+          ),
+          statusCode: 200,
+          data: managedTextLessonDetailJson(
+            id: 90,
+            moduleId: 70,
+            trainingVersionId: 42,
+          ),
+        ),
+      );
+
+      final lesson = await repository.textLessonDetail(42, 70, 90);
+      expect(lesson.id, 90);
+      expect(lesson.moduleId, 70);
+      expect(lesson.contentType, 'TEXT');
+    });
+
+    test(
+      'updateTextLesson patches payload and parses updated lesson',
+      () async {
+        when(
+          () => dio.patch(
+            '/management/versions/42/modules/70/text-lessons/90/',
+            data: {'body': 'Updated instructions.', 'is_required': false},
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(
+              path: '/management/versions/42/modules/70/text-lessons/90/',
+            ),
+            statusCode: 200,
+            data: managedTextLessonDetailJson(
+              id: 90,
+              moduleId: 70,
+              trainingVersionId: 42,
+              body: 'Updated instructions.',
+              isRequired: false,
+            ),
+          ),
+        );
+
+        final updated = await repository.updateTextLesson(
+          42,
+          70,
+          90,
+          body: 'Updated instructions.',
+          isRequired: false,
+        );
+
+        expect(updated.id, 90);
+        expect(updated.body, 'Updated instructions.');
+        expect(updated.isRequired, isFalse);
+      },
+    );
+
+    test('updateTextLesson throws ArgumentError when no fields provided', () {
+      expect(
+        () => repository.updateTextLesson(42, 70, 90),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
   });
 }
