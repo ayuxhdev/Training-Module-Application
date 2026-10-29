@@ -86,7 +86,12 @@ def _text_lesson_form(instance, values):
     data = {field: getattr(instance, field) for field in LessonForm.Meta.fields}
     data.update(values)
     data["content_type"] = Lesson.ContentType.TEXT
-    return LessonForm(data=data, instance=instance)
+    form = LessonForm(data=data, instance=instance)
+    if instance.pk and "body" not in values:
+        # PATCH omission preserves the fresh locked value, including formatting.
+        # Explicit body submissions retain the website's normal validation.
+        form.fields["body"].strip = False
+    return form
 
 
 @transaction.atomic

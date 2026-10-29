@@ -395,3 +395,164 @@ IDs and authoritative positions, invalidate affected curriculum summaries after
 success, render field/non-field errors, and handle 401/403/404/409 without blindly
 retrying mutations. Full text edit loading uses its separate view permission;
 version-view permission continues to authorize summaries only.
+
+## Batch 6 Stage 7: draft VIDEO lesson authoring
+
+These routes start with `/api/v1/management/` and preserve all earlier catalog,
+version, module, TEXT, assignment-picker and learner-playback contracts.
+
+| Relative route | Method | Effective permission | Success |
+| --- | --- | --- | --- |
+| `versions/{version_id}/modules/{module_id}/video-lessons/` | POST | `training.add_lesson` | 201 |
+| `versions/{version_id}/modules/{module_id}/video-lessons/{lesson_id}/` | GET | `training.view_lesson` | 200 |
+| `versions/{version_id}/modules/{module_id}/video-lessons/{lesson_id}/` | PATCH | `training.change_lesson` | 200 |
+
+JWT and existing mobile eligibility are required. Add/view/change permissions
+are independent; no extra course, version or module grant is inferred or required.
+Manager membership alone grants nothing. As with website content management,
+explicit lesson permissions are company-wide. Parent IDs must match the complete
+version/module/lesson chain, and the version must be DRAFT on every operation.
+Published/retired versions and TEXT lessons return 404 through these routes.
+Detail HEAD uses view permission. OPTIONS uses add permission on create and view
+permission on detail. No delete, content-type conversion, preview/download or
+publication operation is introduced.
+
+### Requests
+
+POST uses `multipart/form-data` with one `video_file`. PATCH accepts multipart
+for attachment replacement, or JSON for metadata-only edits. File-name/path
+strings are not accepted as attachment references. Query-string fields do not
+select parents or override the submitted fields.
+
+| Field | POST | PATCH |
+| --- | --- | --- |
+| `title` | Required, nonblank, maximum 200 characters | Optional |
+| `position` | Required integer, 1 to 2147483647 | Optional |
+| `video_file` | Required nonempty file | Optional replacement file |
+| `content_type` | Optional, only `VIDEO`; defaults to `VIDEO` | Optional, only `VIDEO` |
+| `is_required` | Optional boolean, default `true` | Optional; omission preserves the stored flag |
+| `minimum_watch_percent` | Optional decimal, 0 to 100, up to 2 decimal places; default `90.00` | Optional |
+
+Existing website minimum-watch rules remain authoritative. Multipart omissions
+use the same defaults as JSON, rather than HTML checkbox behavior. Metadata PATCH
+preserves the existing attachment, checksum and duration. An unchanged PATCH
+returns the current data without an update timestamp or success audit event.
+
+Unknown/protected fields are rejected, including `body`, parent IDs, actors,
+timestamps, lifecycle state, `video_url`, `video_checksum` and
+`video_duration_seconds`. The server derives the checksum and duration from the
+actual uploaded bytes; ordinary administrators never supply them.
+
+Example multipart POST fields (the file part contains actual binary bytes):
+
+```text
+title: Equipment inspection
+position: 2
+is_required: true
+minimum_watch_percent: 80.00
+video_file: <selected MP4 file bytes>
+```
+
+Example metadata PATCH:
+
+```json
+{"title":"Equipment inspection overview","position":4,"is_required":false}
+```
+
+Example POST/GET/PATCH response:
+
+```json
+{
+  "id": 94,
+  "module_id": 70,
+  "training_version_id": 42,
+  "title": "Equipment inspection",
+  "content_type": "VIDEO",
+  "position": 2,
+  "is_required": true,
+  "minimum_watch_percent": "80.00",
+  "video_duration_seconds": 69,
+  "has_video": true
+}
+```
+
+Percentages serialize as decimal strings; IDs, positions and whole-second duration
+are integers. `has_video` reports an attachment reference, not a fresh storage
+health check. Responses expose no storage key, filesystem path, original filename,
+public media URL, checksum, lesson body or assessment answers.
+
+### Validation and private storage
+
+The existing LessonForm/video-upload pipeline performs extension, size, signature,
+actual byte-count and SHA-256 checks, then bounded ffprobe inspection of the
+selected video stream and duration. Supported containers remain MP4, WebM and MOV,
+with the existing 2 GB limit. Missing/empty, unreadable, incomplete, oversized or
+unsupported files fail closed. A matching suffix/header alone is insufficient.
+The existing ffprobe command restricts protocols/formats, disables external MOV
+references and has a 15-second subprocess timeout. Missing processing capability,
+invalid metadata, no video stream or inspection failure rejects the upload.
+This is bounded structural/metadata inspection, not antivirus scanning or a full
+frame-by-frame decode, transcoding or a guarantee of native decoder compatibility.
+
+No media processor is installed or storage backend changed by these endpoints.
+They reuse the currently configured private FileSystemStorage and generated
+`training/videos/...` namespace. Each new attachment gets an exclusively reserved
+private operation directory and server-chosen basename. Client filenames never
+choose the stored path. A namespace referenced by an older row is not reused,
+even if its directory is missing. New uploads to other storage backends fail closed with 503
+until their ownership/rollback semantics receive a separate review.
+
+Replacement never deletes the old file. On a rejected or rolled-back write,
+cleanup removes only the new operation's exclusively owned, unreferenced directory,
+including partial storage writes. Paths are resolved and bounded to the storage
+root before removal. If a commit outcome cannot be determined, or cleanup fails,
+the new directory is retained and an operation identifier is logged for controlled
+operational investigation. A directory referenced by a committed row is never
+removed as failure cleanup. Such exceptional artifacts remain private; they do
+not gain a media-serving route. No background garbage collector is introduced.
+
+Media remains accessible only through existing authorized playback/replay routes.
+This management endpoint provides metadata, not video bytes. Published files,
+learner watch sessions, heartbeat/anti-skip rules, progress, assignments,
+assessment results and certificates are unchanged.
+
+### Transactions, ordering and audit
+
+Mutations lock the DRAFT version, then the matching module/VIDEO lesson, and merge
+PATCH fields into fresh state. Validation and storage completion occur while the
+version lock is held. The database transaction commits before upload success is
+returned. This service uses a durable outer transaction and must not be called
+inside another application `atomic()` block; nesting is rejected before writing
+files. The current database configuration does not enable `ATOMIC_REQUESTS`.
+Enabling request-wide transactions later requires an explicitly non-atomic view
+boundary for these upload routes; do not silently wrap this service.
+
+Position semantics match Stage 5: explicit positive values, gaps permitted,
+occupied positions rejected, no sibling shifts or automatic renumbering. Later
+authorized draft edits to the same field can replace earlier edits; there is no
+optimistic revision-token contract.
+
+Committed meaningful changes use existing `training.lesson.created` or
+`training.lesson.updated` events, with server actor and approved metadata only.
+No success event is recorded for rejected, unchanged or rolled-back writes.
+Private file contents, storage keys and JWTs are not included in the events.
+
+### Errors and Flutter integration
+
+- 400: required/invalid fields, occupied positions, missing/rejected video,
+  inspection failure or client-supplied protected metadata. Errors use the
+  standard envelope and `error.fields`, commonly under `video_file`.
+- 401: missing/invalid/expired JWT or inactive User.
+- 403: missing effective permission or ineligible mobile identity.
+- 404: missing/mismatched parent IDs, non-DRAFT version, or a TEXT record.
+- 409: the exact lesson-position uniqueness race, MySQL lock-wait timeout or
+  deadlock. Refresh authoritative state before retrying; unrelated database
+  errors are not mislabeled as position conflicts.
+- 503 `upload_unavailable`: private storage is unavailable or the configured
+  backend has no supported ownership/cleanup contract. Internal paths are omitted.
+
+Flutter VIDEO authoring is a later stage. It must upload bytes as multipart,
+omit server-derived checksum/duration, prepopulate through authorized GET, preserve
+independent capabilities, display field errors, invalidate curriculum caches after
+success, and handle uncertain/cancelled uploads without blindly repeating writes.
+Retries after a lost response must first inspect authoritative lesson state.

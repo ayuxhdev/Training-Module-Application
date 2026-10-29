@@ -25,8 +25,11 @@ class CurriculumPositionConflict(APIException):
 
 
 class CurriculumWriteMixin(TrainingManagementMixin):
+    def input_data(self, request):
+        return request.data
+
     def save_response(self, request, service, *parent_ids, creating=False):
-        serializer = self.input_serializer_class(data=request.data, partial=not creating)
+        serializer = self.input_serializer_class(data=self.input_data(request), partial=not creating)
         serializer.is_valid(raise_exception=True)
         try:
             instance = service(request.user, *parent_ids, serializer.validated_data)

@@ -132,3 +132,36 @@ class TextLessonAuthoringSerializer(serializers.Serializer):
     body = serializers.CharField()
     position = serializers.IntegerField()
     is_required = serializers.BooleanField()
+
+
+class VideoLessonInputSerializer(ExplicitInputSerializer):
+    title = serializers.CharField(max_length=200)
+    position = serializers.IntegerField(min_value=1, max_value=2147483647)
+    content_type = serializers.ChoiceField(choices=["VIDEO"], required=False, default="VIDEO")
+    video_file = serializers.FileField(required=False, allow_empty_file=False, max_length=255)
+    is_required = serializers.BooleanField(required=False, default=True)
+    minimum_watch_percent = serializers.DecimalField(
+        max_digits=5, decimal_places=2, min_value=0, max_value=100,
+        required=False, default="90.00",
+    )
+
+    def validate(self, attrs):
+        if not self.partial and "video_file" not in attrs:
+            raise serializers.ValidationError({"video_file": ["Choose a video file for this lesson."]})
+        return attrs
+
+
+class VideoLessonAuthoringSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    module_id = serializers.IntegerField()
+    training_version_id = serializers.IntegerField(source="module.training_version_id")
+    title = serializers.CharField()
+    content_type = serializers.CharField()
+    position = serializers.IntegerField()
+    is_required = serializers.BooleanField()
+    minimum_watch_percent = serializers.DecimalField(max_digits=5, decimal_places=2)
+    video_duration_seconds = serializers.IntegerField()
+    has_video = serializers.SerializerMethodField()
+
+    def get_has_video(self, instance):
+        return bool(instance.video_file)

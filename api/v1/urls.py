@@ -8,6 +8,7 @@ from .assignment_monitoring_views import EmployeeAssignmentListView
 from .curriculum_management_views import (
     ModuleCreateView, ModuleDetailView, TextLessonCreateView, TextLessonDetailView,
 )
+from .video_management_views import VideoLessonCreateView, VideoLessonDetailView
 from .training_management_views import (
     TrainingCatalogDetailView, TrainingCatalogView,
     TrainingVersionDetailView, TrainingVersionHistoryView, TrainingVersionDiscoveryView,
@@ -61,6 +62,8 @@ urlpatterns = [
     path("management/versions/<int:version_pk>/modules/<int:pk>/", ModuleDetailView.as_view(), name="management-module-detail"),
     path("management/versions/<int:version_pk>/modules/<int:module_pk>/text-lessons/", TextLessonCreateView.as_view(), name="management-text-lesson-create"),
     path("management/versions/<int:version_pk>/modules/<int:module_pk>/text-lessons/<int:pk>/", TextLessonDetailView.as_view(), name="management-text-lesson-detail"),
+    path("management/versions/<int:version_pk>/modules/<int:module_pk>/video-lessons/", VideoLessonCreateView.as_view(), name="management-video-lesson-create"),
+    path("management/versions/<int:version_pk>/modules/<int:module_pk>/video-lessons/<int:pk>/", VideoLessonDetailView.as_view(), name="management-video-lesson-detail"),
     path("management/training-versions/", AssignableTrainingVersionListView.as_view(), name="management-training-versions"),
     path("management/assignments/", ManualAssignmentCreateView.as_view(), name="management-assignment-create"),
     path("management/employees/", EmployeeDirectoryView.as_view(), name="management-employees"),

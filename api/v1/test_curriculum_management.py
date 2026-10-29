@@ -164,6 +164,86 @@ class CurriculumManagementAPITests(CurriculumTestCase):
         self.assertEqual(callbacks, [])
         self.assertEqual(self.snapshot(), before)
 
+    def test_text_title_only_patch_preserves_formatted_body_and_audit(self):
+        body = "   Preserve this indentation\n\nSecond paragraph\n\n"
+        self.draft_lesson.body = body
+        self.draft_lesson.save()
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.patch(self.lesson_url(), {"title": "After"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["body"], body)
+        self.draft_lesson.refresh_from_db()
+        self.assertEqual((self.draft_lesson.title, self.draft_lesson.body), ("After", body))
+        event = AuditLog.objects.get(action="training.lesson.updated")
+        self.assertEqual(event.actor_id, self.user.pk)
+        self.assertEqual(event.after_data["changed_fields"], ["title"])
+        self.assertNotIn(body, json.dumps(event.after_data))
+
+    def test_text_position_only_patch_preserves_formatted_body(self):
+        body = "   Preserve this indentation\n\nSecond paragraph\n\n"
+        self.draft_lesson.body = body
+        self.draft_lesson.save()
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.patch(self.lesson_url(), {"position": 5}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["body"], body)
+        self.draft_lesson.refresh_from_db()
+        self.assertEqual((self.draft_lesson.position, self.draft_lesson.body), (5, body))
+        event = AuditLog.objects.get(action="training.lesson.updated")
+        self.assertEqual(event.after_data["changed_fields"], ["position"])
+
+    def test_text_required_only_patch_preserves_formatted_body(self):
+        body = "   Preserve this indentation\n\nSecond paragraph\n\n"
+        self.draft_lesson.body = body
+        self.draft_lesson.save()
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.patch(self.lesson_url(), {"is_required": False}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["body"], body)
+        self.draft_lesson.refresh_from_db()
+        self.assertFalse(self.draft_lesson.is_required)
+        self.assertEqual(self.draft_lesson.body, body)
+        event = AuditLog.objects.get(action="training.lesson.updated")
+        self.assertEqual(event.after_data["changed_fields"], ["is_required"])
+
+    def test_text_explicit_body_keeps_existing_normalization(self):
+        body = "   Submitted indentation\n\nSecond paragraph\n\n"
+        response = self.post_lesson(body=body)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["body"], body.strip())
+        self.assertEqual(Lesson.objects.get(pk=response.data["id"]).body, body.strip())
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.patch(self.lesson_url(), {"body": body}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["body"], body.strip())
+        self.draft_lesson.refresh_from_db()
+        self.assertEqual(self.draft_lesson.body, body.strip())
+        event = AuditLog.objects.get(action="training.lesson.updated")
+        self.assertEqual(event.after_data["changed_fields"], ["body"])
+
+    def test_text_explicit_empty_body_is_not_treated_as_omitted(self):
+        self.draft_lesson.body = "   Existing indentation\n\n"
+        self.draft_lesson.save()
+        before = self.snapshot()
+        for body in ("", "   ", "\n\t\n", None):
+            with self.subTest(body=body), self.captureOnCommitCallbacks(execute=True) as callbacks:
+                response = self.client.patch(self.lesson_url(), {"body": body}, format="json")
+            self.assert_field_error(response, "body")
+            self.assertEqual(callbacks, [])
+            self.assertEqual(self.snapshot(), before)
+
+    def test_text_unchanged_patch_preserves_formatted_body_without_audit(self):
+        self.draft_lesson.body = "   Existing indentation\n\nSecond paragraph\n\n"
+        self.draft_lesson.save()
+        before = self.snapshot()
+        for payload in ({}, {"title": self.draft_lesson.title}, {"position": 1}, {"is_required": True}):
+            with self.subTest(payload=payload), self.captureOnCommitCallbacks(execute=True) as callbacks:
+                response = self.client.patch(self.lesson_url(), payload, format="json")
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(response.data["body"], self.draft_lesson.body)
+            self.assertEqual(callbacks, [])
+            self.assertEqual(self.snapshot(), before)
+
     def test_text_positions_body_type_and_title_validation(self):
         self.assert_field_error(self.post_lesson(position=1), "position")
         for field, value in (("position", 0), ("position", 1.5), ("position", True),
