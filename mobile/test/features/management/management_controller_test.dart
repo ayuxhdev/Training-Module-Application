@@ -1557,4 +1557,192 @@ void main() {
       expect(tokens.first.isCancelled, isTrue);
     });
   });
+
+  group('Training course and draft version authoring mutations', () {
+    test(
+      'trainingCourseMutationProvider.create requires add_training capability',
+      () async {
+        final unauthorizedIdentity = managementIdentity(
+          capabilities: {'training.view_training'},
+        );
+        final mutations = TrainingCourseMutationController(
+          repository: repository,
+          readAuth: () => AuthAuthenticated.identity(unauthorizedIdentity),
+        );
+
+        await expectLater(
+          mutations.create(code: 'TR-1', catalogTitle: 'Course 1'),
+          throwsA(
+            isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403),
+          ),
+        );
+        verifyZeroInteractions(repository);
+      },
+    );
+
+    test('trainingCourseMutationProvider.create returns response only to initiating account', () async {
+      final response = Completer<ManagedTraining>();
+      var currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'user_a',
+          capabilities: {'training.add_training'},
+        ),
+      );
+      when(
+        () => repository.createTraining(
+          code: 'TR-1',
+          catalogTitle: 'Course 1',
+          description: '',
+          isActive: true,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => response.future);
+
+      final mutations = TrainingCourseMutationController(
+        repository: repository,
+        readAuth: () => currentAuth,
+      );
+
+      final pending = mutations.create(code: 'TR-1', catalogTitle: 'Course 1');
+      currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'user_b',
+          capabilities: {'training.add_training'},
+        ),
+      );
+      response.complete(
+        ManagedTraining.fromJson(
+          managedTrainingJson(id: 1, code: 'TR-1', title: 'Course 1'),
+        ),
+      );
+
+      await expectLater(
+        pending,
+        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403)),
+      );
+    });
+
+    test('trainingCourseMutationProvider.update requires change_training capability', () async {
+      final unauthorizedIdentity = managementIdentity(
+        capabilities: {'training.view_training', 'training.add_training'},
+      );
+      final mutations = TrainingCourseMutationController(
+        repository: repository,
+        readAuth: () => AuthAuthenticated.identity(unauthorizedIdentity),
+      );
+
+      await expectLater(
+        mutations.update(1, catalogTitle: 'Updated Course'),
+        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403)),
+      );
+      verifyZeroInteractions(repository);
+    });
+
+    test('trainingCourseMutationProvider.update returns response only to initiating account', () async {
+      final response = Completer<ManagedTraining>();
+      var currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'user_a',
+          capabilities: {'training.change_training'},
+        ),
+      );
+      when(
+        () => repository.updateTraining(
+          1,
+          code: null,
+          catalogTitle: 'Updated Course',
+          description: null,
+          isActive: null,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => response.future);
+
+      final mutations = TrainingCourseMutationController(
+        repository: repository,
+        readAuth: () => currentAuth,
+      );
+
+      final pending = mutations.update(1, catalogTitle: 'Updated Course');
+      currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'user_b',
+          capabilities: {'training.change_training'},
+        ),
+      );
+      response.complete(
+        ManagedTraining.fromJson(
+          managedTrainingJson(id: 1, title: 'Updated Course'),
+        ),
+      );
+
+      await expectLater(
+        pending,
+        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403)),
+      );
+    });
+
+    test('draftVersionMutationProvider.create requires add_trainingversion capability', () async {
+      final unauthorizedIdentity = managementIdentity(
+        capabilities: {'training.view_trainingversion'},
+      );
+      final mutations = DraftVersionMutationController(
+        repository: repository,
+        readAuth: () => AuthAuthenticated.identity(unauthorizedIdentity),
+      );
+
+      await expectLater(
+        mutations.create(trainingId: 1, title: 'Version 2'),
+        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403)),
+      );
+      verifyZeroInteractions(repository);
+    });
+
+    test('draftVersionMutationProvider.create returns response only to initiating account', () async {
+      final response = Completer<ManagedVersionDetail>();
+      var currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'user_a',
+          capabilities: {'training.add_trainingversion'},
+        ),
+      );
+      when(
+        () => repository.createDraftVersion(
+          1,
+          title: 'Version 2',
+          description: '',
+          learningObjectives: '',
+          changeSummary: '',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => response.future);
+
+      final mutations = DraftVersionMutationController(
+        repository: repository,
+        readAuth: () => currentAuth,
+      );
+
+      final pending = mutations.create(trainingId: 1, title: 'Version 2');
+      currentAuth = AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'user_b',
+          capabilities: {'training.add_trainingversion'},
+        ),
+      );
+      response.complete(
+        ManagedVersionDetail.fromJson(
+          managedVersionDetailJson(
+            id: 2,
+            trainingId: 1,
+            versionNumber: 2,
+            title: 'Version 2',
+          ),
+        ),
+      );
+
+      await expectLater(
+        pending,
+        throwsA(isA<ApiError>().having((e) => e.statusCode, 'statusCode', 403)),
+      );
+    });
+  });
 }

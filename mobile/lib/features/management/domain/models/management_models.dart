@@ -528,6 +528,8 @@ class ManagedVersionDetail {
   final String title;
   final String status;
   final String description;
+  final String learningObjectives;
+  final String changeSummary;
   final List<ManagedModule> modules;
 
   const ManagedVersionDetail({
@@ -539,6 +541,8 @@ class ManagedVersionDetail {
     required this.title,
     required this.status,
     this.description = '',
+    this.learningObjectives = '',
+    this.changeSummary = '',
     this.modules = const [],
   });
 
@@ -560,6 +564,8 @@ class ManagedVersionDetail {
       title: (json['title'] ?? '') as String,
       status: (json['status'] ?? 'DRAFT') as String,
       description: (json['description'] ?? '') as String,
+      learningObjectives: (json['learning_objectives'] ?? '') as String,
+      changeSummary: (json['change_summary'] ?? '') as String,
       modules: List.unmodifiable(modules),
     );
   }

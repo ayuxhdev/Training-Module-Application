@@ -32,11 +32,21 @@ class ManagedTrainingDetailScreen extends ConsumerWidget {
     final asyncCourse = ref.watch(managedTrainingDetailProvider(trainingId));
     final identity = auth.identity;
     final canVersions = canViewVersions(identity);
+    final canCreateVersion = canCreateVersions(identity);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Course details'),
         actions: [
+          if (canEditTraining(identity))
+            IconButton(
+              tooltip: 'Edit course',
+              onPressed: () => context.push(
+                '/workspace/training/catalog/$trainingId/edit',
+                extra: asyncCourse.asData?.value,
+              ),
+              icon: const Icon(Icons.edit_outlined),
+            ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: () =>
@@ -211,6 +221,57 @@ class ManagedTrainingDetailScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
+              if (canCreateVersion) ...[
+                const SizedBox(height: AppSpacing.sm),
+                CustomCard(
+                  onTap: () => context.push(
+                    '/workspace/training/catalog/$trainingId/versions/new',
+                    extra: course,
+                  ),
+                  semanticLabel: 'Create draft version for ${course.title}',
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          Icons.post_add_outlined,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onPrimaryContainer,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Create draft version',
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Author a new draft curriculum revision for this course.',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),

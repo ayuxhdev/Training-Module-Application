@@ -708,10 +708,16 @@ void main() {
         expect(find.text('Edit lesson'), findsOneWidget);
         expect(find.text('Upload video'), findsOneWidget);
 
-        // Every chip must be disabled
+        // Create course chip is enabled in Stage 4; other chips remain disabled
+        final createCourseChip = tester.widget<ActionChip>(
+          find.widgetWithText(ActionChip, 'Create course'),
+        );
+        expect(createCourseChip.onPressed, isNotNull);
+
         for (final widget in tester.widgetList<ActionChip>(
           find.byType(ActionChip),
         )) {
+          if (widget == createCourseChip) continue;
           expect(widget.onPressed, isNull);
         }
 
@@ -723,6 +729,38 @@ void main() {
             cancelToken: any(named: 'cancelToken'),
           ),
         ).called(1);
+      },
+    );
+
+    testWidgets(
+      'tapping Create course action chip navigates to /workspace/training/catalog/new',
+      (tester) async {
+        final fullAuthor = managementIdentity(
+          capabilities: {
+            'management_workspace',
+            'training.view_training',
+            'training.add_training',
+            'training.view_trainingversion',
+            'training.add_trainingversion',
+            'training.change_trainingversion',
+            'training.view_module',
+            'training.add_module',
+            'training.change_module',
+            'training.view_lesson',
+            'training.add_lesson',
+            'training.change_lesson',
+            'training.add_trainingassignment',
+          },
+        );
+
+        await launch(tester, identity: fullAuthor, path: '/workspace/training');
+
+        final chipFinder = find.widgetWithText(ActionChip, 'Create course');
+        expect(chipFinder, findsOneWidget);
+        await tester.tap(chipFinder);
+        await tester.pumpAndSettle();
+
+        expect(find.text('New training course'), findsOneWidget);
       },
     );
   });

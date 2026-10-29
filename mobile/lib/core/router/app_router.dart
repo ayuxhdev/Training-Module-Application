@@ -19,6 +19,8 @@ import 'package:training_app/features/management/presentation/screens/managed_tr
 import 'package:training_app/features/management/presentation/screens/managed_training_versions_screen.dart';
 import 'package:training_app/features/management/presentation/screens/training_version_directory_screen.dart';
 import 'package:training_app/features/management/presentation/screens/managed_version_detail_screen.dart';
+import 'package:training_app/features/management/presentation/screens/training_course_form_screen.dart';
+import 'package:training_app/features/management/presentation/screens/draft_version_form_screen.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -45,6 +47,17 @@ bool _canAccessWorkspacePath(String path, AuthenticatedIdentity identity) {
   }
   if (path == '/workspace/training/catalog') {
     return canViewTraining(identity);
+  }
+  if (path == '/workspace/training/catalog/new') {
+    return canCreateTraining(identity);
+  }
+  if (RegExp(r'^/workspace/training/catalog/[1-9][0-9]*/edit$')
+      .hasMatch(path)) {
+    return canEditTraining(identity);
+  }
+  if (RegExp(r'^/workspace/training/catalog/[1-9][0-9]*/versions/new$')
+      .hasMatch(path)) {
+    return canCreateVersions(identity);
   }
   if (RegExp(r'^/workspace/training/catalog/[1-9][0-9]*/versions$')
       .hasMatch(path)) {
@@ -195,6 +208,45 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/workspace/training/catalog',
             builder: (_, _) => const TrainingCatalogScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/training/catalog/new',
+            builder: (_, _) => const TrainingCourseFormScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/training/catalog/:id/edit',
+            builder: (_, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null || id <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid course ID'),
+                );
+              }
+              return TrainingCourseFormScreen(
+                trainingId: id,
+                initialTraining: state.extra is ManagedTraining
+                    ? state.extra as ManagedTraining
+                    : null,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/catalog/:id/versions/new',
+            builder: (_, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null || id <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid course ID'),
+                );
+              }
+              final course = state.extra is ManagedTraining
+                  ? state.extra as ManagedTraining
+                  : null;
+              return DraftVersionFormScreen(
+                trainingId: id,
+                courseTitle: course?.title,
+              );
+            },
           ),
           GoRoute(
             path: '/workspace/training/catalog/:id',

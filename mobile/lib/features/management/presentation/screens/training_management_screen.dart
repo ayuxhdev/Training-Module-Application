@@ -416,8 +416,9 @@ class TrainingManagementScreen extends ConsumerWidget {
                           ActionChip(
                             avatar: const Icon(Icons.add, size: 16),
                             label: const Text('Create course'),
-                            onPressed: null,
-                            tooltip: 'Course creation REST API pending Stage 2',
+                            onPressed: () =>
+                                context.push('/workspace/training/catalog/new'),
+                            tooltip: 'Create a new training course',
                           ),
                         if (canEditCourses)
                           ActionChip(

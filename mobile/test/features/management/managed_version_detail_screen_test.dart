@@ -250,6 +250,205 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'shows Edit course action when identity has training.change_training and navigates',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/catalog/1',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_training',
+              'training.change_training',
+            },
+          ),
+        );
+
+        final editBtn = find.byTooltip('Edit course');
+        expect(editBtn, findsOneWidget);
+
+        await tester.tap(editBtn);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Edit course'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'hides Edit course action when identity lacks training.change_training',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/catalog/1',
+          identity: managementIdentity(
+            capabilities: {'management_workspace', 'training.view_training'},
+          ),
+        );
+
+        expect(find.byTooltip('Edit course'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'shows Create draft version card when identity has training.add_trainingversion and navigates',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/catalog/1',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_training',
+              'training.view_trainingversion',
+              'training.add_trainingversion',
+            },
+          ),
+        );
+
+        final card = find.text('Create draft version');
+        expect(card, findsOneWidget);
+
+        await tester.tap(card);
+        await tester.pumpAndSettle();
+
+        expect(find.text('New draft version'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'hides Create draft version card when identity lacks training.add_trainingversion',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/catalog/1',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_training',
+              'training.view_trainingversion',
+            },
+          ),
+        );
+
+        expect(find.text('Create draft version'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'permission matrix A: course-view and version-add without version-view shows Create draft version while version history remains restricted',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/catalog/1',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_training',
+              'training.add_trainingversion',
+            },
+          ),
+        );
+
+        // Course details accessible
+        expect(find.text('Course details'), findsWidgets);
+        expect(find.text('Workplace Safety Fundamentals'), findsOneWidget);
+
+        // Create draft version visible and navigable
+        final createCard = find.text('Create draft version');
+        expect(createCard, findsOneWidget);
+
+        // Version history remains restricted
+        expect(find.text('View version history'), findsNothing);
+        expect(
+          find.text('Version history requires version view permissions.'),
+          findsOneWidget,
+        );
+
+        // Tapping Create draft version opens authorized creation form
+        await tester.tap(createCard);
+        await tester.pumpAndSettle();
+
+        expect(find.text('New draft version'), findsWidgets);
+        expect(
+          router.state.matchedLocation,
+          '/workspace/training/catalog/1/versions/new',
+        );
+      },
+    );
+
+    testWidgets(
+      'permission matrix B: course-view and version-view without version-add shows version history and hides draft creation',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/catalog/1',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_training',
+              'training.view_trainingversion',
+            },
+          ),
+        );
+
+        expect(find.text('Course details'), findsWidgets);
+        expect(find.text('View version history'), findsOneWidget);
+        expect(
+          find.text('Version history requires version view permissions.'),
+          findsNothing,
+        );
+        expect(find.text('Create draft version'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'permission matrix C: course-view, version-view, and version-add shows both actions without duplicates',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/catalog/1',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_training',
+              'training.view_trainingversion',
+              'training.add_trainingversion',
+            },
+          ),
+        );
+
+        expect(find.text('Course details'), findsWidgets);
+        expect(find.text('View version history'), findsOneWidget);
+        expect(find.text('Create draft version'), findsOneWidget);
+        expect(
+          find.text('Version history requires version view permissions.'),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'permission matrix D: course-view only does not infer version-history or draft-creation permissions',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/catalog/1',
+          identity: managementIdentity(
+            capabilities: {'management_workspace', 'training.view_training'},
+          ),
+        );
+
+        expect(find.text('Course details'), findsWidgets);
+        expect(find.text('View version history'), findsNothing);
+        expect(find.text('Create draft version'), findsNothing);
+        expect(
+          find.text('Version history requires version view permissions.'),
+          findsOneWidget,
+        );
+      },
+    );
   });
 
   group('ManagedTrainingVersionsScreen', () {
@@ -318,6 +517,49 @@ void main() {
       expect(find.byType(EmptyView), findsOneWidget);
       expect(find.text('No versions found for this course.'), findsOneWidget);
     });
+
+    testWidgets(
+      'shows New draft version action when identity has training.add_trainingversion and navigates',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/catalog/1/versions',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_trainingversion',
+              'training.add_trainingversion',
+            },
+          ),
+        );
+
+        final newVersionBtn = find.byTooltip('New draft version');
+        expect(newVersionBtn, findsOneWidget);
+
+        await tester.tap(newVersionBtn);
+        await tester.pumpAndSettle();
+
+        expect(find.text('New draft version'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'hides New draft version action when identity lacks training.add_trainingversion',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/catalog/1/versions',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_trainingversion',
+            },
+          ),
+        );
+
+        expect(find.byTooltip('New draft version'), findsNothing);
+      },
+    );
   });
 
   group('ManagedVersionDetailScreen curriculum and permission gating', () {

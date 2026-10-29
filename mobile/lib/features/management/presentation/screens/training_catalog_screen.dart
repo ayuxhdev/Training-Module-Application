@@ -94,6 +94,12 @@ class _TrainingCatalogScreenState extends ConsumerState<TrainingCatalogScreen> {
       appBar: AppBar(
         title: const Text('Training catalog'),
         actions: [
+          if (canCreateTraining(auth.identity))
+            IconButton(
+              tooltip: 'New course',
+              onPressed: () => context.push('/workspace/training/catalog/new'),
+              icon: const Icon(Icons.add),
+            ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: asyncData.isLoading ? null : () => _refresh(),

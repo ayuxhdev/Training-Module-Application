@@ -382,5 +382,43 @@ void main() {
       expect(find.text('Course details'), findsWidgets);
       expect(find.text('Version history'), findsOneWidget);
     });
+
+    testWidgets(
+      'shows New course action when identity has training.add_training',
+      (tester) async {
+        await launch(
+          tester,
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'training.view_training',
+              'training.add_training',
+            },
+          ),
+        );
+
+        final newCourseBtn = find.byTooltip('New course');
+        expect(newCourseBtn, findsOneWidget);
+
+        await tester.tap(newCourseBtn);
+        await tester.pumpAndSettle();
+
+        expect(find.text('New training course'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'hides New course action when identity lacks training.add_training',
+      (tester) async {
+        await launch(
+          tester,
+          identity: managementIdentity(
+            capabilities: {'management_workspace', 'training.view_training'},
+          ),
+        );
+
+        expect(find.byTooltip('New course'), findsNothing);
+      },
+    );
   });
 }

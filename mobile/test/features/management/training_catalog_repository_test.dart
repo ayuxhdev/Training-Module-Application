@@ -393,5 +393,177 @@ void main() {
 
       expect(() => repository.allTrainingVersions(), throwsA(isA<ApiError>()));
     });
+
+    test('createTraining posts payload and parses created course', () async {
+      when(
+        () => dio.post(
+          '/management/trainings/',
+          data: {
+            'code': 'TR-FIRE-001',
+            'catalog_title': 'Fire Safety',
+            'description': 'Emergency response',
+            'is_active': true,
+          },
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: '/management/trainings/'),
+          statusCode: 201,
+          data: managedTrainingJson(
+            id: 15,
+            code: 'TR-FIRE-001',
+            title: 'Fire Safety',
+            description: 'Emergency response',
+          ),
+        ),
+      );
+
+      final course = await repository.createTraining(
+        code: 'TR-FIRE-001',
+        catalogTitle: 'Fire Safety',
+        description: 'Emergency response',
+        isActive: true,
+      );
+
+      expect(course.id, 15);
+      expect(course.code, 'TR-FIRE-001');
+      expect(course.title, 'Fire Safety');
+      expect(course.description, 'Emergency response');
+      expect(course.isActive, isTrue);
+    });
+
+    test('createTraining rejects invalid input before network call', () {
+      expect(
+        () => repository.createTraining(code: '', catalogTitle: 'Valid title'),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createTraining(
+          code: 'A' * 41,
+          catalogTitle: 'Valid title',
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createTraining(code: 'VALID', catalogTitle: ''),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('updateTraining patches payload and parses updated course', () async {
+      when(
+        () => dio.patch(
+          '/management/trainings/15/',
+          data: {'catalog_title': 'Updated Fire Safety', 'is_active': false},
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: '/management/trainings/15/'),
+          statusCode: 200,
+          data: managedTrainingJson(
+            id: 15,
+            code: 'TR-FIRE-001',
+            title: 'Updated Fire Safety',
+            isActive: false,
+          ),
+        ),
+      );
+
+      final course = await repository.updateTraining(
+        15,
+        catalogTitle: 'Updated Fire Safety',
+        isActive: false,
+      );
+
+      expect(course.id, 15);
+      expect(course.title, 'Updated Fire Safety');
+      expect(course.isActive, isFalse);
+    });
+
+    test('updateTraining throws ArgumentError when no fields provided', () {
+      expect(
+        () => repository.updateTraining(15),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('createDraftVersion posts payload and parses draft detail', () async {
+      when(
+        () => dio.post(
+          '/management/trainings/15/versions/',
+          data: {
+            'title': 'Fire Safety 2026',
+            'description': 'Updated procedures',
+            'learning_objectives': 'Evacuate safely',
+            'change_summary': 'Added alarm drill',
+          },
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(
+            path: '/management/trainings/15/versions/',
+          ),
+          statusCode: 201,
+          data: managedVersionDetailJson(
+            id: 25,
+            trainingId: 15,
+            versionNumber: 2,
+            title: 'Fire Safety 2026',
+            status: 'DRAFT',
+            description: 'Updated procedures',
+            modules: [],
+          ),
+        ),
+      );
+
+      final version = await repository.createDraftVersion(
+        15,
+        title: 'Fire Safety 2026',
+        description: 'Updated procedures',
+        learningObjectives: 'Evacuate safely',
+        changeSummary: 'Added alarm drill',
+      );
+
+      expect(version.id, 25);
+      expect(version.trainingId, 15);
+      expect(version.versionNumber, 2);
+      expect(version.title, 'Fire Safety 2026');
+      expect(version.status, 'DRAFT');
+    });
+
+    test('createDraftVersion maps 409 conflict to ApiError', () async {
+      when(
+        () => dio.post(
+          '/management/trainings/15/versions/',
+          data: {
+            'title': 'Fire Safety 2026',
+            'description': '',
+            'learning_objectives': '',
+            'change_summary': '',
+          },
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(
+        DioException(
+          requestOptions: RequestOptions(
+            path: '/management/trainings/15/versions/',
+          ),
+          response: Response(
+            requestOptions: RequestOptions(
+              path: '/management/trainings/15/versions/',
+            ),
+            statusCode: 409,
+          ),
+        ),
+      );
+
+      expect(
+        () => repository.createDraftVersion(15, title: 'Fire Safety 2026'),
+        throwsA(isA<ApiError>()),
+      );
+    });
   });
 }

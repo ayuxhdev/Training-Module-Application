@@ -407,6 +407,8 @@ Map<String, dynamic> managedVersionDetailJson({
   String title = 'Workplace Safety v1',
   String status = 'PUBLISHED',
   String description = 'Initial published safety version.',
+  String? learningObjectives,
+  String? changeSummary,
   String? publishedAt = '2026-01-01T00:00:00Z',
   List<Map<String, dynamic>>? modules,
 }) => {
@@ -418,6 +420,8 @@ Map<String, dynamic> managedVersionDetailJson({
   'title': title,
   'status': status,
   'description': description,
+  'learning_objectives': learningObjectives,
+  'change_summary': changeSummary,
   'published_at': publishedAt,
   'modules': modules ?? [managedModuleJson()],
 };

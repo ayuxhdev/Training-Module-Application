@@ -425,6 +425,150 @@ final trainingAssignmentMutationProvider =
       ),
     );
 
+class TrainingCourseMutationController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  const TrainingCourseMutationController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<ManagedTraining> create({
+    required String code,
+    required String catalogTitle,
+    String description = '',
+    bool isActive = true,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canCreateTraining(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot create training courses.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final created = await repository.createTraining(
+      code: code,
+      catalogTitle: catalogTitle,
+      description: description,
+      isActive: isActive,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canCreateTraining(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before course creation completed. Reopen the form to continue.',
+        statusCode: 403,
+      );
+    }
+    return created;
+  }
+
+  Future<ManagedTraining> update(
+    int id, {
+    String? code,
+    String? catalogTitle,
+    String? description,
+    bool? isActive,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canEditTraining(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot edit training courses.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final updated = await repository.updateTraining(
+      id,
+      code: code,
+      catalogTitle: catalogTitle,
+      description: description,
+      isActive: isActive,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canEditTraining(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before course update completed. Reopen the form to continue.',
+        statusCode: 403,
+      );
+    }
+    return updated;
+  }
+}
+
+final trainingCourseMutationProvider =
+    Provider<TrainingCourseMutationController>(
+      (ref) => TrainingCourseMutationController(
+        repository: ref.watch(managementRepositoryProvider),
+        readAuth: () => ref.read(authControllerProvider),
+      ),
+    );
+
+class DraftVersionMutationController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  const DraftVersionMutationController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<ManagedVersionDetail> create({
+    required int trainingId,
+    required String title,
+    String description = '',
+    String learningObjectives = '',
+    String changeSummary = '',
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canCreateVersions(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot create draft training versions.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final created = await repository.createDraftVersion(
+      trainingId,
+      title: title,
+      description: description,
+      learningObjectives: learningObjectives,
+      changeSummary: changeSummary,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canCreateVersions(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before version creation completed. Reopen the form to continue.',
+        statusCode: 403,
+      );
+    }
+    return created;
+  }
+}
+
+final draftVersionMutationProvider = Provider<DraftVersionMutationController>(
+  (ref) => DraftVersionMutationController(
+    repository: ref.watch(managementRepositoryProvider),
+    readAuth: () => ref.read(authControllerProvider),
+  ),
+);
+
 CancelToken _request(Ref ref, bool Function(AuthenticatedIdentity) allowed) {
   final account = ref.watch(authControllerProvider.select(managementAccount));
   final auth = ref.read(authControllerProvider);

@@ -207,6 +207,127 @@ class ManagementRepository {
     );
   }
 
+  Future<ManagedTraining> createTraining({
+    required String code,
+    required String catalogTitle,
+    String description = '',
+    bool isActive = true,
+    CancelToken? cancelToken,
+  }) async {
+    final normalizedCode = code.trim();
+    if (normalizedCode.isEmpty || normalizedCode.length > 40) {
+      throw ArgumentError.value(code, 'code');
+    }
+    final normalizedTitle = catalogTitle.trim();
+    if (normalizedTitle.isEmpty || normalizedTitle.length > 200) {
+      throw ArgumentError.value(catalogTitle, 'catalogTitle');
+    }
+    final data = <String, Object?>{
+      'code': normalizedCode,
+      'catalog_title': normalizedTitle,
+      'description': description.trim(),
+      'is_active': isActive,
+    };
+    try {
+      final response = await apiClient.dio.post(
+        '/management/trainings/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 201) {
+        throw const FormatException(
+          'Course creation returned an unexpected status.',
+        );
+      }
+      return ManagedTraining.fromJson(response.data as Map<String, dynamic>);
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagedTraining> updateTraining(
+    int id, {
+    String? code,
+    String? catalogTitle,
+    String? description,
+    bool? isActive,
+    CancelToken? cancelToken,
+  }) async {
+    if (id <= 0) throw ArgumentError.value(id, 'id');
+    if (code != null && (code.trim().isEmpty || code.trim().length > 40)) {
+      throw ArgumentError.value(code, 'code');
+    }
+    if (catalogTitle != null &&
+        (catalogTitle.trim().isEmpty || catalogTitle.trim().length > 200)) {
+      throw ArgumentError.value(catalogTitle, 'catalogTitle');
+    }
+    final data = <String, Object?>{
+      if (code != null) 'code': code.trim(),
+      if (catalogTitle != null) 'catalog_title': catalogTitle.trim(),
+      if (description != null) 'description': description.trim(),
+      'is_active': ?isActive,
+    };
+    if (data.isEmpty) {
+      throw ArgumentError('No training fields changed.');
+    }
+    try {
+      final response = await apiClient.dio.patch(
+        '/management/trainings/$id/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 200) {
+        throw const FormatException(
+          'Course update returned an unexpected status.',
+        );
+      }
+      return ManagedTraining.fromJson(response.data as Map<String, dynamic>);
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagedVersionDetail> createDraftVersion(
+    int trainingId, {
+    required String title,
+    String description = '',
+    String learningObjectives = '',
+    String changeSummary = '',
+    CancelToken? cancelToken,
+  }) async {
+    if (trainingId <= 0) throw ArgumentError.value(trainingId, 'trainingId');
+    final normalizedTitle = title.trim();
+    if (normalizedTitle.isEmpty || normalizedTitle.length > 200) {
+      throw ArgumentError.value(title, 'title');
+    }
+    final data = <String, Object?>{
+      'title': normalizedTitle,
+      'description': description.trim(),
+      'learning_objectives': learningObjectives.trim(),
+      'change_summary': changeSummary.trim(),
+    };
+    try {
+      final response = await apiClient.dio.post(
+        '/management/trainings/$trainingId/versions/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 201) {
+        throw const FormatException(
+          'Draft version creation returned an unexpected status.',
+        );
+      }
+      return ManagedVersionDetail.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
   Future<CreatedAssignment> assignTraining({
     required int employeeId,
     required int trainingVersionId,

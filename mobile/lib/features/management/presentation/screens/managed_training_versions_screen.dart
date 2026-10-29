@@ -58,6 +58,14 @@ class _ManagedTrainingVersionsScreenState
       appBar: AppBar(
         title: const Text('Version history'),
         actions: [
+          if (canCreateVersions(auth.identity))
+            IconButton(
+              tooltip: 'New draft version',
+              onPressed: () => context.push(
+                '/workspace/training/catalog/${widget.trainingId}/versions/new',
+              ),
+              icon: const Icon(Icons.add),
+            ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: asyncData.isLoading ? null : () => _refresh(),
@@ -117,9 +125,18 @@ class _ManagedTrainingVersionsScreenState
               ),
               data: (page) {
                 if (page.items.isEmpty) {
-                  return const EmptyView(
+                  return EmptyView(
                     message: 'No versions found for this course.',
                     icon: Icons.history,
+                    action: canCreateVersions(auth.identity)
+                        ? FilledButton.icon(
+                            onPressed: () => context.push(
+                              '/workspace/training/catalog/${widget.trainingId}/versions/new',
+                            ),
+                            icon: const Icon(Icons.add),
+                            label: const Text('Create draft version'),
+                          )
+                        : null,
                   );
                 }
 
