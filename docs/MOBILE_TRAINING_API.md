@@ -210,3 +210,188 @@ fetching the course catalog or course detail. This endpoint exposes no course
 metadata beyond identification, curriculum content, media URLs or answers, and
 performs no business-state/audit mutations. Existing catalog, history, detail and
 published-only assignment-picker contracts are unchanged.
+
+## Batch 6 Stage 5: draft modules and TEXT lessons
+
+All routes below start with `/api/v1/management/`. They use the same JWT,
+mobile-eligibility and standard error-envelope rules as the catalog APIs.
+No Group name is used as authority. Effective permissions are independent:
+an add/change grant does not require a course/version/view grant, does not grant
+those permissions, and does not authorize GET. Manager membership alone is
+insufficient. Content-authoring permissions remain company-wide, as on the
+website; there is no separate owner/team/tenant field on curriculum records.
+
+| Relative route | Method | Effective permission | Success |
+| --- | --- | --- | --- |
+| `versions/{version_id}/modules/` | POST | `training.add_module` | 201 |
+| `versions/{version_id}/modules/{module_id}/` | GET | `training.view_module` | 200 |
+| `versions/{version_id}/modules/{module_id}/` | PATCH | `training.change_module` | 200 |
+| `versions/{version_id}/modules/{module_id}/text-lessons/` | POST | `training.add_lesson` | 201 |
+| `versions/{version_id}/modules/{module_id}/text-lessons/{lesson_id}/` | GET | `training.view_lesson` | 200 |
+| `versions/{version_id}/modules/{module_id}/text-lessons/{lesson_id}/` | PATCH | `training.change_lesson` | 200 |
+
+Detail HEAD uses the corresponding GET permission. OPTIONS uses add permission
+on create routes and view permission on detail routes. No DELETE, PUT, video
+upload, content-type conversion, assessment-authoring or publication operation
+is provided. These detail reads support loading draft edit forms; existing
+version-detail summary responses are unchanged.
+
+### Eligibility and parent isolation
+
+Every route above requires a DRAFT version. An authorized caller receives 404
+for a missing/non-DRAFT version, a module outside the specified version, or a
+lesson outside the specified module. TEXT lesson details also return 404 for
+VIDEO lessons. This matches the website's draft-only lookup behavior. Unauthorized
+callers are denied before object lookup, independently of whether IDs exist.
+
+Published and retired content cannot be changed. Existing assignment version
+pins, learner progress, assessment results, certificates and stored videos are
+not updated. A new version is required to change published content.
+
+### Module input and response
+
+POST accepts:
+
+| Field | Rule |
+| --- | --- |
+| `title` | Required, nonblank string, maximum 200 characters |
+| `description` | Optional string, blank allowed, default `""` |
+| `position` | Required integer, 1 through 2147483647 |
+
+PATCH accepts any subset of the same fields. Omitted fields retain their latest
+stored values. Empty/no-change PATCH returns the current representation without
+updating timestamps or recording a success audit event.
+
+Example POST to `/api/v1/management/versions/42/modules/`:
+
+```json
+{"title": "Site safety", "description": "Before starting work", "position": 1}
+```
+
+Example 201 response (also the GET/PATCH response shape):
+
+```json
+{
+  "id": 70,
+  "training_version_id": 42,
+  "title": "Site safety",
+  "description": "Before starting work",
+  "position": 1
+}
+```
+
+Example PATCH to `/api/v1/management/versions/42/modules/70/`:
+
+```json
+{"title": "Site safety introduction", "position": 4}
+```
+
+### TEXT lesson input and response
+
+POST accepts:
+
+| Field | Rule |
+| --- | --- |
+| `title` | Required, nonblank string, maximum 200 characters |
+| `body` | Required, nonblank plain text; follows existing LessonForm validation |
+| `position` | Required integer, 1 through 2147483647 |
+| `content_type` | Optional; only `"TEXT"` is accepted; default `"TEXT"` |
+| `is_required` | Optional boolean, default `true` |
+
+PATCH accepts any subset. Omitted fields preserve the latest stored values,
+including an existing `false` required flag. `content_type` cannot change to VIDEO.
+The website form's whitespace normalization is retained. The body has no new
+API-specific character limit beyond existing framework/request/storage limits,
+matching the existing unbounded model/form text field. Titles retain the existing
+200-character limit. Unknown fields and null values are rejected.
+
+Text is stored/returned as text, not trusted HTML. Tags are literal text: existing
+website rendering escapes them and native clients must use text widgets, not
+interpret this field as HTML. No sanitizer or rich-text format is introduced.
+
+Example POST to
+`/api/v1/management/versions/42/modules/70/text-lessons/`:
+
+```json
+{
+  "title": "Before work",
+  "body": "Check your equipment.\nReport unsafe conditions.",
+  "position": 1,
+  "is_required": true
+}
+```
+
+Example 201 response (also the GET/PATCH response shape):
+
+```json
+{
+  "id": 90,
+  "module_id": 70,
+  "training_version_id": 42,
+  "title": "Before work",
+  "content_type": "TEXT",
+  "body": "Check your equipment.\nReport unsafe conditions.",
+  "position": 1,
+  "is_required": true
+}
+```
+
+Example PATCH to
+`/api/v1/management/versions/42/modules/70/text-lessons/90/`:
+
+```json
+{"body": "Updated instructions.", "position": 3, "is_required": false}
+```
+
+Neither input accepts IDs, parent relationships, timestamps, actors, version
+state, video files, checksums, durations or minimum-watch percentages. The existing
+internal minimum-watch value is preserved and has no completion effect for TEXT.
+VIDEO records cannot be converted or edited through these routes. No response
+exposes a media path, playback URL or assessment answer key.
+
+### Ordering, concurrency and audit behavior
+
+`position` is the existing model/form field, not the read-summary alias `order`.
+Positions are unique within a version (modules) or module (lessons). Gaps are
+allowed. PATCH to an unused position changes ordering without renumbering other
+records. An occupied position is rejected; these routes do not silently swap,
+shift or batch-renumber siblings. To swap two positions, use a vacant temporary
+positive position through separate PATCH requests, as in the existing website
+workflow. That sequence consists of separate transactions, not one atomic swap.
+
+Each write is atomic and locks the parent version before children; model saves
+use the same version lock as publication. Parent eligibility is rechecked inside
+the lock. Partial edits merge into fresh locked state. Duplicate positions
+are validated by the existing forms/models and protected by database constraints.
+Simultaneous requests cannot bypass draft eligibility or partially save a rejected
+edit. This is serialized partial-update behavior, not an optimistic revision-token
+contract: later edits to the same field can replace an earlier draft edit.
+
+Successful creates/changes schedule the existing `training.module.created`,
+`training.module.updated`, `training.lesson.created`, or `training.lesson.updated`
+audit event after commit. Events contain approved metadata/changed field names,
+not lesson bodies or full descriptions. Rejected/rolled-back writes and no-op
+PATCH requests do not produce success events.
+
+### Errors
+
+- 400 `validation_error`: missing/invalid title, empty text, unknown/protected
+  fields, invalid type/order, or a position already occupied during validation.
+  Field errors appear under `error.fields`, for example
+  `{"error":{"code":"validation_error","message":"Invalid input.","fields":{"position":["This version already has a module at that position."]}}}`.
+  The standard envelope's summary message is generated by the existing handler.
+- 401: missing, invalid or expired JWT, or inactive User.
+- 403: missing effective permission or an ineligible mobile account (including
+  an inactive linked Employee). No role-name exception is made for Managers.
+- 404: nonexistent or non-DRAFT version, mismatched parent IDs, missing record,
+  or a VIDEO record addressed through a text-only detail route.
+- 409 `conflict`: a database uniqueness race specifically naming
+  `unique_module_position` or `unique_lesson_position`. Refresh and choose a free
+  position. Unrelated database errors are not mislabeled as ordering conflicts.
+- 405: unsupported methods for an otherwise authorized caller.
+
+Flutter integration must send the full nested parent chain, use the returned
+IDs and authoritative positions, invalidate affected curriculum summaries after
+success, render field/non-field errors, and handle 401/403/404/409 without blindly
+retrying mutations. Full text edit loading uses its separate view permission;
+version-view permission continues to authorize summaries only.

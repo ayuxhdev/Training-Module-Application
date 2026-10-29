@@ -99,3 +99,36 @@ class DraftVersionInputSerializer(ExplicitInputSerializer):
     description = serializers.CharField(required=False, allow_blank=True, default="")
     learning_objectives = serializers.CharField(required=False, allow_blank=True, default="")
     change_summary = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ModuleInputSerializer(ExplicitInputSerializer):
+    title = serializers.CharField(max_length=200)
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    position = serializers.IntegerField(min_value=1, max_value=2147483647)
+
+
+class TextLessonInputSerializer(ExplicitInputSerializer):
+    title = serializers.CharField(max_length=200)
+    position = serializers.IntegerField(min_value=1, max_value=2147483647)
+    content_type = serializers.ChoiceField(choices=["TEXT"], required=False, default="TEXT")
+    body = serializers.CharField()
+    is_required = serializers.BooleanField(required=False, default=True)
+
+
+class ModuleAuthoringSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    training_version_id = serializers.IntegerField()
+    title = serializers.CharField()
+    description = serializers.CharField()
+    position = serializers.IntegerField()
+
+
+class TextLessonAuthoringSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    module_id = serializers.IntegerField()
+    training_version_id = serializers.IntegerField(source="module.training_version_id")
+    title = serializers.CharField()
+    content_type = serializers.CharField()
+    body = serializers.CharField()
+    position = serializers.IntegerField()
+    is_required = serializers.BooleanField()

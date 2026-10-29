@@ -51,16 +51,19 @@ class VersionNumberConflict(APIException):
 VERSION_NUMBER_CONSTRAINT = "unique_training_version"
 
 
-def _is_version_number_conflict(exc):
+def _is_unique_constraint_conflict(exc, model, constraint):
     if len(exc.args) < 2 or exc.args[0] != 1062 or not isinstance(exc.args[1], str):
         return False
     # MySQL reports the key separately from the duplicated value. Match the
     # entire quoted key, including its table when supplied, not arbitrary text.
     match = re.search(r"\bfor key (['`])([^'`]+)\1\Z", exc.args[1])
     return bool(match and match.group(2) in {
-        VERSION_NUMBER_CONSTRAINT,
-        f"{TrainingVersion._meta.db_table}.{VERSION_NUMBER_CONSTRAINT}",
+        constraint, f"{model._meta.db_table}.{constraint}",
     })
+
+
+def _is_version_number_conflict(exc):
+    return _is_unique_constraint_conflict(exc, TrainingVersion, VERSION_NUMBER_CONSTRAINT)
 
 
 def _validation_error(exc):

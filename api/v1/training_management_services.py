@@ -6,8 +6,8 @@ from django.db.models import Max
 from django.shortcuts import get_object_or_404
 
 from audit.services import audit_snapshot, record_event
-from training.forms import TrainingForm, TrainingVersionForm
-from training.models import Training, TrainingVersion
+from training.forms import LessonForm, ModuleForm, TrainingForm, TrainingVersionForm
+from training.models import Lesson, Module, Training, TrainingVersion
 
 
 def _save_form(form, actor, *, creating):
@@ -52,3 +52,61 @@ def create_draft_version(actor, training_id, values):
     # The website permits draft authoring for inactive courses. Inactivity only
     # excludes courses from the assignment picker; do not invent a new policy.
     return _save_form(TrainingVersionForm(data=data, instance=instance), actor, creating=True)
+
+
+def _locked_draft(version_id):
+    # The same aggregate lock is taken by publication and VersionContent.save().
+    return get_object_or_404(
+        TrainingVersion.objects.select_for_update(),
+        pk=version_id, status=TrainingVersion.Status.DRAFT,
+    )
+
+
+@transaction.atomic
+def create_module(actor, version_id, values):
+    version = _locked_draft(version_id)
+    instance = Module(training_version=version)
+    return _save_form(ModuleForm(data=values, instance=instance), actor, creating=True)
+
+
+@transaction.atomic
+def update_module(actor, version_id, module_id, values):
+    _locked_draft(version_id)
+    instance = get_object_or_404(
+        Module.objects.select_for_update(), pk=module_id, training_version_id=version_id,
+    )
+    data = {field: getattr(instance, field) for field in ModuleForm.Meta.fields}
+    data.update(values)
+    return _save_form(ModuleForm(data=data, instance=instance), actor, creating=False)
+
+
+def _text_lesson_form(instance, values):
+    # Keep text authoring on the website's validation path. Video metadata is
+    # never writable here, and existing VIDEO instances are excluded at lookup.
+    data = {field: getattr(instance, field) for field in LessonForm.Meta.fields}
+    data.update(values)
+    data["content_type"] = Lesson.ContentType.TEXT
+    return LessonForm(data=data, instance=instance)
+
+
+@transaction.atomic
+def create_text_lesson(actor, version_id, module_id, values):
+    _locked_draft(version_id)
+    module = get_object_or_404(
+        Module.objects.select_for_update(), pk=module_id, training_version_id=version_id,
+    )
+    instance = Lesson(module=module, content_type=Lesson.ContentType.TEXT)
+    return _save_form(_text_lesson_form(instance, values), actor, creating=True)
+
+
+@transaction.atomic
+def update_text_lesson(actor, version_id, module_id, lesson_id, values):
+    _locked_draft(version_id)
+    module = get_object_or_404(
+        Module.objects.select_for_update(), pk=module_id, training_version_id=version_id,
+    )
+    instance = get_object_or_404(
+        Lesson.objects.select_for_update(), pk=lesson_id, module=module,
+        content_type=Lesson.ContentType.TEXT,
+    )
+    return _save_form(_text_lesson_form(instance, values), actor, creating=False)
