@@ -223,6 +223,21 @@ class ManagedVersionDetailScreen extends ConsumerWidget {
                                         extra: module,
                                       ),
                                     ),
+                                    const SizedBox(width: AppSpacing.xs),
+                                    IconButton(
+                                      tooltip: 'Add video lesson',
+                                      icon: const Icon(
+                                        Icons.video_call_outlined,
+                                        size: 20,
+                                      ),
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => context.push(
+                                        '/workspace/training/versions/$versionId/modules/${module.id}/video-lessons/new',
+                                        extra: module,
+                                      ),
+                                    ),
                                   ],
                                 ],
                               )
@@ -230,10 +245,20 @@ class ManagedVersionDetailScreen extends ConsumerWidget {
                         onEditLesson:
                             status == 'DRAFT' &&
                                 canAccessLessonEditForm(identity)
-                            ? (lesson) => context.push(
-                                '/workspace/training/versions/$versionId/modules/${module.id}/lessons/${lesson.id}/edit',
-                                extra: lesson,
-                              )
+                            ? (lesson) {
+                                if (lesson.lessonType.toUpperCase() ==
+                                    'VIDEO') {
+                                  context.push(
+                                    '/workspace/training/versions/$versionId/modules/${module.id}/video-lessons/${lesson.id}/edit',
+                                    extra: lesson,
+                                  );
+                                } else {
+                                  context.push(
+                                    '/workspace/training/versions/$versionId/modules/${module.id}/lessons/${lesson.id}/edit',
+                                    extra: lesson,
+                                  );
+                                }
+                              }
                             : null,
                       ),
                     ),

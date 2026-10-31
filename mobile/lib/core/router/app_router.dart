@@ -23,6 +23,7 @@ import 'package:training_app/features/management/presentation/screens/training_c
 import 'package:training_app/features/management/presentation/screens/draft_version_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/module_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/text_lesson_form_screen.dart';
+import 'package:training_app/features/management/presentation/screens/video_lesson_form_screen.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -89,7 +90,17 @@ bool _canAccessWorkspacePath(String path, AuthenticatedIdentity identity) {
     return canCreateLessons(identity);
   }
   if (RegExp(
+    r'^/workspace/training/versions/[1-9][0-9]*/modules/[1-9][0-9]*/video-lessons/new$',
+  ).hasMatch(path)) {
+    return canCreateLessons(identity);
+  }
+  if (RegExp(
     r'^/workspace/training/versions/[1-9][0-9]*/modules/[1-9][0-9]*/lessons/[1-9][0-9]*/edit$',
+  ).hasMatch(path)) {
+    return canAccessLessonEditForm(identity);
+  }
+  if (RegExp(
+    r'^/workspace/training/versions/[1-9][0-9]*/modules/[1-9][0-9]*/video-lessons/[1-9][0-9]*/edit$',
   ).hasMatch(path)) {
     return canAccessLessonEditForm(identity);
   }
@@ -426,6 +437,76 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 );
               }
               return TextLessonFormScreen(
+                versionId: versionId,
+                moduleId: moduleId,
+                lessonId: lessonId,
+                initialLesson: state.extra,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/versions/:versionId/modules/:moduleId/video-lessons/new',
+            builder: (_, state) {
+              final versionId = int.tryParse(
+                state.pathParameters['versionId'] ?? '',
+              );
+              final moduleId = int.tryParse(
+                state.pathParameters['moduleId'] ?? '',
+              );
+              if (versionId == null ||
+                  versionId <= 0 ||
+                  moduleId == null ||
+                  moduleId <= 0) {
+                return const Scaffold(
+                  body: ErrorView(
+                    message: 'Invalid video lesson route parameters',
+                  ),
+                );
+              }
+              final extra = state.extra;
+              int? suggestedPos;
+              if (extra is ManagedModule) {
+                suggestedPos = extra.lessons.isEmpty
+                    ? 1
+                    : (extra.lessons
+                              .map((l) => l.order)
+                              .reduce((a, b) => a > b ? a : b) +
+                          1);
+              } else if (extra is int) {
+                suggestedPos = extra;
+              }
+              return VideoLessonFormScreen(
+                versionId: versionId,
+                moduleId: moduleId,
+                suggestedPosition: suggestedPos,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/versions/:versionId/modules/:moduleId/video-lessons/:lessonId/edit',
+            builder: (_, state) {
+              final versionId = int.tryParse(
+                state.pathParameters['versionId'] ?? '',
+              );
+              final moduleId = int.tryParse(
+                state.pathParameters['moduleId'] ?? '',
+              );
+              final lessonId = int.tryParse(
+                state.pathParameters['lessonId'] ?? '',
+              );
+              if (versionId == null ||
+                  versionId <= 0 ||
+                  moduleId == null ||
+                  moduleId <= 0 ||
+                  lessonId == null ||
+                  lessonId <= 0) {
+                return const Scaffold(
+                  body: ErrorView(
+                    message: 'Invalid video lesson route parameters',
+                  ),
+                );
+              }
+              return VideoLessonFormScreen(
                 versionId: versionId,
                 moduleId: moduleId,
                 lessonId: lessonId,

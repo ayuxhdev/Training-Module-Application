@@ -66,11 +66,11 @@ class ManagedLessonSummaryRow extends StatelessWidget {
             text: lesson.isRequired ? 'REQUIRED' : 'OPTIONAL',
             status: lesson.isRequired ? BadgeStatus.neutral : BadgeStatus.info,
           ),
-          if (onEdit != null && !isVideo) ...[
+          if (onEdit != null) ...[
             const SizedBox(width: AppSpacing.xs),
             IconButton(
               icon: const Icon(Icons.edit_outlined, size: 18),
-              tooltip: 'Edit lesson',
+              tooltip: isVideo ? 'Edit video lesson' : 'Edit lesson',
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),

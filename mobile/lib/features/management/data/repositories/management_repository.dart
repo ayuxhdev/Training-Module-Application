@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/network/dio_client.dart';
 import 'package:training_app/core/providers/core_providers.dart';
+import 'package:training_app/features/management/data/services/video_file_picker.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 
 final managementRepositoryProvider = Provider<ManagementRepository>(
@@ -550,6 +551,176 @@ class ManagementRepository {
         );
       }
       return ManagedTextLessonDetail.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagedVideoLessonDetail> createVideoLesson(
+    int versionId,
+    int moduleId, {
+    required String title,
+    required int position,
+    required SelectedVideoFile videoFile,
+    bool isRequired = true,
+    double? minimumWatchPercent,
+    ProgressCallback? onSendProgress,
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (moduleId <= 0) throw ArgumentError.value(moduleId, 'moduleId');
+    final normalizedTitle = title.trim();
+    if (normalizedTitle.isEmpty || normalizedTitle.length > 200) {
+      throw ArgumentError.value(title, 'title');
+    }
+    if (position < 1 || position > 2147483647) {
+      throw ArgumentError.value(position, 'position');
+    }
+    if (minimumWatchPercent != null &&
+        (minimumWatchPercent < 0 || minimumWatchPercent > 100)) {
+      throw ArgumentError.value(minimumWatchPercent, 'minimumWatchPercent');
+    }
+
+    final multipart = await videoFile.toMultipartFile();
+    final formData = FormData.fromMap({
+      'title': normalizedTitle,
+      'position': position.toString(),
+      'is_required': isRequired.toString(),
+      'content_type': 'VIDEO',
+      if (minimumWatchPercent != null)
+        'minimum_watch_percent': minimumWatchPercent.toStringAsFixed(2),
+      'video_file': multipart,
+    });
+
+    try {
+      final response = await apiClient.dio.post(
+        '/management/versions/$versionId/modules/$moduleId/video-lessons/',
+        data: formData,
+        onSendProgress: onSendProgress,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 201) {
+        throw const FormatException(
+          'Video lesson creation returned an unexpected status.',
+        );
+      }
+      return ManagedVideoLessonDetail.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagedVideoLessonDetail> videoLessonDetail(
+    int versionId,
+    int moduleId,
+    int lessonId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (moduleId <= 0) throw ArgumentError.value(moduleId, 'moduleId');
+    if (lessonId <= 0) throw ArgumentError.value(lessonId, 'lessonId');
+    return _get(
+      'versions/$versionId/modules/$moduleId/video-lessons/$lessonId/',
+      ManagedVideoLessonDetail.fromJson,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedVideoLessonDetail> updateVideoLesson(
+    int versionId,
+    int moduleId,
+    int lessonId, {
+    String? title,
+    int? position,
+    bool? isRequired,
+    double? minimumWatchPercent,
+    SelectedVideoFile? videoFile,
+    ProgressCallback? onSendProgress,
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (moduleId <= 0) throw ArgumentError.value(moduleId, 'moduleId');
+    if (lessonId <= 0) throw ArgumentError.value(lessonId, 'lessonId');
+
+    final hasFile = videoFile != null;
+    String? normalizedTitle;
+    if (title != null) {
+      normalizedTitle = title.trim();
+      if (normalizedTitle.isEmpty || normalizedTitle.length > 200) {
+        throw ArgumentError.value(title, 'title');
+      }
+    }
+    if (position != null && (position < 1 || position > 2147483647)) {
+      throw ArgumentError.value(position, 'position');
+    }
+    if (minimumWatchPercent != null &&
+        (minimumWatchPercent < 0 || minimumWatchPercent > 100)) {
+      throw ArgumentError.value(minimumWatchPercent, 'minimumWatchPercent');
+    }
+
+    if (!hasFile &&
+        title == null &&
+        position == null &&
+        isRequired == null &&
+        minimumWatchPercent == null) {
+      throw ArgumentError(
+        'At least one field or video replacement must be provided for update.',
+      );
+    }
+
+    dynamic requestData;
+    if (hasFile) {
+      final multipart = await videoFile.toMultipartFile();
+      final formData = FormData();
+      if (normalizedTitle != null) {
+        formData.fields.add(MapEntry('title', normalizedTitle));
+      }
+      if (position != null) {
+        formData.fields.add(MapEntry('position', position.toString()));
+      }
+      if (isRequired != null) {
+        formData.fields.add(MapEntry('is_required', isRequired.toString()));
+      }
+      if (minimumWatchPercent != null) {
+        formData.fields.add(
+          MapEntry(
+            'minimum_watch_percent',
+            minimumWatchPercent.toStringAsFixed(2),
+          ),
+        );
+      }
+      formData.files.add(MapEntry('video_file', multipart));
+      requestData = formData;
+    } else {
+      final map = <String, Object?>{};
+      if (normalizedTitle != null) map['title'] = normalizedTitle;
+      if (position != null) map['position'] = position;
+      if (isRequired != null) map['is_required'] = isRequired;
+      if (minimumWatchPercent != null) {
+        map['minimum_watch_percent'] = minimumWatchPercent.toStringAsFixed(2);
+      }
+      requestData = map;
+    }
+
+    try {
+      final response = await apiClient.dio.patch(
+        '/management/versions/$versionId/modules/$moduleId/video-lessons/$lessonId/',
+        data: requestData,
+        onSendProgress: onSendProgress,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 200) {
+        throw const FormatException(
+          'Video lesson update returned an unexpected status.',
+        );
+      }
+      return ManagedVideoLessonDetail.fromJson(
         response.data as Map<String, dynamic>,
       );
     } catch (error) {

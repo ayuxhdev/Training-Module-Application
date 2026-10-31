@@ -4,6 +4,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/network/dio_client.dart';
 import 'package:training_app/features/management/data/repositories/management_repository.dart';
+import 'package:training_app/features/management/data/services/video_file_picker.dart';
 
 import 'management_fixtures.dart';
 
@@ -860,6 +861,244 @@ void main() {
     test('updateTextLesson throws ArgumentError when no fields provided', () {
       expect(
         () => repository.updateTextLesson(42, 70, 90),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test(
+      'createVideoLesson posts multipart payload and parses lesson detail',
+      () async {
+        when(
+          () => dio.post(
+            '/management/versions/42/modules/70/video-lessons/',
+            data: any(named: 'data'),
+            onSendProgress: any(named: 'onSendProgress'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(
+              path: '/management/versions/42/modules/70/video-lessons/',
+            ),
+            statusCode: 201,
+            data: managedVideoLessonDetailJson(
+              id: 94,
+              moduleId: 70,
+              trainingVersionId: 42,
+              title: 'Equipment inspection',
+              position: 2,
+              isRequired: true,
+              minimumWatchPercent: '90.00',
+              videoDurationSeconds: 69,
+              hasVideo: true,
+            ),
+          ),
+        );
+
+        final videoFile = SelectedVideoFile(
+          path: '/tmp/test.mp4',
+          name: 'test.mp4',
+          sizeInBytes: 1024,
+          multipartFileFactory: () =>
+              MultipartFile.fromBytes([0, 1, 2], filename: 'test.mp4'),
+        );
+
+        final lesson = await repository.createVideoLesson(
+          42,
+          70,
+          title: 'Equipment inspection',
+          position: 2,
+          videoFile: videoFile,
+          isRequired: true,
+          minimumWatchPercent: 90.0,
+        );
+
+        expect(lesson.id, 94);
+        expect(lesson.moduleId, 70);
+        expect(lesson.trainingVersionId, 42);
+        expect(lesson.title, 'Equipment inspection');
+        expect(lesson.contentType, 'VIDEO');
+        expect(lesson.position, 2);
+        expect(lesson.isRequired, isTrue);
+        expect(lesson.minimumWatchPercent, '90.00');
+        expect(lesson.videoDurationSeconds, 69);
+        expect(lesson.hasVideo, isTrue);
+      },
+    );
+
+    test('createVideoLesson validates inputs before network call', () {
+      final validFile = SelectedVideoFile(
+        path: '/tmp/test.mp4',
+        name: 'test.mp4',
+        sizeInBytes: 1024,
+      );
+      expect(
+        () => repository.createVideoLesson(
+          0,
+          70,
+          title: 'T',
+          position: 1,
+          videoFile: validFile,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createVideoLesson(
+          42,
+          0,
+          title: 'T',
+          position: 1,
+          videoFile: validFile,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createVideoLesson(
+          42,
+          70,
+          title: '',
+          position: 1,
+          videoFile: validFile,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createVideoLesson(
+          42,
+          70,
+          title: 'T',
+          position: 0,
+          videoFile: validFile,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => repository.createVideoLesson(
+          42,
+          70,
+          title: 'T',
+          position: 1,
+          videoFile: validFile,
+          minimumWatchPercent: 101,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('videoLessonDetail requests endpoint and parses detail', () async {
+      when(
+        () => dio.get(
+          '/management/versions/42/modules/70/video-lessons/94/',
+          queryParameters: any(named: 'queryParameters'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(
+            path: '/management/versions/42/modules/70/video-lessons/94/',
+          ),
+          statusCode: 200,
+          data: managedVideoLessonDetailJson(
+            id: 94,
+            moduleId: 70,
+            trainingVersionId: 42,
+          ),
+        ),
+      );
+
+      final lesson = await repository.videoLessonDetail(42, 70, 94);
+      expect(lesson.id, 94);
+      expect(lesson.moduleId, 70);
+      expect(lesson.contentType, 'VIDEO');
+    });
+
+    test(
+      'updateVideoLesson patches metadata-only and parses updated lesson',
+      () async {
+        when(
+          () => dio.patch(
+            '/management/versions/42/modules/70/video-lessons/94/',
+            data: {'title': 'Updated Title', 'is_required': false},
+            onSendProgress: any(named: 'onSendProgress'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(
+              path: '/management/versions/42/modules/70/video-lessons/94/',
+            ),
+            statusCode: 200,
+            data: managedVideoLessonDetailJson(
+              id: 94,
+              moduleId: 70,
+              trainingVersionId: 42,
+              title: 'Updated Title',
+              isRequired: false,
+            ),
+          ),
+        );
+
+        final updated = await repository.updateVideoLesson(
+          42,
+          70,
+          94,
+          title: 'Updated Title',
+          isRequired: false,
+        );
+
+        expect(updated.id, 94);
+        expect(updated.title, 'Updated Title');
+        expect(updated.isRequired, isFalse);
+      },
+    );
+
+    test('updateVideoLesson with replacement file sends multipart', () async {
+      when(
+        () => dio.patch(
+          '/management/versions/42/modules/70/video-lessons/94/',
+          data: any(named: 'data'),
+          onSendProgress: any(named: 'onSendProgress'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(
+            path: '/management/versions/42/modules/70/video-lessons/94/',
+          ),
+          statusCode: 200,
+          data: managedVideoLessonDetailJson(
+            id: 94,
+            moduleId: 70,
+            trainingVersionId: 42,
+            videoDurationSeconds: 120,
+            hasVideo: true,
+          ),
+        ),
+      );
+
+      final replacement = SelectedVideoFile(
+        path: '/tmp/replacement.mp4',
+        name: 'replacement.mp4',
+        sizeInBytes: 2048,
+        multipartFileFactory: () =>
+            MultipartFile.fromBytes([3, 4, 5], filename: 'replacement.mp4'),
+      );
+
+      final updated = await repository.updateVideoLesson(
+        42,
+        70,
+        94,
+        videoFile: replacement,
+      );
+
+      expect(updated.id, 94);
+      expect(updated.videoDurationSeconds, 120);
+      expect(updated.hasVideo, isTrue);
+    });
+
+    test('updateVideoLesson throws ArgumentError when no fields provided', () {
+      expect(
+        () => repository.updateVideoLesson(42, 70, 94),
         throwsA(isA<ArgumentError>()),
       );
     });

@@ -432,6 +432,30 @@ Map<String, dynamic> managedTextLessonDetailJson({
   'is_required': isRequired,
 };
 
+Map<String, dynamic> managedVideoLessonDetailJson({
+  int id = 94,
+  int moduleId = 70,
+  int trainingVersionId = 42,
+  String title = 'Equipment inspection',
+  String contentType = 'VIDEO',
+  int position = 2,
+  bool isRequired = true,
+  String minimumWatchPercent = '90.00',
+  int videoDurationSeconds = 69,
+  bool hasVideo = true,
+}) => {
+  'id': id,
+  'module_id': moduleId,
+  'training_version_id': trainingVersionId,
+  'title': title,
+  'content_type': contentType,
+  'position': position,
+  'is_required': isRequired,
+  'minimum_watch_percent': minimumWatchPercent,
+  'video_duration_seconds': videoDurationSeconds,
+  'has_video': hasVideo,
+};
+
 Map<String, dynamic> managedVersionDetailJson({
   int id = 10,
   int trainingId = 1,

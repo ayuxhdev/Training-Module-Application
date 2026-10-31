@@ -5,6 +5,7 @@ import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/domain/models/authenticated_identity.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/management/data/repositories/management_repository.dart';
+import 'package:training_app/features/management/data/services/video_file_picker.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 
 bool canViewManagementDashboard(AuthenticatedIdentity identity) =>
@@ -758,6 +759,111 @@ final textLessonMutationProvider = Provider<TextLessonMutationController>(
   ),
 );
 
+class VideoLessonMutationController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  VideoLessonMutationController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<ManagedVideoLessonDetail> create({
+    required int versionId,
+    required int moduleId,
+    required String title,
+    required int position,
+    required SelectedVideoFile videoFile,
+    bool isRequired = true,
+    double? minimumWatchPercent,
+    ProgressCallback? onSendProgress,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canCreateLessons(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot create lessons.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final created = await repository.createVideoLesson(
+      versionId,
+      moduleId,
+      title: title,
+      position: position,
+      videoFile: videoFile,
+      isRequired: isRequired,
+      minimumWatchPercent: minimumWatchPercent,
+      onSendProgress: onSendProgress,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canCreateLessons(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before lesson creation completed. Reopen the form to continue.',
+        statusCode: 403,
+      );
+    }
+    return created;
+  }
+
+  Future<ManagedVideoLessonDetail> update({
+    required int versionId,
+    required int moduleId,
+    required int lessonId,
+    String? title,
+    int? position,
+    bool? isRequired,
+    double? minimumWatchPercent,
+    SelectedVideoFile? videoFile,
+    ProgressCallback? onSendProgress,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canEditLessons(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot edit lessons.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final updated = await repository.updateVideoLesson(
+      versionId,
+      moduleId,
+      lessonId,
+      title: title,
+      position: position,
+      isRequired: isRequired,
+      minimumWatchPercent: minimumWatchPercent,
+      videoFile: videoFile,
+      onSendProgress: onSendProgress,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canEditLessons(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before lesson update completed. Reopen the form to continue.',
+        statusCode: 403,
+      );
+    }
+    return updated;
+  }
+}
+
+final videoLessonMutationProvider = Provider<VideoLessonMutationController>(
+  (ref) => VideoLessonMutationController(
+    repository: ref.watch(managementRepositoryProvider),
+    readAuth: () => ref.read(authControllerProvider),
+  ),
+);
+
 CancelToken _request(Ref ref, bool Function(AuthenticatedIdentity) allowed) {
   final account = ref.watch(authControllerProvider.select(managementAccount));
   final auth = ref.read(authControllerProvider);
@@ -1018,6 +1124,33 @@ final managedTextLessonDetailProvider = FutureProvider.autoDispose
       final cancelToken = _request(ref, canViewLessons);
       final repository = ref.watch(managementRepositoryProvider);
       return repository.textLessonDetail(
+        key.versionId,
+        key.moduleId,
+        key.lessonId,
+        cancelToken: cancelToken,
+      );
+    }, retry: (_, _) => null);
+
+typedef ManagedVideoLessonDetailKey = ({
+  int versionId,
+  int moduleId,
+  int lessonId,
+});
+
+final managedVideoLessonDetailProvider = FutureProvider.autoDispose
+    .family<ManagedVideoLessonDetail, ManagedVideoLessonDetailKey>((ref, key) {
+      if (key.versionId <= 0) {
+        throw ArgumentError.value(key.versionId, 'versionId');
+      }
+      if (key.moduleId <= 0) {
+        throw ArgumentError.value(key.moduleId, 'moduleId');
+      }
+      if (key.lessonId <= 0) {
+        throw ArgumentError.value(key.lessonId, 'lessonId');
+      }
+      final cancelToken = _request(ref, canViewLessons);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.videoLessonDetail(
         key.versionId,
         key.moduleId,
         key.lessonId,

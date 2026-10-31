@@ -743,9 +743,11 @@ void main() {
         // Module card actions
         expect(find.byTooltip('Edit module'), findsOneWidget);
         expect(find.byTooltip('Add text lesson'), findsOneWidget);
+        expect(find.byTooltip('Add video lesson'), findsOneWidget);
 
-        // Lesson actions: only TEXT lesson has edit button, VIDEO lesson does not
+        // Lesson actions
         expect(find.byTooltip('Edit lesson'), findsOneWidget);
+        expect(find.byTooltip('Edit video lesson'), findsOneWidget);
       },
     );
 
@@ -795,7 +797,9 @@ void main() {
       expect(find.byTooltip('Create module'), findsOneWidget);
       expect(find.byTooltip('Edit module'), findsNothing);
       expect(find.byTooltip('Add text lesson'), findsNothing);
+      expect(find.byTooltip('Add video lesson'), findsNothing);
       expect(find.byTooltip('Edit lesson'), findsNothing);
+      expect(find.byTooltip('Edit video lesson'), findsNothing);
     });
 
     testWidgets(
@@ -944,7 +948,9 @@ void main() {
       );
       expect(find.byTooltip('Edit module'), findsNothing);
       expect(find.byTooltip('Add text lesson'), findsNothing);
+      expect(find.byTooltip('Add video lesson'), findsNothing);
       expect(find.byTooltip('Edit lesson'), findsNothing);
+      expect(find.byTooltip('Edit video lesson'), findsNothing);
     });
 
     testWidgets('hides all authoring action buttons on RETIRED version', (
@@ -999,7 +1005,9 @@ void main() {
       );
       expect(find.byTooltip('Edit module'), findsNothing);
       expect(find.byTooltip('Add text lesson'), findsNothing);
+      expect(find.byTooltip('Add video lesson'), findsNothing);
       expect(find.byTooltip('Edit lesson'), findsNothing);
+      expect(find.byTooltip('Edit video lesson'), findsNothing);
     });
   });
 }

@@ -631,3 +631,46 @@ class ManagedTextLessonDetail {
         isRequired: (json['is_required'] ?? true) as bool,
       );
 }
+
+class ManagedVideoLessonDetail {
+  final int id;
+  final int moduleId;
+  final int trainingVersionId;
+  final String title;
+  final String contentType;
+  final int position;
+  final bool isRequired;
+  final String minimumWatchPercent;
+  final int videoDurationSeconds;
+  final bool hasVideo;
+
+  const ManagedVideoLessonDetail({
+    required this.id,
+    required this.moduleId,
+    required this.trainingVersionId,
+    required this.title,
+    this.contentType = 'VIDEO',
+    required this.position,
+    this.isRequired = true,
+    this.minimumWatchPercent = '90.00',
+    this.videoDurationSeconds = 0,
+    this.hasVideo = false,
+  });
+
+  factory ManagedVideoLessonDetail.fromJson(Map<String, dynamic> json) =>
+      ManagedVideoLessonDetail(
+        id: json['id'] as int,
+        moduleId: (json['module_id'] ?? json['module']) as int,
+        trainingVersionId:
+            (json['training_version_id'] ?? json['training_version']) as int,
+        title: (json['title'] ?? '') as String,
+        contentType: (json['content_type'] ?? 'VIDEO') as String,
+        position: (json['position'] as num?)?.toInt() ?? 0,
+        isRequired: (json['is_required'] ?? true) as bool,
+        minimumWatchPercent:
+            (json['minimum_watch_percent']?.toString() ?? '90.00'),
+        videoDurationSeconds:
+            (json['video_duration_seconds'] as num?)?.toInt() ?? 0,
+        hasVideo: (json['has_video'] as bool?) ?? false,
+      );
+}

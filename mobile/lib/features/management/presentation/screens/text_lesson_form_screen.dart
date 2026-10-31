@@ -328,12 +328,27 @@ class _TextLessonFormScreenState extends ConsumerState<TextLessonFormScreen> {
     if (_isVideoLesson) {
       return Scaffold(
         appBar: AppBar(title: const Text('Edit lesson')),
-        body: const Center(
+        body: Center(
           child: Padding(
-            padding: EdgeInsets.all(AppSpacing.lg),
-            child: Text(
-              'Video lessons cannot be edited through text lesson authoring.',
-              textAlign: TextAlign.center,
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Video lessons cannot be edited through text lesson authoring.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                FilledButton.tonal(
+                  onPressed: () {
+                    context.pushReplacement(
+                      '/workspace/training/versions/${widget.versionId}/modules/${widget.moduleId}/video-lessons/${widget.lessonId}/edit',
+                      extra: widget.initialLesson,
+                    );
+                  },
+                  child: const Text('Open in Video Lesson Editor'),
+                ),
+              ],
             ),
           ),
         ),
