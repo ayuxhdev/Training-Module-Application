@@ -9,6 +9,12 @@ from .curriculum_management_views import (
     ModuleCreateView, ModuleDetailView, TextLessonCreateView, TextLessonDetailView,
 )
 from .video_management_views import VideoLessonCreateView, VideoLessonDetailView
+from .assessment_management_views import (
+    AssessmentManagementDetailView, AssessmentQuestionManagementDetailView,
+    AssessmentQuestionManagementView, QuestionManagementDetailView, QuestionManagementView,
+    QuestionRevisionFreezeView, QuestionRevisionManagementDetailView,
+    QuestionRevisionManagementView, VersionAssessmentManagementView,
+)
 from .training_management_views import (
     TrainingCatalogDetailView, TrainingCatalogView,
     TrainingVersionDetailView, TrainingVersionHistoryView, TrainingVersionDiscoveryView,
@@ -65,6 +71,15 @@ urlpatterns = [
     path("management/versions/<int:version_pk>/modules/<int:module_pk>/video-lessons/", VideoLessonCreateView.as_view(), name="management-video-lesson-create"),
     path("management/versions/<int:version_pk>/modules/<int:module_pk>/video-lessons/<int:pk>/", VideoLessonDetailView.as_view(), name="management-video-lesson-detail"),
     path("management/training-versions/", AssignableTrainingVersionListView.as_view(), name="management-training-versions"),
+    path("management/versions/<int:version_pk>/assessments/", VersionAssessmentManagementView.as_view(), name="management-assessments"),
+    path("management/versions/<int:version_pk>/assessments/<int:pk>/", AssessmentManagementDetailView.as_view(), name="management-assessment-detail"),
+    path("management/versions/<int:version_pk>/assessments/<int:assessment_pk>/questions/", AssessmentQuestionManagementView.as_view(), name="management-assessment-questions"),
+    path("management/versions/<int:version_pk>/assessments/<int:assessment_pk>/questions/<int:pk>/", AssessmentQuestionManagementDetailView.as_view(), name="management-assessment-question-detail"),
+    path("management/questions/", QuestionManagementView.as_view(), name="management-questions"),
+    path("management/questions/<int:pk>/", QuestionManagementDetailView.as_view(), name="management-question-detail"),
+    path("management/questions/<int:question_pk>/revisions/", QuestionRevisionManagementView.as_view(), name="management-question-revisions"),
+    path("management/questions/<int:question_pk>/revisions/<int:pk>/", QuestionRevisionManagementDetailView.as_view(), name="management-question-revision-detail"),
+    path("management/questions/<int:question_pk>/revisions/<int:pk>/freeze/", QuestionRevisionFreezeView.as_view(), name="management-question-revision-freeze"),
     path("management/assignments/", ManualAssignmentCreateView.as_view(), name="management-assignment-create"),
     path("management/employees/", EmployeeDirectoryView.as_view(), name="management-employees"),
     path("management/employees/<int:pk>/", EmployeeDirectoryDetailView.as_view(), name="management-employee-detail"),

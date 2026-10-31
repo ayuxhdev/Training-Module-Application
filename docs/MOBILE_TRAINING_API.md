@@ -556,3 +556,171 @@ omit server-derived checksum/duration, prepopulate through authorized GET, prese
 independent capabilities, display field errors, invalidate curriculum caches after
 success, and handle uncertain/cancelled uploads without blindly repeating writes.
 Retries after a lost response must first inspect authoritative lesson state.
+
+## Batch 6 Stage 9: assessment and question authoring
+
+All routes below start with `/api/v1/management/`, require JWT authentication,
+an active mobile-eligible identity, and the effective Django permission listed.
+Business-role labels alone grant no access. These grants are company-wide content
+permissions, matching website authoring; Manager team membership does not grant
+them. No new permissions, models, migrations or learner endpoints are introduced.
+
+### Routes and independent permissions
+
+| Relative route | GET / HEAD | POST | PATCH |
+| --- | --- | --- | --- |
+| `versions/{version_id}/assessments/` | `assessments.view_assessment` | `assessments.add_assessment` | — |
+| `versions/{version_id}/assessments/{assessment_id}/` | `assessments.view_assessment` | — | `assessments.change_assessment` |
+| `versions/{version_id}/assessments/{assessment_id}/questions/` | `assessments.view_assessmentquestion` | `assessments.add_assessmentquestion` | — |
+| `versions/{version_id}/assessments/{assessment_id}/questions/{item_id}/` | `assessments.view_assessmentquestion` | — | `assessments.change_assessmentquestion` |
+| `questions/` | `assessments.view_question` | `assessments.add_question` | — |
+| `questions/{question_id}/` | `assessments.view_question` | — | `assessments.change_question` |
+| `questions/{question_id}/revisions/` | `assessments.view_questionrevision` | `assessments.add_questionrevision` | — |
+| `questions/{question_id}/revisions/{revision_id}/` | `assessments.view_questionrevision` | — | `assessments.change_questionrevision` |
+| `questions/{question_id}/revisions/{revision_id}/freeze/` | — | `assessments.change_questionrevision` | — |
+
+Create returns 201; GET, PATCH and freeze return 200. OPTIONS uses the route's
+read permission, or change permission on freeze. Add/view/change remain
+independent: receiving a mutation response grants no subsequent GET authority.
+All mutations accept JSON objects only (`Content-Type: application/json`).
+Unsupported content types return 415, avoiding HTML checkbox defaults.
+
+List responses use `{count,next,previous,results}`, with default page size 20 and
+maximum 100; `page` and `page_size` are validated. Question-bank lists additionally
+support `search` (trimmed, maximum 150 characters; code/topic) and `is_active`.
+Ordering is deterministic: assessments by kind/sequence/ID, attachments by
+position/ID, questions by code/ID, revisions by revision number/ID. Revision lists
+contain summaries, not prompts, explanations or answer options.
+
+### Assessment settings and ordered attachments
+
+Assessment POST fields are `kind` (`QUIZ` or `FINAL`) and nonblank `title`
+(maximum 200 characters), plus these optional settings:
+
+| Field | Default / rule |
+| --- | --- |
+| `module_id` | null; required for QUIZ, and must belong to the URL's version |
+| `sequence` | 1; positive integer, maximum 4294967295 |
+| `pass_percentage` | `80.00`; decimal 0–100, up to 2 decimal places |
+| `max_attempts` | 3; positive integer, maximum 4294967295 |
+| `time_limit_minutes` | null (untimed), otherwise positive integer, maximum 4294967295 |
+| `is_required` | true |
+
+PATCH accepts subsets; null is supported only for `module_id` and
+`time_limit_minutes`. The existing AssessmentForm normalizes FINAL to
+`module_id=null`, `sequence=1`, `is_required=true`. QUIZ sequences are unique
+within the entire version/kind, not independently per module. Existing form and
+model validation is authoritative; no new assessment type or grading rule exists.
+
+Example assessment response:
+
+```json
+{"id":81,"training_version_id":42,"module_id":70,"kind":"QUIZ","title":"Module review","sequence":1,"pass_percentage":"80.00","max_attempts":3,"time_limit_minutes":null,"is_required":true}
+```
+
+Attachment POST fields are `question_revision_id`, positive `position`
+(maximum 4294967295), and optional `points` (default `1.00`, minimum `0.01`,
+maximum `999999.99`, up to 2 decimal places). PATCH accepts subsets, including a
+different eligible revision. The website form permits only FROZEN revisions of
+active questions. An assessment cannot contain multiple revisions of one question
+or duplicate positions/revision IDs. Gaps are allowed; no automatic renumbering
+or atomic position swapping is added. Use a vacant position for staged reordering.
+
+```json
+{"id":93,"assessment_id":81,"question_revision_id":65,"position":3,"points":"2.50"}
+```
+
+These response types contain metadata only: no prompts, explanations, option
+text, correctness flags, attempt data or answer keys. Percentages and points are
+decimal strings; IDs, sequence, position and time/attempt limits are integers.
+
+Assessment and attachment reads permit existing DRAFT/PUBLISHED/RETIRED content,
+as on the website. Mutations lock and recheck a DRAFT version, then its matching
+assessment/item. Every nested version/assessment/item relationship is checked;
+wrong parents and frozen curriculum mutations return 404. No explicit version
+view grant is inferred or required by these authoring permissions.
+
+### Global question bank and revisions
+
+Questions are global reusable bank records, not direct children of a training
+version. Question POST accepts `code` (unique, nonblank, maximum 40), optional
+`topic` (blank permitted, maximum 120), and `is_active` (default true). PATCH
+accepts subsets. The response is `{id,code,topic,is_active}`. As on the website,
+creation atomically creates revision 1 with prompt `Draft question` and DRAFT
+status, even for an add-question-only account. Authorized revision readers can
+discover it through the separate revision list. Later revisions require their
+independent add permission. Question metadata/deactivation remains editable as
+on the website; it never edits a frozen revision's prompt or answer key.
+
+Revision POST accepts nonblank `prompt`, optional `question_type` (default
+`SINGLE_CHOICE`) and `explanation` (default empty). Only `SINGLE_CHOICE` and
+`TRUE_FALSE` exist; neither supports multiple selected answers. The server
+allocates the next revision number under the Question row lock. POST and list
+responses contain `{id,question_id,revision_number,question_type,status,frozen_at}`.
+GET detail and successful PATCH/freeze additionally contain `prompt`,
+`explanation`, and ordered `options`.
+
+```json
+{"id":65,"question_id":38,"revision_number":2,"question_type":"SINGLE_CHOICE","status":"DRAFT","frozen_at":null,"prompt":"Wear protective equipment?","explanation":"Follow the site procedure.","options":[{"id":110,"text":"Yes","position":1,"is_correct":true},{"id":111,"text":"No","position":2,"is_correct":false}]}
+```
+
+Only DRAFT revisions can be PATCHed. Frozen revisions return 404 for editing or
+repeated freeze. PATCH accepts the revision fields above and optional `options`
+(at most 1000 entries per request). This delegates to the existing website inline
+formset in one transaction, with the following JSON adaptation:
+
+- A new option has nonblank `text`, positive `position` (maximum 4294967295),
+  and optional `is_correct` (default false).
+- An existing option supplies its `id` and changed fields. IDs must belong to the
+  URL's revision and appear only once. Foreign/missing IDs return 404.
+- Omitted options/fields are preserved. `options: []` does not clear the key.
+- Explicit `{"id":111,"delete":true}` removes only that existing DRAFT option,
+  using the website's validated deletion path; there is no revision/question
+  deletion endpoint or implicit whole-key replacement.
+- Duplicate positions are invalid. Position gaps and existing website rules for
+  option text are preserved; no new text-uniqueness rule is invented.
+- Prompt/options/explanation changes commit together or all roll back. Omitted
+  prompt/explanation retain their exact stored formatting; explicit text values
+  retain normal form validation and whitespace normalization.
+
+Like the website, drafts may be incomplete while being authored. Freeze is a
+separate POST with `{}` and reuses the model's final validation: at least two
+options, exactly one correct option, and for TRUE_FALSE exactly two options
+labelled True and False (case-insensitive). Freeze assigns the server timestamp.
+Only frozen active-question revisions can then be attached to a draft assessment.
+Published training still requires frozen question revisions and all existing
+publication validation. No training publication endpoint is added here.
+
+### Answer visibility, atomicity and failures
+
+Answer configuration is available only through authorized revision detail or
+revision-edit/freeze responses. `view_questionrevision` grants the existing
+website detail authority; `change_questionrevision` grants the existing website
+edit/formset authority, including editing options without separate QuestionOption
+grants. QuestionOption permission labels alone grant no revision access.
+Assessment/attachment/question metadata permissions do not reveal answer keys.
+The existing learner/public APIs and their serializers remain unchanged.
+
+Version-bound writes lock version → assessment → item. Question-bank revision
+writes lock Question → revision, the same revision aggregate used by option
+model writes. Concurrent numbering and freeze/edit conflicts are serialized.
+Meaningful committed writes use the existing assessment/question/revision audit
+events. Option edits use the revision event, with metadata/boolean change flags,
+never option text, explanations, correct-answer configuration or prompt contents.
+Rejected, no-op and rolled-back writes produce no success event.
+
+Errors use the standard API envelope: 400 for malformed/unknown fields, form/model
+validation, occupied positions/sequences, or invalid references; 401 for invalid
+authentication; 403 for missing permissions/mobile eligibility; 404 for nested
+parent mismatches or immutable mutations; 409 for verified named unique-index
+conflicts, MySQL lock timeouts/deadlocks, or protected option references. Unrelated
+database failures are not mislabeled. Field errors preserve existing form field
+names (for example `module` and `question_revision`); nested option errors appear
+under `options`. Clients must map them to the corresponding `_id` inputs.
+
+Flutter assessment authoring is future work. Forms must respect independent
+permissions, load answer configuration only through authorized revision reads,
+invalidate metadata/revision caches after successful writes, and handle 401,
+403, 404 and 409 without blindly replaying mutations. No learner attempt, score,
+completion, certificate, assignment pin or private media state is changed by
+these authoring APIs.
