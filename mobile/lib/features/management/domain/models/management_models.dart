@@ -674,3 +674,210 @@ class ManagedVideoLessonDetail {
         hasVideo: (json['has_video'] as bool?) ?? false,
       );
 }
+
+class ManagedAssessment {
+  final int id;
+  final int trainingVersionId;
+  final int? moduleId;
+  final String kind;
+  final String title;
+  final int sequence;
+  final String passPercentage;
+  final int maxAttempts;
+  final int? timeLimitMinutes;
+  final bool isRequired;
+
+  const ManagedAssessment({
+    required this.id,
+    required this.trainingVersionId,
+    this.moduleId,
+    required this.kind,
+    required this.title,
+    required this.sequence,
+    this.passPercentage = '80.00',
+    this.maxAttempts = 3,
+    this.timeLimitMinutes,
+    this.isRequired = true,
+  });
+
+  bool get isFinal => kind.toUpperCase() == 'FINAL';
+  bool get isQuiz => kind.toUpperCase() == 'QUIZ';
+
+  factory ManagedAssessment.fromJson(Map<String, dynamic> json) =>
+      ManagedAssessment(
+        id: json['id'] as int,
+        trainingVersionId:
+            (json['training_version_id'] ?? json['training_version']) as int,
+        moduleId: (json['module_id'] ?? json['module']) as int?,
+        kind: (json['kind'] ?? 'QUIZ') as String,
+        title: (json['title'] ?? '') as String,
+        sequence: (json['sequence'] as num?)?.toInt() ?? 1,
+        passPercentage: json['pass_percentage']?.toString() ?? '80.00',
+        maxAttempts: (json['max_attempts'] as num?)?.toInt() ?? 3,
+        timeLimitMinutes: (json['time_limit_minutes'] as num?)?.toInt(),
+        isRequired: (json['is_required'] ?? true) as bool,
+      );
+}
+
+class ManagedAssessmentQuestion {
+  final int id;
+  final int assessmentId;
+  final int questionRevisionId;
+  final int position;
+  final String points;
+
+  const ManagedAssessmentQuestion({
+    required this.id,
+    required this.assessmentId,
+    required this.questionRevisionId,
+    required this.position,
+    this.points = '1.00',
+  });
+
+  factory ManagedAssessmentQuestion.fromJson(Map<String, dynamic> json) =>
+      ManagedAssessmentQuestion(
+        id: json['id'] as int,
+        assessmentId: (json['assessment_id'] ?? json['assessment']) as int,
+        questionRevisionId:
+            (json['question_revision_id'] ?? json['question_revision']) as int,
+        position: (json['position'] as num?)?.toInt() ?? 1,
+        points: json['points']?.toString() ?? '1.00',
+      );
+}
+
+class ManagedQuestion {
+  final int id;
+  final String code;
+  final String topic;
+  final bool isActive;
+
+  const ManagedQuestion({
+    required this.id,
+    required this.code,
+    this.topic = '',
+    this.isActive = true,
+  });
+
+  factory ManagedQuestion.fromJson(Map<String, dynamic> json) =>
+      ManagedQuestion(
+        id: json['id'] as int,
+        code: (json['code'] ?? '') as String,
+        topic: (json['topic'] ?? '') as String,
+        isActive: (json['is_active'] ?? true) as bool,
+      );
+}
+
+class ManagedQuestionOption {
+  final int id;
+  final String text;
+  final int position;
+  final bool isCorrect;
+
+  const ManagedQuestionOption({
+    required this.id,
+    required this.text,
+    required this.position,
+    this.isCorrect = false,
+  });
+
+  factory ManagedQuestionOption.fromJson(Map<String, dynamic> json) =>
+      ManagedQuestionOption(
+        id: json['id'] as int,
+        text: (json['text'] ?? '') as String,
+        position: (json['position'] as num?)?.toInt() ?? 1,
+        isCorrect: (json['is_correct'] ?? false) as bool,
+      );
+
+  Map<String, dynamic> toJson({bool delete = false}) => {
+    'id': id,
+    if (delete)
+      'delete': true
+    else ...{
+      'text': text,
+      'position': position,
+      'is_correct': isCorrect,
+    },
+  };
+}
+
+class ManagedQuestionRevisionSummary {
+  final int id;
+  final int questionId;
+  final int revisionNumber;
+  final String questionType;
+  final String status;
+  final DateTime? frozenAt;
+
+  const ManagedQuestionRevisionSummary({
+    required this.id,
+    required this.questionId,
+    required this.revisionNumber,
+    this.questionType = 'SINGLE_CHOICE',
+    this.status = 'DRAFT',
+    this.frozenAt,
+  });
+
+  bool get isFrozen => status.toUpperCase() == 'FROZEN';
+  bool get isDraft => status.toUpperCase() == 'DRAFT';
+
+  factory ManagedQuestionRevisionSummary.fromJson(Map<String, dynamic> json) =>
+      ManagedQuestionRevisionSummary(
+        id: json['id'] as int,
+        questionId: (json['question_id'] ?? json['question']) as int,
+        revisionNumber: (json['revision_number'] as num?)?.toInt() ?? 1,
+        questionType: (json['question_type'] ?? 'SINGLE_CHOICE') as String,
+        status: (json['status'] ?? 'DRAFT') as String,
+        frozenAt: json['frozen_at'] != null
+            ? DateTime.tryParse(json['frozen_at'] as String)
+            : null,
+      );
+}
+
+class ManagedQuestionRevisionDetail {
+  final int id;
+  final int questionId;
+  final int revisionNumber;
+  final String questionType;
+  final String status;
+  final DateTime? frozenAt;
+  final String prompt;
+  final String explanation;
+  final List<ManagedQuestionOption> options;
+
+  const ManagedQuestionRevisionDetail({
+    required this.id,
+    required this.questionId,
+    required this.revisionNumber,
+    this.questionType = 'SINGLE_CHOICE',
+    this.status = 'DRAFT',
+    this.frozenAt,
+    required this.prompt,
+    this.explanation = '',
+    this.options = const [],
+  });
+
+  bool get isFrozen => status.toUpperCase() == 'FROZEN';
+  bool get isDraft => status.toUpperCase() == 'DRAFT';
+
+  factory ManagedQuestionRevisionDetail.fromJson(Map<String, dynamic> json) =>
+      ManagedQuestionRevisionDetail(
+        id: json['id'] as int,
+        questionId: (json['question_id'] ?? json['question']) as int,
+        revisionNumber: (json['revision_number'] as num?)?.toInt() ?? 1,
+        questionType: (json['question_type'] ?? 'SINGLE_CHOICE') as String,
+        status: (json['status'] ?? 'DRAFT') as String,
+        frozenAt: json['frozen_at'] != null
+            ? DateTime.tryParse(json['frozen_at'] as String)
+            : null,
+        prompt: (json['prompt'] ?? '') as String,
+        explanation: (json['explanation'] ?? '') as String,
+        options:
+            (json['options'] as List<dynamic>?)
+                ?.map(
+                  (e) =>
+                      ManagedQuestionOption.fromJson(e as Map<String, dynamic>),
+                )
+                .toList() ??
+            const [],
+      );
+}

@@ -46,6 +46,11 @@ class TrainingManagementScreen extends ConsumerWidget {
     final canViewLes = canViewLessons(identity);
     final canCreateLes = canCreateLessons(identity);
     final canEditLes = canEditLessons(identity);
+    final canViewQ = canViewQuestions(identity);
+    final canCreateQ = canCreateQuestions(identity);
+    final canEditQ = canEditQuestions(identity);
+    final canCreateAss = canCreateAssessments(identity);
+    final canEditAss = canEditAssessments(identity);
 
     final canAuthor =
         canCreateCourses ||
@@ -55,7 +60,11 @@ class TrainingManagementScreen extends ConsumerWidget {
         canCreateMod ||
         canEditMod ||
         canCreateLes ||
-        canEditLes;
+        canEditLes ||
+        canCreateQ ||
+        canEditQ ||
+        canCreateAss ||
+        canEditAss;
 
     String courseCatalogValue;
     if (canCreateCourses && canEditCourses) {
@@ -113,6 +122,20 @@ class TrainingManagementScreen extends ConsumerWidget {
       lessonManagementValue = 'No lesson access';
     }
     final lessonManagementGranted = canCreateLes || canEditLes || canViewLes;
+
+    String questionBankValue;
+    if (canCreateQ && canEditQ) {
+      questionBankValue = 'Create and edit';
+    } else if (canCreateQ) {
+      questionBankValue = 'Create only';
+    } else if (canEditQ) {
+      questionBankValue = 'Edit only';
+    } else if (canViewQ) {
+      questionBankValue = 'View only';
+    } else {
+      questionBankValue = 'No bank access';
+    }
+    final questionBankGranted = canCreateQ || canEditQ || canViewQ;
 
     String assignmentValue;
     if (hasCompanyAssign) {
@@ -216,6 +239,13 @@ class TrainingManagementScreen extends ConsumerWidget {
                   const Divider(height: AppSpacing.md),
                   _capabilityRow(
                     context,
+                    label: 'Question bank',
+                    value: questionBankValue,
+                    granted: questionBankGranted,
+                  ),
+                  const Divider(height: AppSpacing.md),
+                  _capabilityRow(
+                    context,
                     label: 'Team assignments',
                     value: assignmentValue,
                     granted: assignmentGranted,
@@ -308,6 +338,58 @@ class TrainingManagementScreen extends ConsumerWidget {
                           const SizedBox(height: 2),
                           Text(
                             'Inspect all versions, lifecycle status, and curriculum structure.',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+
+            if (canViewQ) ...[
+              const SectionHeading(
+                'Question bank',
+                subtitle: 'Author and manage reusable question pool and frozen revisions for assessments.',
+              ),
+              CustomCard(
+                onTap: () => context.push('/workspace/training/questions'),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.quiz_outlined,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSecondaryContainer,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Browse question bank',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Author questions, draft revisions, configure options, and freeze for assessments.',
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
                                   color: Theme.of(context)

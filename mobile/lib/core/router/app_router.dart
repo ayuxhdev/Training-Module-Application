@@ -24,6 +24,14 @@ import 'package:training_app/features/management/presentation/screens/draft_vers
 import 'package:training_app/features/management/presentation/screens/module_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/text_lesson_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/video_lesson_form_screen.dart';
+import 'package:training_app/features/management/presentation/screens/assessment_form_screen.dart';
+import 'package:training_app/features/management/presentation/screens/assessment_question_form_screen.dart';
+import 'package:training_app/features/management/presentation/screens/managed_assessment_detail_screen.dart';
+import 'package:training_app/features/management/presentation/screens/question_bank_screen.dart';
+import 'package:training_app/features/management/presentation/screens/question_form_screen.dart';
+import 'package:training_app/features/management/presentation/screens/question_detail_screen.dart';
+import 'package:training_app/features/management/presentation/screens/question_revision_form_screen.dart';
+import 'package:training_app/features/management/presentation/screens/question_revision_detail_screen.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -103,6 +111,52 @@ bool _canAccessWorkspacePath(String path, AuthenticatedIdentity identity) {
     r'^/workspace/training/versions/[1-9][0-9]*/modules/[1-9][0-9]*/video-lessons/[1-9][0-9]*/edit$',
   ).hasMatch(path)) {
     return canAccessLessonEditForm(identity);
+  }
+  if (RegExp(r'^/workspace/training/versions/[1-9][0-9]*/assessments/new$')
+      .hasMatch(path)) {
+    return canCreateAssessments(identity);
+  }
+  if (RegExp(
+    r'^/workspace/training/versions/[1-9][0-9]*/assessments/[1-9][0-9]*/edit$',
+  ).hasMatch(path)) {
+    return canAccessAssessmentEditForm(identity);
+  }
+  if (RegExp(
+    r'^/workspace/training/versions/[1-9][0-9]*/assessments/[1-9][0-9]*/questions/new$',
+  ).hasMatch(path)) {
+    return canCreateAssessmentQuestions(identity);
+  }
+  if (RegExp(
+    r'^/workspace/training/versions/[1-9][0-9]*/assessments/[1-9][0-9]*/questions/[1-9][0-9]*/edit$',
+  ).hasMatch(path)) {
+    return canAccessAssessmentQuestionEditForm(identity);
+  }
+  if (RegExp(
+    r'^/workspace/training/versions/[1-9][0-9]*/assessments/[1-9][0-9]*$',
+  ).hasMatch(path)) {
+    return canViewAssessments(identity);
+  }
+  if (path == '/workspace/training/questions') {
+    return canViewQuestions(identity);
+  }
+  if (path == '/workspace/training/questions/new') {
+    return canCreateQuestions(identity);
+  }
+  if (RegExp(r'^/workspace/training/questions/[1-9][0-9]*/edit$')
+      .hasMatch(path)) {
+    return canAccessQuestionEditForm(identity);
+  }
+  if (RegExp(r'^/workspace/training/questions/[1-9][0-9]*/revisions/new$')
+      .hasMatch(path)) {
+    return canCreateQuestionRevisions(identity);
+  }
+  if (RegExp(
+    r'^/workspace/training/questions/[1-9][0-9]*/revisions/[1-9][0-9]*$',
+  ).hasMatch(path)) {
+    return canViewQuestionRevisions(identity);
+  }
+  if (RegExp(r'^/workspace/training/questions/[1-9][0-9]*$').hasMatch(path)) {
+    return canViewQuestions(identity);
   }
   if (path == '/workspace/employees' ||
       path.startsWith('/workspace/employees/')) {
@@ -511,6 +565,219 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 moduleId: moduleId,
                 lessonId: lessonId,
                 initialLesson: state.extra,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/versions/:versionId/assessments/new',
+            builder: (_, state) {
+              final versionId = int.tryParse(
+                state.pathParameters['versionId'] ?? '',
+              );
+              if (versionId == null || versionId <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid version ID'),
+                );
+              }
+              final extra = state.extra;
+              return AssessmentFormScreen(
+                versionId: versionId,
+                versionDetail: extra is ManagedVersionDetail ? extra : null,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/versions/:versionId/assessments/:assessmentId/edit',
+            builder: (_, state) {
+              final versionId = int.tryParse(
+                state.pathParameters['versionId'] ?? '',
+              );
+              final assessmentId = int.tryParse(
+                state.pathParameters['assessmentId'] ?? '',
+              );
+              if (versionId == null ||
+                  versionId <= 0 ||
+                  assessmentId == null ||
+                  assessmentId <= 0) {
+                return const Scaffold(
+                  body: ErrorView(
+                    message: 'Invalid assessment route parameters',
+                  ),
+                );
+              }
+              final extra = state.extra;
+              return AssessmentFormScreen(
+                versionId: versionId,
+                assessmentId: assessmentId,
+                initialAssessment: extra is ManagedAssessment ? extra : null,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/versions/:versionId/assessments/:assessmentId/questions/new',
+            builder: (_, state) {
+              final versionId = int.tryParse(
+                state.pathParameters['versionId'] ?? '',
+              );
+              final assessmentId = int.tryParse(
+                state.pathParameters['assessmentId'] ?? '',
+              );
+              if (versionId == null ||
+                  versionId <= 0 ||
+                  assessmentId == null ||
+                  assessmentId <= 0) {
+                return const Scaffold(
+                  body: ErrorView(
+                    message: 'Invalid assessment route parameters',
+                  ),
+                );
+              }
+              return AssessmentQuestionFormScreen(
+                versionId: versionId,
+                assessmentId: assessmentId,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/versions/:versionId/assessments/:assessmentId/questions/:itemId/edit',
+            builder: (_, state) {
+              final versionId = int.tryParse(
+                state.pathParameters['versionId'] ?? '',
+              );
+              final assessmentId = int.tryParse(
+                state.pathParameters['assessmentId'] ?? '',
+              );
+              final itemId = int.tryParse(state.pathParameters['itemId'] ?? '');
+              if (versionId == null ||
+                  versionId <= 0 ||
+                  assessmentId == null ||
+                  assessmentId <= 0 ||
+                  itemId == null ||
+                  itemId <= 0) {
+                return const Scaffold(
+                  body: ErrorView(
+                    message: 'Invalid assessment question route parameters',
+                  ),
+                );
+              }
+              final extra = state.extra;
+              return AssessmentQuestionFormScreen(
+                versionId: versionId,
+                assessmentId: assessmentId,
+                itemId: itemId,
+                initialItem: extra is ManagedAssessmentQuestion ? extra : null,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/versions/:versionId/assessments/:assessmentId',
+            builder: (_, state) {
+              final versionId = int.tryParse(
+                state.pathParameters['versionId'] ?? '',
+              );
+              final assessmentId = int.tryParse(
+                state.pathParameters['assessmentId'] ?? '',
+              );
+              if (versionId == null ||
+                  versionId <= 0 ||
+                  assessmentId == null ||
+                  assessmentId <= 0) {
+                return const Scaffold(
+                  body: ErrorView(
+                    message: 'Invalid assessment route parameters',
+                  ),
+                );
+              }
+              return ManagedAssessmentDetailScreen(
+                versionId: versionId,
+                assessmentId: assessmentId,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/questions',
+            builder: (_, _) => const QuestionBankScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/training/questions/new',
+            builder: (_, _) => const QuestionFormScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/training/questions/:questionId/edit',
+            builder: (_, state) {
+              final questionId = int.tryParse(
+                state.pathParameters['questionId'] ?? '',
+              );
+              if (questionId == null || questionId <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid question ID'),
+                );
+              }
+              final extra = state.extra;
+              return QuestionFormScreen(
+                questionId: questionId,
+                initialQuestion: extra is ManagedQuestion ? extra : null,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/questions/:questionId/revisions/new',
+            builder: (_, state) {
+              final questionId = int.tryParse(
+                state.pathParameters['questionId'] ?? '',
+              );
+              if (questionId == null || questionId <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid question ID'),
+                );
+              }
+              return QuestionRevisionFormScreen(questionId: questionId);
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/questions/:questionId/revisions/:revisionId',
+            builder: (_, state) {
+              final questionId = int.tryParse(
+                state.pathParameters['questionId'] ?? '',
+              );
+              final revisionId = int.tryParse(
+                state.pathParameters['revisionId'] ?? '',
+              );
+              if (questionId == null ||
+                  questionId <= 0 ||
+                  revisionId == null ||
+                  revisionId <= 0) {
+                return const Scaffold(
+                  body: ErrorView(
+                    message: 'Invalid question revision route parameters',
+                  ),
+                );
+              }
+              final extra = state.extra;
+              return QuestionRevisionDetailScreen(
+                questionId: questionId,
+                revisionId: revisionId,
+                initialSummary: extra is ManagedQuestionRevisionSummary
+                    ? extra
+                    : null,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/training/questions/:questionId',
+            builder: (_, state) {
+              final questionId = int.tryParse(
+                state.pathParameters['questionId'] ?? '',
+              );
+              if (questionId == null || questionId <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid question ID'),
+                );
+              }
+              final extra = state.extra;
+              return QuestionDetailScreen(
+                questionId: questionId,
+                initialQuestion: extra is ManagedQuestion ? extra : null,
               );
             },
           ),

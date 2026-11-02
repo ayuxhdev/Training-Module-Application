@@ -854,6 +854,8 @@ void main() {
       final retryButton = find.text('Retry');
       expect(retryButton, findsOneWidget);
 
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
       await tester.tap(retryButton);
       await tester.pumpAndSettle();
 

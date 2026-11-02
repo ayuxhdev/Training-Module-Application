@@ -13,13 +13,23 @@ import 'package:training_app/features/auth/presentation/controllers/auth_control
 import 'package:training_app/features/management/presentation/components/curriculum_components.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 
-class ManagedVersionDetailScreen extends ConsumerWidget {
+class ManagedVersionDetailScreen extends ConsumerStatefulWidget {
   final int versionId;
 
   const ManagedVersionDetailScreen({super.key, required this.versionId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ManagedVersionDetailScreen> createState() =>
+      _ManagedVersionDetailScreenState();
+}
+
+class _ManagedVersionDetailScreenState
+    extends ConsumerState<ManagedVersionDetailScreen> {
+  int _assessmentsPage = 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final versionId = widget.versionId;
     final auth = ref.watch(authControllerProvider);
     if (auth is! AuthAuthenticated || !canViewVersions(auth.identity)) {
       return Scaffold(
@@ -71,6 +81,9 @@ class ManagedVersionDetailScreen extends ConsumerWidget {
             (sum, m) => sum + m.lessons.length,
           );
           final status = version.status.toUpperCase();
+          final canViewAss = canViewAssessments(identity);
+          final canCreateAss =
+              status == 'DRAFT' && canCreateAssessments(identity);
           final lifecyclePolicy = switch (status) {
             'PUBLISHED' => 'This version is PUBLISHED and immutable. Content cannot be edited or deleted. Active learner assignments are pinned to this version.',
             'DRAFT' => 'This version is in DRAFT. Content, modules, lessons, and media can be configured before publication.',
@@ -81,6 +94,9 @@ class ManagedVersionDetailScreen extends ConsumerWidget {
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(managedVersionDetailProvider(versionId));
+              if (canViewAssessments(identity)) {
+                ref.invalidate(managedVersionAssessmentsProvider);
+              }
               await ref.read(managedVersionDetailProvider(versionId).future);
             },
             child: ListView(
@@ -263,6 +279,215 @@ class ManagedVersionDetailScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                if (canViewAss || canCreateAss) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                        child: SectionHeading(
+                          'Assessments',
+                          subtitle: 'Module quizzes and final assessments configured for this version.',
+                        ),
+                      ),
+                      if (canCreateAss)
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.add),
+                          label: const Text('Create assessment'),
+                          onPressed: () => context.push(
+                            '/workspace/training/versions/$versionId/assessments/new',
+                            extra: version,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  if (canViewAss)
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final assessmentsAsync = ref.watch(
+                          managedVersionAssessmentsProvider((
+                            versionId: versionId,
+                            page: _assessmentsPage,
+                          )),
+                        );
+                        return assessmentsAsync.when(
+                          loading: () => const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(AppSpacing.md),
+                              child: CircularProgressIndicator(),
+                            ),
+                          ),
+                          error: (err, _) => CustomCard(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Error loading assessments: $err'),
+                                const SizedBox(height: AppSpacing.sm),
+                                TextButton.icon(
+                                  onPressed: () => ref.refresh(
+                                    managedVersionAssessmentsProvider((
+                                      versionId: versionId,
+                                      page: _assessmentsPage,
+                                    )).future,
+                                  ),
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Retry'),
+                                ),
+                              ],
+                            ),
+                          ),
+                          data: (page) {
+                            final assessments = page.items;
+                            if (assessments.isEmpty) {
+                              return const EmptyView(
+                                message: 'No assessments configured for this version.',
+                                icon: Icons.quiz_outlined,
+                              );
+                            }
+                            return Column(
+                              children: [
+                                ...assessments.map((assessment) {
+                                  final isQuiz = assessment.isQuiz;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(
+                                      bottom: AppSpacing.sm,
+                                    ),
+                                    child: CustomCard(
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(12),
+                                        onTap: () {
+                                          context.push(
+                                            '/workspace/training/versions/$versionId/assessments/${assessment.id}',
+                                            extra: assessment,
+                                          );
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(
+                                            AppSpacing.sm,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              CircleAvatar(
+                                                radius: 18,
+                                                backgroundColor: isQuiz
+                                                    ? Theme.of(context)
+                                                          .colorScheme
+                                                          .primaryContainer
+                                                    : Theme.of(context)
+                                                          .colorScheme
+                                                          .tertiaryContainer,
+                                                child: Icon(
+                                                  isQuiz
+                                                      ? Icons.quiz_outlined
+                                                      : Icons
+                                                            .military_tech_outlined,
+                                                  size: 20,
+                                                  color: isQuiz
+                                                      ? Theme.of(context)
+                                                            .colorScheme
+                                                            .onPrimaryContainer
+                                                      : Theme.of(context)
+                                                            .colorScheme
+                                                            .onTertiaryContainer,
+                                                ),
+                                              ),
+                                              const SizedBox(
+                                                width: AppSpacing.md,
+                                              ),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      assessment.title,
+                                                      style: Theme.of(context)
+                                                          .textTheme
+                                                          .titleSmall
+                                                          ?.copyWith(
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      '${assessment.kind} · Pass: ${assessment.passPercentage}% · Max attempts: ${assessment.maxAttempts}',
+                                                      style: Theme.of(context)
+                                                          .textTheme
+                                                          .bodySmall
+                                                          ?.copyWith(
+                                                            color: Theme.of(context)
+                                                                .colorScheme
+                                                                .onSurfaceVariant,
+                                                          ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              StatusBadge(
+                                                text: assessment.kind,
+                                                status: isQuiz
+                                                    ? BadgeStatus.info
+                                                    : BadgeStatus.success,
+                                              ),
+                                              const SizedBox(
+                                                width: AppSpacing.xs,
+                                              ),
+                                              const Icon(
+                                                Icons.chevron_right,
+                                                size: 20,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }),
+                                if (page.hasMore || _assessmentsPage > 1)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: AppSpacing.sm,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        TextButton.icon(
+                                          icon: const Icon(Icons.chevron_left),
+                                          label: const Text('Previous'),
+                                          onPressed: _assessmentsPage > 1
+                                              ? () => setState(
+                                                  () => _assessmentsPage--,
+                                                )
+                                              : null,
+                                        ),
+                                        Text(
+                                          'Page $_assessmentsPage · ${page.count} total',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
+                                        ),
+                                        TextButton.icon(
+                                          label: const Text('Next'),
+                                          icon: const Icon(Icons.chevron_right),
+                                          onPressed: page.hasMore
+                                              ? () => setState(
+                                                  () => _assessmentsPage++,
+                                                )
+                                              : null,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    ),
+                ],
               ],
             ),
           );

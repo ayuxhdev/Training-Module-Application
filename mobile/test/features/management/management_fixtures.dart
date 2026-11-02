@@ -483,3 +483,108 @@ Map<String, dynamic> managedVersionDetailJson({
   'published_at': publishedAt,
   'modules': modules ?? [managedModuleJson()],
 };
+
+Map<String, dynamic> managedAssessmentJson({
+  int id = 1,
+  int trainingVersionId = 20,
+  int? moduleId = 51,
+  String kind = 'QUIZ',
+  String title = 'Module 1 Quiz',
+  int sequence = 1,
+  String passPercentage = '80.00',
+  int maxAttempts = 3,
+  int? timeLimitMinutes,
+  bool isRequired = true,
+}) => {
+  'id': id,
+  'training_version_id': trainingVersionId,
+  'module_id': moduleId,
+  'kind': kind,
+  'title': title,
+  'sequence': sequence,
+  'pass_percentage': passPercentage,
+  'max_attempts': maxAttempts,
+  'time_limit_minutes': timeLimitMinutes,
+  'is_required': isRequired,
+};
+
+Map<String, dynamic> managedAssessmentQuestionJson({
+  int id = 1,
+  int assessmentId = 1,
+  int questionRevisionId = 10,
+  int position = 1,
+  String points = '1.00',
+}) => {
+  'id': id,
+  'assessment_id': assessmentId,
+  'question_revision_id': questionRevisionId,
+  'position': position,
+  'points': points,
+};
+
+Map<String, dynamic> managedQuestionJson({
+  int id = 5,
+  String code = 'SEC-001',
+  String topic = 'Safety Equipment',
+  bool isActive = true,
+}) => {'id': id, 'code': code, 'topic': topic, 'is_active': isActive};
+
+Map<String, dynamic> managedQuestionRevisionSummaryJson({
+  int id = 10,
+  int questionId = 5,
+  int revisionNumber = 1,
+  String questionType = 'SINGLE_CHOICE',
+  String status = 'DRAFT',
+  String? frozenAt,
+}) => {
+  'id': id,
+  'question_id': questionId,
+  'revision_number': revisionNumber,
+  'question_type': questionType,
+  'status': status,
+  'frozen_at': frozenAt,
+};
+
+Map<String, dynamic> managedQuestionOptionJson({
+  int id = 101,
+  String text = 'Gloves and safety goggles',
+  int position = 1,
+  bool isCorrect = true,
+}) => {'id': id, 'text': text, 'position': position, 'is_correct': isCorrect};
+
+Map<String, dynamic> managedQuestionRevisionDetailJson({
+  int id = 10,
+  int questionId = 5,
+  int revisionNumber = 1,
+  String questionType = 'SINGLE_CHOICE',
+  String status = 'DRAFT',
+  String? frozenAt,
+  String prompt = 'What PPE is required when handling chemicals?',
+  String explanation = 'Gloves and safety goggles are strictly mandatory.',
+  List<Map<String, dynamic>>? options,
+}) => {
+  'id': id,
+  'question_id': questionId,
+  'revision_number': revisionNumber,
+  'question_type': questionType,
+  'status': status,
+  'frozen_at': frozenAt,
+  'prompt': prompt,
+  'explanation': explanation,
+  'options':
+      options ??
+      [
+        managedQuestionOptionJson(
+          id: 101,
+          text: 'Gloves and safety goggles',
+          position: 1,
+          isCorrect: true,
+        ),
+        managedQuestionOptionJson(
+          id: 102,
+          text: 'No PPE required',
+          position: 2,
+          isCorrect: false,
+        ),
+      ],
+};

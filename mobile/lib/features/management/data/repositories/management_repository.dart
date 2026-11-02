@@ -728,6 +728,548 @@ class ManagementRepository {
     }
   }
 
+  Future<ManagementPage<ManagedAssessment>> assessments(
+    int versionId, {
+    int? page,
+    int? pageSize,
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    return _get(
+      'versions/$versionId/assessments/',
+      (json) => ManagementPage.fromJson(json, ManagedAssessment.fromJson),
+      page: page,
+      pageSize: pageSize,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedAssessment> assessmentDetail(
+    int versionId,
+    int assessmentId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (assessmentId <= 0) {
+      throw ArgumentError.value(assessmentId, 'assessmentId');
+    }
+    return _get(
+      'versions/$versionId/assessments/$assessmentId/',
+      ManagedAssessment.fromJson,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedAssessment> createAssessment(
+    int versionId, {
+    required String kind,
+    required String title,
+    int? moduleId,
+    int? sequence,
+    double? passPercentage,
+    int? maxAttempts,
+    int? timeLimitMinutes,
+    bool? isRequired,
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    final normalizedTitle = title.trim();
+    if (normalizedTitle.isEmpty || normalizedTitle.length > 200) {
+      throw ArgumentError.value(title, 'title');
+    }
+    final normalizedKind = kind.toUpperCase();
+    if (normalizedKind != 'QUIZ' && normalizedKind != 'FINAL') {
+      throw ArgumentError.value(kind, 'kind');
+    }
+    final data = <String, dynamic>{
+      'kind': normalizedKind,
+      'title': normalizedTitle,
+      'module_id': ?moduleId,
+      'sequence': ?sequence,
+      if (passPercentage != null)
+        'pass_percentage': passPercentage.toStringAsFixed(2),
+      'max_attempts': ?maxAttempts,
+      'time_limit_minutes': ?timeLimitMinutes,
+      'is_required': ?isRequired,
+    };
+    try {
+      final response = await apiClient.dio.post(
+        '/management/versions/$versionId/assessments/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 201) {
+        throw const FormatException(
+          'Assessment creation returned an unexpected status.',
+        );
+      }
+      return ManagedAssessment.fromJson(response.data as Map<String, dynamic>);
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagedAssessment> updateAssessment(
+    int versionId,
+    int assessmentId, {
+    String? kind,
+    String? title,
+    int? moduleId,
+    bool clearModuleId = false,
+    int? sequence,
+    double? passPercentage,
+    int? maxAttempts,
+    int? timeLimitMinutes,
+    bool clearTimeLimit = false,
+    bool? isRequired,
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (assessmentId <= 0) {
+      throw ArgumentError.value(assessmentId, 'assessmentId');
+    }
+    final data = <String, dynamic>{};
+    if (kind != null) {
+      data['kind'] = kind.toUpperCase();
+    }
+    if (title != null) {
+      final normalizedTitle = title.trim();
+      if (normalizedTitle.isEmpty || normalizedTitle.length > 200) {
+        throw ArgumentError.value(title, 'title');
+      }
+      data['title'] = normalizedTitle;
+    }
+    if (clearModuleId) {
+      data['module_id'] = null;
+    } else if (moduleId != null) {
+      data['module_id'] = moduleId;
+    }
+    if (sequence != null) {
+      data['sequence'] = sequence;
+    }
+    if (passPercentage != null) {
+      data['pass_percentage'] = passPercentage.toStringAsFixed(2);
+    }
+    if (maxAttempts != null) {
+      data['max_attempts'] = maxAttempts;
+    }
+    if (clearTimeLimit) {
+      data['time_limit_minutes'] = null;
+    } else if (timeLimitMinutes != null) {
+      data['time_limit_minutes'] = timeLimitMinutes;
+    }
+    if (isRequired != null) {
+      data['is_required'] = isRequired;
+    }
+    if (data.isEmpty) {
+      throw ArgumentError('At least one field must be provided for update.');
+    }
+    try {
+      final response = await apiClient.dio.patch(
+        '/management/versions/$versionId/assessments/$assessmentId/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 200) {
+        throw const FormatException(
+          'Assessment update returned an unexpected status.',
+        );
+      }
+      return ManagedAssessment.fromJson(response.data as Map<String, dynamic>);
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagementPage<ManagedAssessmentQuestion>> assessmentQuestions(
+    int versionId,
+    int assessmentId, {
+    int? page,
+    int? pageSize,
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (assessmentId <= 0) {
+      throw ArgumentError.value(assessmentId, 'assessmentId');
+    }
+    return _get(
+      'versions/$versionId/assessments/$assessmentId/questions/',
+      (json) =>
+          ManagementPage.fromJson(json, ManagedAssessmentQuestion.fromJson),
+      page: page,
+      pageSize: pageSize,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedAssessmentQuestion> assessmentQuestionDetail(
+    int versionId,
+    int assessmentId,
+    int itemId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (assessmentId <= 0) {
+      throw ArgumentError.value(assessmentId, 'assessmentId');
+    }
+    if (itemId <= 0) throw ArgumentError.value(itemId, 'itemId');
+    return _get(
+      'versions/$versionId/assessments/$assessmentId/questions/$itemId/',
+      ManagedAssessmentQuestion.fromJson,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedAssessmentQuestion> createAssessmentQuestion(
+    int versionId,
+    int assessmentId, {
+    required int questionRevisionId,
+    required int position,
+    double? points,
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (assessmentId <= 0) {
+      throw ArgumentError.value(assessmentId, 'assessmentId');
+    }
+    if (questionRevisionId <= 0) {
+      throw ArgumentError.value(questionRevisionId, 'questionRevisionId');
+    }
+    if (position <= 0) throw ArgumentError.value(position, 'position');
+    final data = <String, dynamic>{
+      'question_revision_id': questionRevisionId,
+      'position': position,
+      if (points != null) 'points': points.toStringAsFixed(2),
+    };
+    try {
+      final response = await apiClient.dio.post(
+        '/management/versions/$versionId/assessments/$assessmentId/questions/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 201) {
+        throw const FormatException(
+          'Assessment question creation returned an unexpected status.',
+        );
+      }
+      return ManagedAssessmentQuestion.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagedAssessmentQuestion> updateAssessmentQuestion(
+    int versionId,
+    int assessmentId,
+    int itemId, {
+    int? questionRevisionId,
+    int? position,
+    double? points,
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    if (assessmentId <= 0) {
+      throw ArgumentError.value(assessmentId, 'assessmentId');
+    }
+    if (itemId <= 0) throw ArgumentError.value(itemId, 'itemId');
+    final data = <String, dynamic>{};
+    if (questionRevisionId != null) {
+      if (questionRevisionId <= 0) {
+        throw ArgumentError.value(questionRevisionId, 'questionRevisionId');
+      }
+      data['question_revision_id'] = questionRevisionId;
+    }
+    if (position != null) {
+      if (position <= 0) throw ArgumentError.value(position, 'position');
+      data['position'] = position;
+    }
+    if (points != null) {
+      data['points'] = points.toStringAsFixed(2);
+    }
+    if (data.isEmpty) {
+      throw ArgumentError('At least one field must be provided for update.');
+    }
+    try {
+      final response = await apiClient.dio.patch(
+        '/management/versions/$versionId/assessments/$assessmentId/questions/$itemId/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 200) {
+        throw const FormatException(
+          'Assessment question update returned an unexpected status.',
+        );
+      }
+      return ManagedAssessmentQuestion.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagementPage<ManagedQuestion>> questions({
+    int? page,
+    int? pageSize,
+    String? search,
+    bool? isActive,
+    CancelToken? cancelToken,
+  }) async {
+    return _get(
+      'questions/',
+      (json) => ManagementPage.fromJson(json, ManagedQuestion.fromJson),
+      page: page,
+      pageSize: pageSize,
+      additionalQueryParameters: {
+        if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+        'is_active': ?isActive,
+      },
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedQuestion> questionDetail(
+    int questionId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (questionId <= 0) throw ArgumentError.value(questionId, 'questionId');
+    return _get(
+      'questions/$questionId/',
+      ManagedQuestion.fromJson,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedQuestion> createQuestion({
+    required String code,
+    String? topic,
+    bool? isActive,
+    CancelToken? cancelToken,
+  }) async {
+    final normalizedCode = code.trim();
+    if (normalizedCode.isEmpty || normalizedCode.length > 40) {
+      throw ArgumentError.value(code, 'code');
+    }
+    final data = <String, dynamic>{
+      'code': normalizedCode,
+      if (topic != null) 'topic': topic.trim(),
+      'is_active': ?isActive,
+    };
+    try {
+      final response = await apiClient.dio.post(
+        '/management/questions/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 201) {
+        throw const FormatException(
+          'Question creation returned an unexpected status.',
+        );
+      }
+      return ManagedQuestion.fromJson(response.data as Map<String, dynamic>);
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagedQuestion> updateQuestion(
+    int questionId, {
+    String? code,
+    String? topic,
+    bool? isActive,
+    CancelToken? cancelToken,
+  }) async {
+    if (questionId <= 0) throw ArgumentError.value(questionId, 'questionId');
+    final data = <String, dynamic>{};
+    if (code != null) {
+      final normalizedCode = code.trim();
+      if (normalizedCode.isEmpty || normalizedCode.length > 40) {
+        throw ArgumentError.value(code, 'code');
+      }
+      data['code'] = normalizedCode;
+    }
+    if (topic != null) {
+      data['topic'] = topic.trim();
+    }
+    if (isActive != null) {
+      data['is_active'] = isActive;
+    }
+    if (data.isEmpty) {
+      throw ArgumentError('At least one field must be provided for update.');
+    }
+    try {
+      final response = await apiClient.dio.patch(
+        '/management/questions/$questionId/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 200) {
+        throw const FormatException(
+          'Question update returned an unexpected status.',
+        );
+      }
+      return ManagedQuestion.fromJson(response.data as Map<String, dynamic>);
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagementPage<ManagedQuestionRevisionSummary>> questionRevisions(
+    int questionId, {
+    int? page,
+    int? pageSize,
+    CancelToken? cancelToken,
+  }) async {
+    if (questionId <= 0) throw ArgumentError.value(questionId, 'questionId');
+    return _get(
+      'questions/$questionId/revisions/',
+      (json) => ManagementPage.fromJson(
+        json,
+        ManagedQuestionRevisionSummary.fromJson,
+      ),
+      page: page,
+      pageSize: pageSize,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedQuestionRevisionDetail> questionRevisionDetail(
+    int questionId,
+    int revisionId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (questionId <= 0) throw ArgumentError.value(questionId, 'questionId');
+    if (revisionId <= 0) throw ArgumentError.value(revisionId, 'revisionId');
+    return _get(
+      'questions/$questionId/revisions/$revisionId/',
+      ManagedQuestionRevisionDetail.fromJson,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedQuestionRevisionSummary> createQuestionRevision(
+    int questionId, {
+    required String prompt,
+    String? questionType,
+    String? explanation,
+    CancelToken? cancelToken,
+  }) async {
+    if (questionId <= 0) throw ArgumentError.value(questionId, 'questionId');
+    final normalizedPrompt = prompt.trim();
+    if (normalizedPrompt.isEmpty) throw ArgumentError.value(prompt, 'prompt');
+    final data = <String, dynamic>{
+      'prompt': normalizedPrompt,
+      'question_type': ?questionType,
+      if (explanation != null) 'explanation': explanation.trim(),
+    };
+    try {
+      final response = await apiClient.dio.post(
+        '/management/questions/$questionId/revisions/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 201) {
+        throw const FormatException(
+          'Question revision creation returned an unexpected status.',
+        );
+      }
+      return ManagedQuestionRevisionSummary.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagedQuestionRevisionDetail> updateQuestionRevision(
+    int questionId,
+    int revisionId, {
+    String? questionType,
+    String? prompt,
+    String? explanation,
+    List<Map<String, dynamic>>? options,
+    CancelToken? cancelToken,
+  }) async {
+    if (questionId <= 0) throw ArgumentError.value(questionId, 'questionId');
+    if (revisionId <= 0) throw ArgumentError.value(revisionId, 'revisionId');
+    final data = <String, dynamic>{};
+    if (questionType != null) {
+      final normalizedType = questionType.trim().toUpperCase();
+      if (normalizedType.isEmpty) {
+        throw ArgumentError.value(questionType, 'questionType');
+      }
+      data['question_type'] = normalizedType;
+    }
+    if (prompt != null) {
+      final normalizedPrompt = prompt.trim();
+      if (normalizedPrompt.isEmpty) throw ArgumentError.value(prompt, 'prompt');
+      data['prompt'] = normalizedPrompt;
+    }
+    if (explanation != null) {
+      data['explanation'] = explanation.trim();
+    }
+    if (options != null) {
+      data['options'] = options;
+    }
+    if (data.isEmpty) {
+      throw ArgumentError('At least one field must be provided for update.');
+    }
+    try {
+      final response = await apiClient.dio.patch(
+        '/management/questions/$questionId/revisions/$revisionId/',
+        data: data,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 200) {
+        throw const FormatException(
+          'Question revision update returned an unexpected status.',
+        );
+      }
+      return ManagedQuestionRevisionDetail.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<ManagedQuestionRevisionDetail> freezeQuestionRevision(
+    int questionId,
+    int revisionId, {
+    CancelToken? cancelToken,
+  }) async {
+    if (questionId <= 0) throw ArgumentError.value(questionId, 'questionId');
+    if (revisionId <= 0) throw ArgumentError.value(revisionId, 'revisionId');
+    try {
+      final response = await apiClient.dio.post(
+        '/management/questions/$questionId/revisions/$revisionId/freeze/',
+        data: const <String, dynamic>{},
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 200) {
+        throw const FormatException(
+          'Question revision freeze returned an unexpected status.',
+        );
+      }
+      return ManagedQuestionRevisionDetail.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
   Future<CreatedAssignment> assignTraining({
     required int employeeId,
     required int trainingVersionId,
