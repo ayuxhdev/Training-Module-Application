@@ -24,6 +24,26 @@ fun main() {
         }
     }
 
+    scenario("pending result completes exactly once across destruction and late handoff") { _ ->
+        val pending = VideoPickerPendingResult<String>()
+        check(pending.begin("flutter-picker-result"))
+        check(!pending.begin("duplicate-result"))
+        check(pending.peek() == "flutter-picker-result")
+        check(pending.destroy() == "flutter-picker-result")
+        check(pending.take() == null)
+        check(pending.peek() == null)
+        check(!pending.isPending())
+        check(!pending.begin("late-result"))
+    }
+
+    scenario("late activity result cannot replace an already completed result") { _ ->
+        val pending = VideoPickerPendingResult<String>()
+        check(pending.begin("first-result"))
+        check(pending.take() == "first-result")
+        check(pending.peek() == null)
+        check(pending.take() == null)
+    }
+
     scenario("bounded successful copy, single handoff and claimed-file preservation") { directory ->
         val lifecycle = VideoPickerCopyLifecycle()
         val file = File(directory, "video.mp4")

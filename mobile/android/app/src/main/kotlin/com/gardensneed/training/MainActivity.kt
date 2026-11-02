@@ -38,7 +38,7 @@ class MainActivity : FlutterActivity() {
     private var navigationVisible = true
     private var previousBarsBehavior = 0
 
-    private var pendingPickerResult: MethodChannel.Result? = null
+    private val pendingPickerResult = VideoPickerPendingResult<MethodChannel.Result>()
     private val backgroundExecutor = Executors.newSingleThreadExecutor()
     private val videoCopyLifecycle = VideoPickerCopyLifecycle()
     private var videoPickerChannel: MethodChannel? = null
@@ -104,11 +104,14 @@ class MainActivity : FlutterActivity() {
         videoPickerChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "pickVideo" -> {
-                    if (pendingPickerResult != null || copyingVideo) {
+                    if (pendingPickerResult.isPending() || copyingVideo) {
                         result.error("ALREADY_ACTIVE", "A video selection is already in progress", null)
                         return@setMethodCallHandler
                     }
-                    pendingPickerResult = result
+                    if (!pendingPickerResult.begin(result)) {
+                        result.error("ALREADY_ACTIVE", "A video selection is already in progress", null)
+                        return@setMethodCallHandler
+                    }
                     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                         addCategory(Intent.CATEGORY_OPENABLE)
                         type = "video/*"
@@ -125,8 +128,11 @@ class MainActivity : FlutterActivity() {
                             }
                             startActivityForResult(fallback, REQUEST_CODE_PICK_VIDEO)
                         } catch (ex: Exception) {
-                            pendingPickerResult = null
-                            result.error("NO_ACTIVITY", "No application available to pick video files", ex.message)
+                            pendingPickerResult.take()?.error(
+                                "NO_ACTIVITY",
+                                "No application available to pick video files",
+                                ex.message,
+                            )
                         }
                     }
                 }
@@ -146,10 +152,9 @@ class MainActivity : FlutterActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_CODE_PICK_VIDEO || !videoCopyLifecycle.isAlive()) return
-        val pickerResult = pendingPickerResult ?: return
-        pendingPickerResult = null
+        val pickerResult = pendingPickerResult.peek() ?: return
         if (resultCode != Activity.RESULT_OK || data?.data == null) {
-            pickerResult.success(null)
+            pendingPickerResult.take()?.success(null)
             return
         }
 
@@ -184,14 +189,23 @@ class MainActivity : FlutterActivity() {
                 // The lifecycle retains ownership until this main-thread handoff.
                 runOnUiThread {
                     copyingVideo = false
-                    videoCopyLifecycle.deliver(target) { pickerResult.success(response) }
+                    val result = pendingPickerResult.take()
+                    if (result != null) {
+                        videoCopyLifecycle.deliver(target) { result.success(response) }
+                    } else {
+                        videoCopyLifecycle.deliver(target) {}
+                    }
                 }
             } catch (e: Exception) {
                 tempFile?.let { videoCopyLifecycle.abandon(it) }
                 runOnUiThread {
                     copyingVideo = false
                     if (videoCopyLifecycle.isAlive()) {
-                        pickerResult.error("STREAM_ERROR", e.message ?: "Failed to read selected video", null)
+                        pendingPickerResult.take()?.error(
+                            "STREAM_ERROR",
+                            e.message ?: "Failed to read selected video",
+                            null,
+                        )
                     }
                 }
             }
@@ -200,9 +214,15 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         videoPickerChannel?.setMethodCallHandler(null)
-        pendingPickerResult = null
+        val pendingResult = pendingPickerResult.destroy()
         val cancelledInputs = videoCopyLifecycle.destroy()
         backgroundExecutor.shutdownNow()
+        copyingVideo = false
+        try {
+            pendingResult?.success(null)
+        } catch (_: Exception) {
+            // The Flutter engine or messenger may already be detached during destruction.
+        }
         // A provider's close() may block. Never perform it on Android's UI thread.
         if (cancelledInputs.isNotEmpty()) {
             Thread({
@@ -330,5 +350,40 @@ internal class VideoPickerCopyLifecycle {
         override fun close() {
             if (closed.compareAndSet(false, true)) super.close()
         }
+    }
+}
+
+/** Own a single native-to-Flutter result until one lifecycle owner completes it. */
+internal class VideoPickerPendingResult<T> {
+    private val lock = Any()
+    private var pending: T? = null
+    private var destroyed = false
+
+    fun begin(result: T): Boolean = synchronized(lock) {
+        if (destroyed || pending != null) return false
+        pending = result
+        true
+    }
+
+    fun peek(): T? = synchronized(lock) {
+        if (destroyed) null else pending
+    }
+
+    fun take(): T? = synchronized(lock) {
+        if (destroyed) return null
+        val result = pending
+        pending = null
+        result
+    }
+
+    fun destroy(): T? = synchronized(lock) {
+        destroyed = true
+        val result = pending
+        pending = null
+        result
+    }
+
+    fun isPending(): Boolean = synchronized(lock) {
+        !destroyed && pending != null
     }
 }
