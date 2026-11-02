@@ -452,6 +452,72 @@ class AssessmentManagementAPITests(CurriculumTestCase):
         self.authenticate(self.employee_user)
         self.assertEqual(self.client.patch(self.revision_url(), {}, format="json").status_code, 403)
 
+    def test_question_list_optional_active_filter(self):
+        inactive = Question.objects.create(code="FILTER-INACTIVE", is_active=False, created_by=self.user)
+        self.authenticate(self.identity("question-list-reader", "view_question"))
+        before = self.snapshot()
+        cases = [
+            ({}, [self.bank_question.pk, inactive.pk, self.question.pk]),
+            ({"is_active": "true"}, [self.bank_question.pk, self.question.pk]),
+            ({"is_active": "false"}, [inactive.pk]),
+        ]
+        for params, expected_ids in cases:
+            with self.subTest(params=params):
+                response = self.client.get(self.questions_url(), params)
+                self.assertEqual(response.status_code, 200, response.data)
+                self.assertEqual(response.data["count"], len(expected_ids))
+                self.assertEqual([row["id"] for row in response.data["results"]], expected_ids)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_question_list_rejects_invalid_active_filter(self):
+        for value in ("not-a-boolean", "2", "null"):
+            with self.subTest(value=value):
+                self.assert_field_error(self.client.get(self.questions_url(), {"is_active": value}), "is_active")
+
+    def test_question_list_search_and_pagination_combine_with_active_filter(self):
+        questions = [
+            Question.objects.create(code=code, topic="Filter integration", is_active=active, created_by=self.user)
+            for code, active in (("FILTER-A", True), ("FILTER-B", False), ("FILTER-C", True))
+        ]
+        before = self.snapshot()
+        params = {"search": "Filter integration", "page_size": 1}
+        response = self.client.get(self.questions_url(), params)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["count"], 3)
+        self.assertEqual([row["id"] for row in response.data["results"]], [questions[0].pk])
+        self.assertIsNotNone(response.data["next"])
+        self.assertIsNone(response.data["previous"])
+        response = self.client.get(self.questions_url(), {**params, "page": 2})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["count"], 3)
+        self.assertEqual([row["id"] for row in response.data["results"]], [questions[1].pk])
+        self.assertIsNotNone(response.data["next"])
+        self.assertIsNotNone(response.data["previous"])
+        for value, expected_ids in (("true", [questions[0].pk, questions[2].pk]), ("false", [questions[1].pk])):
+            with self.subTest(is_active=value):
+                response = self.client.get(self.questions_url(), {
+                    "search": "FILTER-", "is_active": value, "page_size": 2,
+                })
+                self.assertEqual(response.status_code, 200, response.data)
+                self.assertEqual(response.data["count"], len(expected_ids))
+                self.assertEqual([row["id"] for row in response.data["results"]], expected_ids)
+                self.assertIsNone(response.data["next"])
+        self.assertEqual(self.snapshot(), before)
+
+    def test_question_list_empty_results_for_all_active_filters(self):
+        for params in ({}, {"is_active": "true"}, {"is_active": "false"}):
+            with self.subTest(params=params):
+                response = self.client.get(self.questions_url(), {"search": "no-matching-question", **params})
+                self.assertEqual(response.status_code, 200, response.data)
+                self.assertEqual(response.data, {"count": 0, "next": None, "previous": None, "results": []})
+
+    def test_question_list_requires_independent_view_permission_for_all_filters(self):
+        for permission in ("add_question", "change_question", "view_questionrevision"):
+            self.authenticate(self.identity("list-with-" + permission, permission))
+            for params in ({}, {"is_active": "true"}, {"is_active": "false"}):
+                with self.subTest(permission=permission, params=params):
+                    self.assertEqual(self.client.get(self.questions_url(), params).status_code, 403)
+
     def test_lists_search_pagination_ordering_and_read_only_behavior(self):
         before = self.snapshot()
         response = self.client.get(self.questions_url(), {"search": "AUTHORING", "is_active": "true", "page_size": 1})

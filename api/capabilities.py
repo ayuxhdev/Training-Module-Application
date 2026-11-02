@@ -8,7 +8,7 @@ PORTAL_PERMISSIONS = tuple(
     f"{app}.{action}_{model}"
     for app, models in (
         ("organization", ("employee", "department", "jobrole")),
-        ("training", ("training", "trainingversion", "module", "lesson")),
+        ("training", ("training", "trainingversion", "module", "lesson", "roletrainingrequirement")),
         ("assessments", ("question", "questionrevision", "questionoption", "assessment", "assessmentquestion")),
     )
     for model in models

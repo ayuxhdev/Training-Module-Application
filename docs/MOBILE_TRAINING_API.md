@@ -724,3 +724,156 @@ invalidate metadata/revision caches after successful writes, and handle 401,
 403, 404 and 409 without blindly replaying mutations. No learner attempt, score,
 completion, certificate, assignment pin or private media state is changed by
 these authoring APIs.
+
+
+## Role training requirements and role-based assignment batches
+
+These management APIs expose the existing requirement model and website batch
+rules. They do not change the website authorization checks, existing manual
+assignment API, assignment monitoring, or learner endpoints.
+
+### Independent permissions and mobile eligibility
+
+All operations require JWT authentication, an active User, and the existing
+mobile eligibility policy (including an active Employee when one is linked).
+Management-only accounts may use their effective permissions without an Employee
+link. Requirements are company-wide configuration, not reporting-team records.
+
+| Method and path (under `/api/v1/management/`) | Required effective Django permission |
+|---|---|
+| GET `role-requirements/` | `training.view_roletrainingrequirement` |
+| GET `role-requirements/{id}/` | `training.view_roletrainingrequirement` |
+| POST `role-requirements/` | `training.add_roletrainingrequirement` |
+| PATCH `role-requirements/{id}/` | `training.change_roletrainingrequirement` |
+| POST `role-requirements/{id}/assignments/` | `training.add_trainingassignment` (company-wide) |
+
+The three requirement permissions are exposed as same-named server capabilities
+and independently confer management-workspace eligibility. They do not confer
+company-dashboard or assignment-creation authority. Add/change operations do not
+implicitly require view permission. Global assignment permission does not confer
+requirement view/add/change rights. Team assignment permission alone never allows
+role-batch execution, even for Managers. Effective mixed-role/direct grants are
+honored; client role labels are not authority.
+
+No permission grants, Groups or migrations are changed here. Existing business
+Administrator/Coordinator accounts retain global batch authority; requirement
+REST management additionally needs its independent effective model permission.
+The existing website continues to use its established assignment permission.
+
+### Requirement list, detail, creation and editing
+
+GET list returns the standard `count`, `next`, `previous`, `results` envelope.
+Default page size is 20, maximum 100. Supported query parameters:
+
+- `page`, `page_size`: positive integers, with `page_size` at most 100.
+- `search`: trimmed text, at most 150 characters; matches job-role code/name,
+  training catalog title or version title.
+- `job_role_id`, `training_version_id`: optional positive integer filters.
+- `is_active`: optional boolean filter; omission returns both active/inactive.
+
+Ordering is job-role name, training catalog title, version number, then requirement
+ID. No employee identities, lesson content, media URLs or assessment keys are
+returned. Each list record, detail, create and update response has these fields:
+
+```json
+{
+  "id": 12,
+  "job_role_id": 3,
+  "job_role_code": "OP",
+  "job_role_name": "Operator",
+  "training_version_id": 8,
+  "training_id": 2,
+  "training_title": "Safety",
+  "version_title": "Safety v2",
+  "version_number": 2,
+  "version_status": "PUBLISHED",
+  "due_in_days": 30,
+  "is_active": true,
+  "created_at": "2026-10-31T10:00:00Z",
+  "updated_at": "2026-10-31T10:00:00Z"
+}
+```
+
+These are illustrative identifiers, not seeded records. Dates use the existing
+DRF ISO 8601 timestamp representation.
+
+POST input: required `job_role_id`, `training_version_id`; optional `due_in_days`
+(default 30, integer 0 through 4294967295) and `is_active` (default true).
+Creation returns HTTP 201. The existing creation form requires an active JobRole
+and a PUBLISHED version, including when creating an inactive requirement. A
+role/version pair is unique. Creator and timestamps are always server-derived.
+
+PATCH accepts only optional `due_in_days` and `is_active`, returns HTTP 200, and
+preserves omitted values. Role/version references cannot change. An empty object
+or identical submitted values is a no-op: no timestamp update or success event.
+An inactive historical requirement may retain a retired version; reactivation
+must satisfy existing active-role/published-version validation. There is no
+DELETE API. Deactivation never cancels or rewrites existing assignments.
+
+### Explicit role-batch execution
+
+POST `role-requirements/{id}/assignments/` with JSON `{}` executes one requirement.
+No employee IDs, actor, due date, source or version overrides are accepted.
+A successful operation returns HTTP 200, including when nothing new is created:
+
+```json
+{
+  "role_requirement_id": 12,
+  "job_role_id": 3,
+  "training_version_id": 8,
+  "created_count": 4,
+  "skipped_count": 2
+}
+```
+
+The requirement must currently be active and reference a PUBLISHED version.
+As in the website role-batch workflow, candidates are Employees currently in that
+job role; only active Employees receive new assignments. The matching Employee
+set is captured when its rows are locked. `skipped_count` includes inactive
+matching Employees and any existing assignment for the same Employee/version,
+regardless of source or status. Employees in other roles are neither assigned nor
+counted. Linked User activity is not a new recipient rule; Employee eligibility
+remains model-authoritative.
+
+New assignments are ROLE-sourced, reference the requirement, capture current
+Employee department/job-role snapshots, and pin the exact version. One common
+server timestamp supplies `assigned_at`; `due_at` is that timestamp plus the
+requirement's `due_in_days` (zero means that same timestamp). An unrepresentable
+due date is rejected before writes. Like the existing website role-batch flow,
+this operation does not add the manual picker's separate active-catalog filter.
+
+Existing manual, cancelled, in-progress and completed assignments, progress,
+assessment history and certificates are never replaced. Repeating the batch
+skips existing rows. There is no scheduler, automatic new-version migration,
+reassignment, cancellation or reopening behavior.
+
+All assignment/notification writes are atomic. Employee rows lock in ascending
+ID order before Version, JobRole and requirement locks; requirement edits share
+the Version/JobRole/requirement roots. Actor authority and requirement eligibility
+are rechecked after locks. Manual assignments use the existing Employee/Version
+locking contract. A concurrent batch therefore skips assignments committed by
+its predecessor rather than creating duplicates. Each new assignment uses the
+existing ASSIGNED notification service. Notification/validation failures roll
+back the entire batch. A successful nonempty batch emits the existing
+`training.role_assignment.batch_created` event after commit, with server-derived
+role/version IDs and created/skipped counts; empty, rejected and rolled-back
+batches emit no success event. Requirement changes use existing requirement
+created/updated event names with metadata-only before/after snapshots.
+
+### Errors and integration guidance
+
+Errors use the standard API envelope: 400 for malformed/unknown input, form/model
+validation, duplicate requirements found during validation, or ineligible batches;
+401 for missing/invalid authentication; 403 for insufficient authority/mobile
+eligibility; 404 for authorized access to missing IDs; and 409 for verified
+named uniqueness conflicts or MySQL deadlock/lock-timeout conflicts. Unrelated
+database failures are not disguised as conflicts. Form error keys retain the
+website names `job_role`, `training_version`, `role_requirement` and
+`non_field_errors`; clients map the first two to their `_id` fields.
+
+Permission checks precede object lookup. List/detail GET requests never create
+assignments, notifications, audit records, watch sessions or learner progress.
+After a successful mutation, clients should invalidate requirement/batch-related
+lists. Refresh before resolving HTTP 409; do not blindly replay writes. An
+interrupted response can be reconciled with authoritative assignment monitoring;
+repeating an explicitly requested batch preserves existing version-pinned rows.

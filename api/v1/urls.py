@@ -5,6 +5,7 @@ from .auth_views import EmployeeLoginView, EmployeeRefreshView, EmployeeLogoutVi
 from .dashboard_views import EmployeeDashboardView
 from .assignment_management_views import AssignableTrainingVersionListView, ManualAssignmentCreateView
 from .assignment_monitoring_views import EmployeeAssignmentListView
+from .role_requirement_views import RequirementListView, RequirementDetailView, RoleBatchCreateView
 from .curriculum_management_views import (
     ModuleCreateView, ModuleDetailView, TextLessonCreateView, TextLessonDetailView,
 )
@@ -80,6 +81,9 @@ urlpatterns = [
     path("management/questions/<int:question_pk>/revisions/", QuestionRevisionManagementView.as_view(), name="management-question-revisions"),
     path("management/questions/<int:question_pk>/revisions/<int:pk>/", QuestionRevisionManagementDetailView.as_view(), name="management-question-revision-detail"),
     path("management/questions/<int:question_pk>/revisions/<int:pk>/freeze/", QuestionRevisionFreezeView.as_view(), name="management-question-revision-freeze"),
+    path("management/role-requirements/", RequirementListView.as_view(), name="management-role-requirements"),
+    path("management/role-requirements/<int:pk>/", RequirementDetailView.as_view(), name="management-role-requirement-detail"),
+    path("management/role-requirements/<int:pk>/assignments/", RoleBatchCreateView.as_view(), name="management-role-requirement-assign"),
     path("management/assignments/", ManualAssignmentCreateView.as_view(), name="management-assignment-create"),
     path("management/employees/", EmployeeDirectoryView.as_view(), name="management-employees"),
     path("management/employees/<int:pk>/", EmployeeDirectoryDetailView.as_view(), name="management-employee-detail"),

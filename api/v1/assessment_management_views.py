@@ -58,7 +58,8 @@ class AssessmentManagementMixin(TrainingManagementMixin):
         return Response(self.get_serializer(instance).data, status=201 if creating else 200)
 
     def page_query(self, query_class=VersionQuerySerializer):
-        query = query_class(data=self.request.query_params)
+        # QueryDict checkbox semantics turn an omitted optional boolean into False.
+        query = query_class(data=dict(self.request.query_params.items()))
         query.is_valid(raise_exception=True)
         return query.validated_data
 
