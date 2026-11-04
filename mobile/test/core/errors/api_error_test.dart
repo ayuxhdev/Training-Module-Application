@@ -2,6 +2,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:training_app/core/errors/api_error.dart';
 
 void main() {
+  test(
+    'JWT details stay structured while the user sees a sign-in explanation',
+    () {
+      final data = {
+        'detail': 'Given token not valid for any token type',
+        'code': 'token_not_valid',
+      };
+      final error = ApiError.fromBackend(401, data);
+      expect(
+        error.message,
+        'Your session has ended. Sign in again to continue.',
+      );
+      expect(error.code, 'token_not_valid');
+      expect(error.details, data);
+      expect(error.statusCode, 401);
+    },
+  );
+
   test('parses structured backend message, code and field errors', () {
     final fields = {
       'username': ['Required.'],

@@ -347,6 +347,439 @@ void main() {
   });
 
   group('QuestionRevisionDetailScreen', () {
+    testWidgets('new draft prompt is empty and uses Draft question as hint', (
+      tester,
+    ) async {
+      when(
+        () => repository.questionRevisionDetail(
+          any(),
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ManagedQuestionRevisionDetail.fromJson(
+          managedQuestionRevisionDetailJson(
+            id: 10,
+            questionId: 5,
+            revisionNumber: 1,
+            status: 'DRAFT',
+            prompt: 'Draft question',
+          ),
+        ),
+      );
+
+      await launch(
+        tester,
+        path: '/workspace/training/questions/5/revisions/10',
+      );
+
+      final promptField = find.widgetWithText(TextFormField, 'Prompt *');
+      expect(promptField, findsOneWidget);
+
+      final field = tester.widget<TextFormField>(promptField);
+      expect(field.controller?.text, isEmpty);
+      final decoratorFinder = find.descendant(
+        of: promptField,
+        matching: find.byType(InputDecorator),
+      );
+      expect(decoratorFinder, findsOneWidget);
+      final decorator = tester.widget<InputDecorator>(decoratorFinder);
+      expect(decorator.decoration.hintText, 'Draft question');
+    });
+
+    testWidgets('existing draft retains its saved prompt', (tester) async {
+      when(
+        () => repository.questionRevisionDetail(
+          any(),
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ManagedQuestionRevisionDetail.fromJson(
+          managedQuestionRevisionDetailJson(
+            id: 10,
+            questionId: 5,
+            revisionNumber: 1,
+            status: 'DRAFT',
+            prompt: 'Saved question prompt',
+          ),
+        ),
+      );
+
+      await launch(
+        tester,
+        path: '/workspace/training/questions/5/revisions/10',
+      );
+
+      final promptField = find.widgetWithText(TextFormField, 'Prompt *');
+      expect(promptField, findsOneWidget);
+
+      final field = tester.widget<TextFormField>(promptField);
+      expect(field.controller?.text, 'Saved question prompt');
+      expect(find.text('Saved question prompt'), findsOneWidget);
+    });
+
+    testWidgets('untouched Draft question placeholder cannot be frozen', (
+      tester,
+    ) async {
+      when(
+        () => repository.questionRevisionDetail(
+          any(),
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ManagedQuestionRevisionDetail.fromJson(
+          managedQuestionRevisionDetailJson(
+            id: 10,
+            questionId: 5,
+            revisionNumber: 1,
+            status: 'DRAFT',
+            prompt: 'Draft question',
+          ),
+        ),
+      );
+
+      await launch(
+        tester,
+        path: '/workspace/training/questions/5/revisions/10',
+      );
+
+      await tester.tap(find.text('Freeze revision permanently'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Freeze revision?'), findsNothing);
+      expect(find.text('Prompt is required.'), findsWidgets);
+      verifyNever(
+        () => repository.freezeQuestionRevision(
+          any(),
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+    });
+
+    testWidgets(
+      'internal whitespace placeholder variant is recognized and cannot be frozen',
+      (tester) async {
+        when(
+          () => repository.questionRevisionDetail(
+            any(),
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              revisionNumber: 1,
+              status: 'DRAFT',
+              prompt: '  Draft \t  question  ',
+            ),
+          ),
+        );
+
+        await launch(
+          tester,
+          path: '/workspace/training/questions/5/revisions/10',
+        );
+
+        final promptField = find.widgetWithText(TextFormField, 'Prompt *');
+        expect(promptField, findsOneWidget);
+        final field = tester.widget<TextFormField>(promptField);
+        expect(field.controller?.text, isEmpty);
+
+        // Attempt to enter internal whitespace variant and freeze
+        await tester.enterText(promptField, 'Draft   question');
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Freeze revision permanently'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Freeze revision?'), findsNothing);
+        expect(find.text('Prompt is required.'), findsWidgets);
+        verifyNever(
+          () => repository.freezeQuestionRevision(
+            any(),
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+      },
+    );
+
+    testWidgets(
+      'permits saving other changes to an incomplete draft and preserves stored placeholder',
+      (tester) async {
+        when(
+          () => repository.questionRevisionDetail(
+            any(),
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              revisionNumber: 1,
+              status: 'DRAFT',
+              prompt: 'Draft question',
+              explanation: 'Initial explanation',
+            ),
+          ),
+        );
+        when(
+          () => repository.updateQuestionRevision(
+            any(),
+            any(),
+            questionType: any(named: 'questionType'),
+            prompt: any(named: 'prompt'),
+            explanation: any(named: 'explanation'),
+            options: any(named: 'options'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              revisionNumber: 1,
+              status: 'DRAFT',
+              prompt: 'Draft question',
+              explanation: 'Updated explanation',
+            ),
+          ),
+        );
+
+        await launch(
+          tester,
+          path: '/workspace/training/questions/5/revisions/10',
+        );
+
+        // Visible prompt is empty because placeholder is hidden
+        final promptField = find.widgetWithText(TextFormField, 'Prompt *');
+        expect(
+          tester.widget<TextFormField>(promptField).controller?.text,
+          isEmpty,
+        );
+
+        // Edit only the explanation
+        final explanationField = find.widgetWithText(
+          TextFormField,
+          'Explanation (optional)',
+        );
+        await tester.enterText(explanationField, 'Updated explanation');
+        await tester.pumpAndSettle();
+
+        // Save draft changes: should succeed and send stored placeholder
+        await tester.tap(find.text('Save draft changes'));
+        await tester.pumpAndSettle();
+
+        verify(
+          () => repository.updateQuestionRevision(
+            5,
+            10,
+            questionType: any(named: 'questionType'),
+            prompt: 'Draft question',
+            explanation: 'Updated explanation',
+            options: any(named: 'options'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+        expect(find.text('Revision saved successfully.'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'clearing prompt on an existing draft with real prompt blocks save with validation error',
+      (tester) async {
+        when(
+          () => repository.questionRevisionDetail(
+            any(),
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              revisionNumber: 1,
+              status: 'DRAFT',
+              prompt: 'Existing real prompt',
+              explanation: 'Initial explanation',
+            ),
+          ),
+        );
+
+        await launch(
+          tester,
+          path: '/workspace/training/questions/5/revisions/10',
+        );
+
+        final promptField = find.widgetWithText(
+          TextFormField,
+          'Existing real prompt',
+        );
+        expect(promptField, findsOneWidget);
+
+        // Clear the prompt field
+        await tester.enterText(promptField, '');
+        await tester.pumpAndSettle();
+
+        // Attempt to save: should be blocked by form validator
+        await tester.tap(find.text('Save draft changes'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Prompt is required.'), findsWidgets);
+        verifyNever(
+          () => repository.updateQuestionRevision(
+            any(),
+            any(),
+            questionType: any(named: 'questionType'),
+            prompt: any(named: 'prompt'),
+            explanation: any(named: 'explanation'),
+            options: any(named: 'options'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+      },
+    );
+
+    testWidgets('whitespace-only prompt cannot be frozen', (tester) async {
+      await launch(
+        tester,
+        path: '/workspace/training/questions/5/revisions/10',
+      );
+
+      await tester.enterText(
+        find.widgetWithText(
+          TextFormField,
+          'What PPE is required when handling chemicals?',
+        ),
+        '   ',
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Freeze revision permanently'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Freeze revision?'), findsNothing);
+      expect(find.text('Prompt is required.'), findsWidgets);
+      verifyNever(
+        () => repository.freezeQuestionRevision(
+          any(),
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+    });
+
+    testWidgets('valid prompt allows freezing', (tester) async {
+      when(
+        () => repository.freezeQuestionRevision(
+          any(),
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ManagedQuestionRevisionDetail.fromJson(
+          managedQuestionRevisionDetailJson(
+            id: 10,
+            questionId: 5,
+            status: 'FROZEN',
+            frozenAt: '2026-10-31T12:00:00Z',
+            prompt: 'A valid saved question prompt',
+          ),
+        ),
+      );
+
+      await launch(
+        tester,
+        path: '/workspace/training/questions/5/revisions/10',
+      );
+
+      await tester.tap(find.text('Freeze revision permanently'));
+      await tester.pumpAndSettle();
+      expect(find.text('Freeze revision?'), findsOneWidget);
+
+      await tester.tap(find.text('Freeze permanently'));
+      await tester.pumpAndSettle();
+
+      verify(
+        () => repository.freezeQuestionRevision(
+          5,
+          10,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+    });
+
+    testWidgets('existing saved draft retains prompt and can be frozen', (
+      tester,
+    ) async {
+      when(
+        () => repository.questionRevisionDetail(
+          any(),
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ManagedQuestionRevisionDetail.fromJson(
+          managedQuestionRevisionDetailJson(
+            id: 10,
+            questionId: 5,
+            revisionNumber: 1,
+            status: 'DRAFT',
+            prompt: 'Saved draft prompt',
+          ),
+        ),
+      );
+      when(
+        () => repository.freezeQuestionRevision(
+          any(),
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => ManagedQuestionRevisionDetail.fromJson(
+          managedQuestionRevisionDetailJson(
+            id: 10,
+            questionId: 5,
+            status: 'FROZEN',
+            frozenAt: '2026-10-31T12:00:00Z',
+            prompt: 'Saved draft prompt',
+          ),
+        ),
+      );
+
+      await launch(
+        tester,
+        path: '/workspace/training/questions/5/revisions/10',
+      );
+
+      final promptField = find.widgetWithText(TextFormField, 'Prompt *');
+      final field = tester.widget<TextFormField>(promptField);
+      expect(field.controller?.text, 'Saved draft prompt');
+
+      await tester.tap(find.text('Freeze revision permanently'));
+      await tester.pumpAndSettle();
+      expect(find.text('Freeze revision?'), findsOneWidget);
+
+      await tester.tap(find.text('Freeze permanently'));
+      await tester.pumpAndSettle();
+
+      verify(
+        () => repository.freezeQuestionRevision(
+          5,
+          10,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+    });
+
     testWidgets('renders prompt and options for draft revision', (
       tester,
     ) async {
@@ -530,9 +963,8 @@ void main() {
       await tester.tap(find.text('Freeze revision permanently'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Freeze revision?'), findsOneWidget);
-      await tester.tap(find.text('Freeze permanently'));
-      await tester.pumpAndSettle();
+      expect(find.text('Freeze revision?'), findsNothing);
+      expect(find.text('Prompt is required.'), findsWidgets);
 
       verifyNever(
         () => repository.freezeQuestionRevision(
@@ -552,9 +984,140 @@ void main() {
           cancelToken: any(named: 'cancelToken'),
         ),
       );
-
-      expect(find.text('Prompt is required.'), findsOneWidget);
     });
+
+    testWidgets(
+      'attempting freeze with empty prompt then valid prompt clears prompt errors and opens dialog',
+      (tester) async {
+        when(
+          () => repository.freezeQuestionRevision(
+            any(),
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              status: 'FROZEN',
+              frozenAt: '2026-10-31T12:00:00Z',
+              prompt: 'A valid question prompt',
+            ),
+          ),
+        );
+
+        await launch(
+          tester,
+          path: '/workspace/training/questions/5/revisions/10',
+        );
+
+        final promptFinder = find.widgetWithText(
+          TextFormField,
+          'What PPE is required when handling chemicals?',
+        );
+
+        // 1. Attempt freeze with an empty prompt
+        await tester.enterText(promptFinder, '');
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Freeze revision permanently'));
+        await tester.pumpAndSettle();
+
+        // Confirmation dialog is blocked, field error and banner are shown
+        expect(find.text('Freeze revision?'), findsNothing);
+        expect(find.text('Prompt is required.'), findsWidgets);
+        expect(
+          find.byKey(const ValueKey('revision-error-banner')),
+          findsOneWidget,
+        );
+
+        // 2. Enter a valid prompt and attempt freeze again
+        await tester.enterText(
+          find.byType(TextFormField).first,
+          'A valid question prompt',
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Freeze revision permanently'));
+        await tester.pumpAndSettle();
+
+        // Obsolete prompt field error and matching banner are cleared
+        expect(find.text('Prompt is required.'), findsNothing);
+        expect(
+          find.byKey(const ValueKey('revision-error-banner')),
+          findsNothing,
+        );
+
+        // Confirmation dialog is allowed to open
+        expect(find.text('Freeze revision?'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'valid prompt freeze clears Prompt is required banner but preserves unrelated server error',
+      (tester) async {
+        when(
+          () => repository.updateQuestionRevision(
+            any(),
+            any(),
+            questionType: any(named: 'questionType'),
+            prompt: any(named: 'prompt'),
+            explanation: any(named: 'explanation'),
+            options: any(named: 'options'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenThrow(
+          ApiError(
+            code: 'service_unavailable',
+            message: 'Server currently offline.',
+          ),
+        );
+
+        await launch(
+          tester,
+          path: '/workspace/training/questions/5/revisions/10',
+        );
+
+        // Trigger an unrelated server error by saving changes
+        await tester.enterText(
+          find.widgetWithText(
+            TextFormField,
+            'What PPE is required when handling chemicals?',
+          ),
+          'Modified prompt for save',
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Save draft changes'));
+        await tester.pumpAndSettle();
+
+        // Verify unrelated server error is shown
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('revision-error-banner')),
+            matching: find.text('Server currently offline.'),
+          ),
+          findsOneWidget,
+        );
+
+        // Now attempt freeze with the valid prompt:
+        // The unrelated server error must be preserved
+        await tester.tap(find.text('Freeze revision permanently'));
+        await tester.pumpAndSettle();
+
+        // Dialog still opens because prompt and options are valid
+        expect(find.text('Freeze revision?'), findsOneWidget);
+        // And unrelated server error was not cleared by prompt validation
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('revision-error-banner')),
+            matching: find.text('Server currently offline.'),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets(
       'invalid options (fewer than 2 active options) prevents freezing',

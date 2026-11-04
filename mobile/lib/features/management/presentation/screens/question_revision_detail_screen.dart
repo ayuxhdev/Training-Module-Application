@@ -72,6 +72,22 @@ class QuestionRevisionDetailScreen extends ConsumerStatefulWidget {
 class _QuestionRevisionDetailScreenState
     extends ConsumerState<QuestionRevisionDetailScreen> {
   final _formKey = GlobalKey<FormState>();
+  static const _initialDraftPrompt = 'Draft question';
+
+  static String _normalizePrompt(String? prompt) {
+    if (prompt == null) return '';
+    return prompt
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((s) => s.isNotEmpty)
+        .join(' ');
+  }
+
+  static bool _isPlaceholderPrompt(String? prompt) {
+    if (prompt == null) return false;
+    final normalized = _normalizePrompt(prompt);
+    return normalized.toLowerCase() == _initialDraftPrompt.toLowerCase();
+  }
 
   late TextEditingController _promptController;
   late TextEditingController _explanationController;
@@ -86,6 +102,8 @@ class _QuestionRevisionDetailScreenState
 
   late String _account;
 
+  String? _storedPrompt;
+  bool _isDraftWithPlaceholder = false;
   String? _initialPrompt;
   String? _initialExplanation;
   String? _initialType;
@@ -126,11 +144,15 @@ class _QuestionRevisionDetailScreenState
 
   void _populateFromDetail(ManagedQuestionRevisionDetail detail) {
     if (_initialized) return;
-    _initialPrompt = detail.prompt;
+    _storedPrompt = detail.prompt;
+    final isPlaceholder = detail.isDraft && _isPlaceholderPrompt(detail.prompt);
+    _isDraftWithPlaceholder = isPlaceholder;
+    final displayPrompt = isPlaceholder ? '' : detail.prompt;
+    _initialPrompt = displayPrompt;
     _initialExplanation = detail.explanation;
     _initialType = detail.questionType;
 
-    _promptController.text = detail.prompt;
+    _promptController.text = displayPrompt;
     _explanationController.text = detail.explanation;
     _questionType = detail.questionType;
 
@@ -293,6 +315,41 @@ class _QuestionRevisionDetailScreenState
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  bool _validateVisiblePromptBeforeFreeze() {
+    if (!mounted) return false;
+    final normalized = _normalizePrompt(_promptController.text);
+    final promptValid =
+        normalized.isNotEmpty && !_isPlaceholderPrompt(normalized);
+    if (promptValid) {
+      final hadPromptFieldError = _fieldErrors.containsKey('prompt');
+      final hadPromptBanner = _serverError == 'Prompt is required.';
+      if (hadPromptFieldError || hadPromptBanner) {
+        setState(() {
+          if (hadPromptFieldError) {
+            _fieldErrors = Map<String, String>.from(_fieldErrors)
+              ..remove('prompt');
+          }
+          if (hadPromptBanner) {
+            _serverError = null;
+          }
+        });
+        ScaffoldMessenger.of(context).clearSnackBars();
+      }
+      return true;
+    }
+
+    if (mounted) {
+      setState(() {
+        _fieldErrors = {..._fieldErrors, 'prompt': 'Prompt is required.'};
+        _serverError = 'Prompt is required.';
+      });
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(const SnackBar(content: Text('Prompt is required.')));
+    }
+    return false;
+  }
+
   Future<bool> _saveChanges() async {
     if (_isSubmitting) return false;
 
@@ -334,6 +391,14 @@ class _QuestionRevisionDetailScreenState
         .whereType<Map<String, dynamic>>()
         .toList();
 
+    final String promptToSend;
+    final visiblePrompt = _promptController.text.trim();
+    if (_isDraftWithPlaceholder && visiblePrompt.isEmpty) {
+      promptToSend = _storedPrompt ?? _initialDraftPrompt;
+    } else {
+      promptToSend = visiblePrompt;
+    }
+
     try {
       await ref
           .read(questionRevisionMutationProvider)
@@ -341,7 +406,7 @@ class _QuestionRevisionDetailScreenState
             questionId: widget.questionId,
             revisionId: widget.revisionId,
             questionType: _questionType,
-            prompt: _promptController.text.trim(),
+            prompt: promptToSend,
             explanation: _explanationController.text.trim(),
             options: optionsPayload,
             cancelToken: cancelToken,
@@ -415,21 +480,22 @@ class _QuestionRevisionDetailScreenState
       );
       return;
     }
+    if (!_validateVisiblePromptBeforeFreeze()) return;
 
+    const optionError =
+        'A frozen question needs at least two options and exactly one correct option.';
     final activeOptions = _options.where((o) => !o.delete).toList();
     if (activeOptions.length < 2) {
-      _showValidationError(
-        'A frozen question needs at least two options and exactly one correct option.',
-      );
+      _showValidationError(optionError);
       return;
     }
     final correctCount = activeOptions.where((o) => o.isCorrect).length;
     if (correctCount != 1) {
-      _showValidationError(
-        'A frozen question needs at least two options and exactly one correct option.',
-      );
+      _showValidationError(optionError);
       return;
     }
+    const trueFalseError =
+        'True/false questions require exactly the True and False options.';
     if (_questionType == 'TRUE_FALSE') {
       final labels = activeOptions
           .map((o) => o.text.trim().toLowerCase())
@@ -437,11 +503,16 @@ class _QuestionRevisionDetailScreenState
       if (labels.length != 2 ||
           !labels.contains('true') ||
           !labels.contains('false')) {
-        _showValidationError(
-          'True/false questions require exactly the True and False options.',
-        );
+        _showValidationError(trueFalseError);
         return;
       }
+    }
+
+    if (_serverError == optionError || _serverError == trueFalseError) {
+      setState(() {
+        _serverError = null;
+      });
+      ScaffoldMessenger.of(context).clearSnackBars();
     }
 
     final confirmed = await showDialog<bool>(
@@ -466,6 +537,7 @@ class _QuestionRevisionDetailScreenState
 
     if (confirmed != true || !mounted) return;
     if (_isSubmitting) return;
+    if (!_validateVisiblePromptBeforeFreeze()) return;
 
     // If dirty, save changes first
     if (_isDirty) {
@@ -866,11 +938,19 @@ class _QuestionRevisionDetailScreenState
                             maxLines: 4,
                             decoration: InputDecoration(
                               labelText: 'Prompt *',
+                              hintText: _initialDraftPrompt,
                               errorText: _fieldErrors['prompt'],
                             ),
-                            validator: (v) => (v?.trim().isEmpty ?? true)
-                                ? 'Prompt is required.'
-                                : null,
+                            validator: (v) {
+                              final trimmed = v?.trim() ?? '';
+                              if (trimmed.isEmpty) {
+                                if (_isDraftWithPlaceholder) {
+                                  return null;
+                                }
+                                return 'Prompt is required.';
+                              }
+                              return null;
+                            },
                           ),
                           const SizedBox(height: AppSpacing.md),
                           TextFormField(

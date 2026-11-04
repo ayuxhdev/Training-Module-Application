@@ -140,6 +140,62 @@ void main() {
     return container;
   }
 
+  testWidgets(
+    'expired sign-in preserves exact unfinished text and offers in-place recovery',
+    (tester) async {
+      when(
+        () => repository.createTextLesson(
+          any(),
+          any(),
+          title: any(named: 'title'),
+          body: any(named: 'body'),
+          position: any(named: 'position'),
+          isRequired: any(named: 'isRequired'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(
+        ApiError(
+          message: 'Your session has ended. Sign in again.',
+          statusCode: 401,
+          details: {'detail': 'JWT token is expired'},
+        ),
+      );
+      await launch(tester);
+      const body = '  Keep indentation\n\n';
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Lesson Title *'),
+        'Unfinished text',
+      );
+      final bodyField = find.widgetWithText(
+        TextFormField,
+        'Lesson Body (plain text) *',
+      );
+      await tester.enterText(bodyField, body);
+      await tester.tap(find.text('Create Lesson'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextFormField>(bodyField).controller!.text, body);
+      expect(find.text('Unfinished text'), findsOneWidget);
+      expect(find.text('Sign in again'), findsOneWidget);
+      expect(find.text('JWT token is expired'), findsNothing);
+      await tester.tap(find.text('Sign in again'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextFormField>(bodyField).controller!.text, body);
+      verify(
+        () => repository.createTextLesson(
+          any(),
+          any(),
+          title: any(named: 'title'),
+          body: any(named: 'body'),
+          position: any(named: 'position'),
+          isRequired: any(named: 'isRequired'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+    },
+  );
+
   group('TextLessonFormScreen - Create text lesson', () {
     testWidgets('renders creation form fields and default values', (
       tester,

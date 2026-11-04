@@ -8,7 +8,12 @@ class AuthInitial extends AuthState {}
 
 class AuthLoading extends AuthState {}
 
-class AuthUnauthenticated extends AuthState {}
+class AuthUnauthenticated extends AuthState {
+  // Identifies an expired session for same-account draft recovery only.
+  // It does not grant authenticated navigation or mutation permissions.
+  final AuthenticatedIdentity? expiredIdentity;
+  AuthUnauthenticated({this.expiredIdentity});
+}
 
 class AuthAuthenticated extends AuthState {
   final AuthenticatedIdentity identity;

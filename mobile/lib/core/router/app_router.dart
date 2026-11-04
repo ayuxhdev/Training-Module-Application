@@ -187,18 +187,32 @@ bool _canAccessWorkspacePath(String path, AuthenticatedIdentity identity) {
 // Create a Listenable to trigger router redirects on auth state changes
 class RouterNotifier extends ChangeNotifier {
   final Ref _ref;
+  final String Function() currentPath;
 
-  RouterNotifier(this._ref) {
-    _ref.listen<AuthState>(authControllerProvider, (_, _) {
+  RouterNotifier(this._ref, this.currentPath) {
+    _ref.listen<AuthState>(authControllerProvider, (_, next) {
+      if (next is AuthUnauthenticated &&
+          next.expiredIdentity != null &&
+          _ref
+              .read(authControllerProvider.notifier)
+              .canRecoverLessonDraft(currentPath())) {
+        // A push keeps its base URI. Reparsing it would discard the owned draft.
+        // Subsequent navigation still passes through the normal redirect guard.
+        return;
+      }
       notifyListeners();
     });
   }
 }
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final notifier = RouterNotifier(ref);
+  GoRouter? router;
+  final notifier = RouterNotifier(
+    ref,
+    () => router?.state.matchedLocation ?? '',
+  );
 
-  return GoRouter(
+  router = GoRouter(
     initialLocation: '/',
     refreshListenable: notifier,
     redirect: (context, state) {
@@ -210,6 +224,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (authState is AuthUnauthenticated) {
+        // Only the already-mounted lesson draft may remain for in-place sign-in.
+        if (ref
+            .read(authControllerProvider.notifier)
+            .canRecoverLessonDraft(state.uri.path)) {
+          return null;
+        }
         return isLoggingIn ? null : '/login';
       }
 
@@ -1045,6 +1065,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+  return router;
 });
 
 Widget _assessmentAttempt(BuildContext context, GoRouterState state) {

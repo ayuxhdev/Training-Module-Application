@@ -11,6 +11,7 @@ import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/router/app_router.dart';
 import 'package:training_app/core/theme/app_theme.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
+import 'package:training_app/features/auth/data/repositories/auth_repository.dart';
 import 'package:training_app/features/auth/domain/models/authenticated_identity.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/management/data/repositories/management_repository.dart';
@@ -23,6 +24,8 @@ import 'management_fixtures.dart';
 class MockManagementRepository extends Mock implements ManagementRepository {}
 
 class MockVideoFilePicker extends Mock implements VideoFilePicker {}
+
+class MockRecoveryRepository extends Mock implements AuthRepository {}
 
 class DeletionTrackedVideoFile extends SelectedVideoFile {
   int deleteCalls = 0;
@@ -122,6 +125,7 @@ void main() {
     Size size = const Size(800, 2400),
     double textScale = 1.0,
     Object? extra,
+    AuthRepository? recoveryRepository,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
@@ -148,6 +152,8 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         managementRepositoryProvider.overrideWithValue(repository),
+        if (recoveryRepository != null)
+          authRepositoryProvider.overrideWithValue(recoveryRepository),
         authControllerProvider.overrideWith(() => auth),
         notificationUnreadCountProvider.overrideWith(ZeroUnread.new),
         videoFilePickerProvider.overrideWithValue(picker),
@@ -181,6 +187,92 @@ void main() {
     await tester.pumpAndSettle();
     return container;
   }
+
+  testWidgets(
+    'expired sign-in keeps the draft and file through failed and successful recovery without resubmitting',
+    (tester) async {
+      final directory = Directory.systemTemp.createTempSync('reauth-video-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final temp = File('${directory.path}/selected.mp4')
+        ..writeAsBytesSync([1, 2, 3]);
+      final file = DeletionTrackedVideoFile(temp.path);
+      when(() => picker.pickVideo()).thenAnswer((_) async => file);
+      when(
+        () => repository.createVideoLesson(
+          any(),
+          any(),
+          title: any(named: 'title'),
+          position: any(named: 'position'),
+          videoFile: any(named: 'videoFile'),
+          isRequired: any(named: 'isRequired'),
+          minimumWatchPercent: any(named: 'minimumWatchPercent'),
+          onSendProgress: any(named: 'onSendProgress'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(
+        ApiError(
+          message: 'Your session has ended. Sign in again.',
+          statusCode: 401,
+          details: {'detail': 'JWT token is expired'},
+        ),
+      );
+      final recovery = MockRecoveryRepository();
+      await launch(tester, recoveryRepository: recovery);
+      when(
+        () => recovery.login('admin', 'wrong'),
+      ).thenThrow(ApiError(message: 'Check your password.', statusCode: 401));
+      when(() => recovery.login('admin', 'test-only-password'))
+          .thenAnswer((_) async => auth.identity);
+      final title = find.widgetWithText(TextFormField, 'Lesson Title *');
+      await tester.enterText(title, 'Unfinished video');
+      await tester.tap(find.text('Choose Video File'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Create Video Lesson'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('JWT token is expired'), findsNothing);
+      expect(find.text('Unfinished video'), findsOneWidget);
+      expect(temp.existsSync(), isTrue);
+      await tester.tap(find.text('Sign in again'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Password'),
+        'wrong',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.pumpAndSettle();
+      expect(find.text('Check your password.'), findsOneWidget);
+      expect(file.deleteCalls, 0);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Password'),
+        'test-only-password',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.pumpAndSettle();
+      expect(find.text('Sign in to continue'), findsNothing);
+      expect(find.text('Unfinished video'), findsOneWidget);
+      expect(find.text('late-copy.mp4'), findsOneWidget);
+      expect(temp.existsSync(), isTrue);
+      expect(file.deleteCalls, 0);
+      verify(
+        () => repository.createVideoLesson(
+          any(),
+          any(),
+          title: any(named: 'title'),
+          position: any(named: 'position'),
+          videoFile: any(named: 'videoFile'),
+          isRequired: any(named: 'isRequired'),
+          minimumWatchPercent: any(named: 'minimumWatchPercent'),
+          onSendProgress: any(named: 'onSendProgress'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(file.deleteCalls, 1);
+    },
+  );
 
   group('VideoLessonFormScreen - Creation Workflow', () {
     testWidgets('renders creation form with all required fields and picker', (

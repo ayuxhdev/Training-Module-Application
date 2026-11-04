@@ -7,6 +7,10 @@ abstract class SecureTokenStorage {
   Future<String?> readRefreshToken();
   Future<void> deleteTokens();
   Future<void> clearAuthenticationState();
+
+  Future<void> markSessionInvalid();
+  Future<void> clearInvalidationMarker();
+  Future<bool> isSessionInvalid();
 }
 
 class SecureTokenStorageImpl implements SecureTokenStorage {
@@ -14,12 +18,11 @@ class SecureTokenStorageImpl implements SecureTokenStorage {
 
   static const String _accessTokenKey = 'access_token';
   static const String _refreshTokenKey = 'refresh_token';
+  static const String _sessionInvalidMarkerKey = 'auth_session_invalid';
 
-  SecureTokenStorageImpl({
-    FlutterSecureStorage? storage,
-  }) : _storage = storage ?? const FlutterSecureStorage(
-         aOptions: AndroidOptions(),
-       );
+  SecureTokenStorageImpl({FlutterSecureStorage? storage})
+    : _storage =
+          storage ?? const FlutterSecureStorage(aOptions: AndroidOptions());
 
   @override
   Future<void> saveAccessToken(String token) async {
@@ -28,6 +31,7 @@ class SecureTokenStorageImpl implements SecureTokenStorage {
 
   @override
   Future<String?> readAccessToken() async {
+    if (await isSessionInvalid()) return null;
     return await _storage.read(key: _accessTokenKey);
   }
 
@@ -38,6 +42,7 @@ class SecureTokenStorageImpl implements SecureTokenStorage {
 
   @override
   Future<String?> readRefreshToken() async {
+    if (await isSessionInvalid()) return null;
     return await _storage.read(key: _refreshTokenKey);
   }
 
@@ -49,8 +54,22 @@ class SecureTokenStorageImpl implements SecureTokenStorage {
 
   @override
   Future<void> clearAuthenticationState() async {
-    // In the future this might clear other secure caches. 
-    // For now, it just drops the tokens.
     await deleteTokens();
+  }
+
+  @override
+  Future<void> markSessionInvalid() async {
+    await _storage.write(key: _sessionInvalidMarkerKey, value: 'true');
+  }
+
+  @override
+  Future<void> clearInvalidationMarker() async {
+    await _storage.delete(key: _sessionInvalidMarkerKey);
+  }
+
+  @override
+  Future<bool> isSessionInvalid() async {
+    final value = await _storage.read(key: _sessionInvalidMarkerKey);
+    return value == 'true';
   }
 }

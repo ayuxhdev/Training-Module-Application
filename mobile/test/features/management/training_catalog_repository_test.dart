@@ -17,12 +17,17 @@ void main() {
   late DioMock dio;
   late ManagementRepository repository;
 
-  setUpAll(() => registerFallbackValue(CancelToken()));
+  setUpAll(() {
+    registerFallbackValue(CancelToken());
+    registerFallbackValue(Options());
+  });
 
   setUp(() {
     client = ClientMock();
     dio = DioMock();
     when(() => client.dio).thenReturn(dio);
+    when(() => client.prepareUpload(cancelToken: any(named: 'cancelToken')))
+        .thenAnswer((_) async {});
     when(() => client.mapExceptionToApiError(any())).thenAnswer(
       (invocation) => invocation.positionalArguments.first is ApiError
           ? invocation.positionalArguments.first as ApiError
@@ -872,6 +877,7 @@ void main() {
           () => dio.post(
             '/management/versions/42/modules/70/video-lessons/',
             data: any(named: 'data'),
+            options: any(named: 'options'),
             onSendProgress: any(named: 'onSendProgress'),
             cancelToken: any(named: 'cancelToken'),
           ),
@@ -1057,6 +1063,7 @@ void main() {
         () => dio.patch(
           '/management/versions/42/modules/70/video-lessons/94/',
           data: any(named: 'data'),
+          options: any(named: 'options'),
           onSendProgress: any(named: 'onSendProgress'),
           cancelToken: any(named: 'cancelToken'),
         ),

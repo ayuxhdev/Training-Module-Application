@@ -10,7 +10,10 @@ from assessments.forms import (
     AssessmentForm, AssessmentQuestionForm, QuestionForm,
     QuestionOptionFormSet, QuestionRevisionForm,
 )
-from assessments.models import Assessment, AssessmentQuestion, Question, QuestionOption, QuestionRevision
+from assessments.models import (
+    Assessment, AssessmentQuestion, Question, QuestionOption, QuestionRevision,
+    validate_freezable_prompt,
+)
 from audit.services import audit_snapshot, record_event
 
 from .training_management_services import _locked_draft, _save_form
@@ -159,6 +162,7 @@ def update_revision(actor, question_id, revision_id, values):
 def freeze_revision(actor, question_id, revision_id, values):
     revision = _locked_revision(question_id, revision_id)
     before = audit_snapshot(revision)
+    validate_freezable_prompt(revision.prompt)
     revision.status = QuestionRevision.Status.FROZEN
     revision.frozen_at = timezone.now()
     # Existing model validation enforces >=2 options, exactly one correct, and

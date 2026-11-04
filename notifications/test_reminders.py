@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta, timezone as datetime_timezone
 from io import StringIO
+import re
 from tempfile import TemporaryDirectory
 from threading import Barrier
 from unittest.mock import patch
@@ -33,7 +34,12 @@ class DeadlineReminderTests(CurriculumTestCase):
 
     def run_command(self, cutoff=None):
         output = StringIO()
-        call_command("generate_training_notifications", activation_cutoff=(cutoff or self.cutoff).isoformat(), stdout=output)
+        call_command(
+            "generate_training_notifications",
+            activation_cutoff=(cutoff or self.cutoff).isoformat(),
+            stdout=output,
+            no_color=True,
+        )
         return output.getvalue()
 
     def test_exact_boundaries_and_approaching_window(self):
@@ -268,8 +274,13 @@ class DeadlineReminderConcurrencyTests(TransactionTestCase):
             try:
                 barrier.wait(timeout=10)
                 output = StringIO()
-                call_command("generate_training_notifications", activation_cutoff=(now - timedelta(minutes=1)).isoformat(), stdout=output)
-                return output.getvalue()
+                call_command(
+                    "generate_training_notifications",
+                    activation_cutoff=(now - timedelta(minutes=1)).isoformat(),
+                    stdout=output,
+                    no_color=True,
+                )
+                return re.sub(r"\x1b\[[0-9;]*m", "", output.getvalue())
             finally:
                 connections.close_all()
         with ThreadPoolExecutor(max_workers=2) as executor:

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/features/auth/data/repositories/auth_repository.dart';
@@ -14,12 +16,57 @@ class AuthController extends Notifier<AuthState> {
   // Failed credential deletion must not allow retry to restore the old session.
   bool _requiresLogin = false;
   Future<void> _sessionWork = Future.value();
+  Object? _lessonDraftOwner;
+  String? _lessonDraftPath;
+
+  void registerLessonDraft(Object owner, String path) {
+    if (state is! AuthAuthenticated || _requiresLogin) return;
+    _lessonDraftOwner = owner;
+    _lessonDraftPath = path;
+  }
+
+  void unregisterLessonDraft(Object owner) {
+    if (!identical(_lessonDraftOwner, owner)) return;
+    _discardLessonDraft();
+    final expired = state;
+    if (expired is! AuthUnauthenticated || expired.expiredIdentity == null) {
+      return;
+    }
+    final revision = _sessionRevision;
+    // Forms release ownership during disposal. Notify the router after that
+    // lifecycle phase, without replacing a newer session or another draft.
+    scheduleMicrotask(() {
+      if (!_isCurrent(revision) ||
+          !identical(state, expired) ||
+          _lessonDraftOwner != null) {
+        return;
+      }
+      state = AuthUnauthenticated();
+    });
+  }
+
+  void _discardLessonDraft() {
+    _lessonDraftOwner = null;
+    _lessonDraftPath = null;
+  }
+
+  bool canRecoverLessonDraft(String path, {Object? owner}) {
+    final current = state;
+    return current is AuthUnauthenticated &&
+        current.expiredIdentity != null &&
+        _lessonDraftOwner != null &&
+        _lessonDraftPath == path &&
+        (owner == null || identical(_lessonDraftOwner, owner));
+  }
 
   bool _isCurrent(int revision) => ref.mounted && revision == _sessionRevision;
 
-  Future<void> _changeSession(Future<void> Function(int) operation) {
+  Future<void> _changeSession(
+    Future<void> Function(int) operation, {
+    AuthState? pendingState,
+  }) {
     final revision = ++_sessionRevision;
-    state = AuthLoading();
+    state = pendingState ?? AuthLoading();
     // Credential writes and cleanup must finish before the next login/logout.
     final work = _sessionWork.then((_) => operation(revision));
     _sessionWork = work.catchError((Object _) {});
@@ -63,6 +110,7 @@ class AuthController extends Notifier<AuthState> {
   }
 
   Future<void> login(String username, String password) async {
+    _discardLessonDraft();
     final repository = _repository;
     await _changeSession((revision) async {
       try {
@@ -81,7 +129,56 @@ class AuthController extends Notifier<AuthState> {
     });
   }
 
-  Future<void> logout() async {
+  /// Keep the authenticated route mounted so its unsaved draft survives.
+  Future<void> reauthenticate(String password) async {
+    final previous = state;
+    final previousIdentity = previous is AuthAuthenticated
+        ? previous.identity
+        : previous is AuthUnauthenticated
+        ? previous.expiredIdentity
+        : null;
+    if (previousIdentity == null) {
+      throw ApiError(message: 'Open sign in to continue.', statusCode: 401);
+    }
+    final revision = ++_sessionRevision;
+    final repository = _repository;
+    final work = _sessionWork.then((_) async {
+      final identity = await repository.login(
+        previousIdentity.username,
+        password,
+      );
+      if (!_isCurrent(revision)) {
+        throw ApiError(
+          message: 'Your account changed. Reopen the form to continue.',
+          statusCode: 401,
+        );
+      }
+      if (identity.userId != previousIdentity.userId ||
+          identity.username != previousIdentity.username) {
+        _requiresLogin = true;
+        await repository.logout();
+        if (_isCurrent(revision)) state = AuthUnauthenticated();
+        throw ApiError(
+          message: 'Sign in with the original account to keep editing.',
+          statusCode: 401,
+        );
+      }
+      _requiresLogin = false;
+      state = AuthAuthenticated.identity(identity);
+    });
+    _sessionWork = work.catchError((Object _) {});
+    await work;
+  }
+
+  Future<void> logout() => _endSession();
+
+  Future<void> _endSession({bool expired = false}) async {
+    final previous = state;
+    final expiredIdentity = expired && previous is AuthAuthenticated
+        ? previous.identity
+        : null;
+    if (!expired) _discardLessonDraft();
+    final ended = AuthUnauthenticated(expiredIdentity: expiredIdentity);
     final repository = _repository;
     _requiresLogin = true;
     await _changeSession((revision) async {
@@ -92,7 +189,12 @@ class AuthController extends Notifier<AuthState> {
       } finally {
         try {
           await repository.tokenStorage.clearAuthenticationState();
-          if (_isCurrent(revision)) state = AuthUnauthenticated();
+          if (_isCurrent(revision)) {
+            // Disposal may have released the draft while cleanup was pending.
+            state = expired && _lessonDraftOwner == null
+                ? AuthUnauthenticated()
+                : ended;
+          }
         } catch (_) {
           if (_isCurrent(revision)) {
             state = AuthError(
@@ -104,7 +206,7 @@ class AuthController extends Notifier<AuthState> {
           }
         }
       }
-    });
+    }, pendingState: expired ? ended : null);
   }
 
   Future<void> refreshProfile() async {
@@ -121,7 +223,11 @@ class AuthController extends Notifier<AuthState> {
         return;
       }
       final error = e is ApiError ? e : ApiError.unexpected();
-      if (error.statusCode == 401 || error.statusCode == 403) await logout();
+      if (error.statusCode == 401) {
+        await _endSession(expired: true);
+      } else if (error.statusCode == 403) {
+        await logout();
+      }
       throw error;
     }
   }

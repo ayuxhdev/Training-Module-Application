@@ -129,6 +129,112 @@ void main() {
       isActive: true,
     );
 
+
+    test('expired recovery is bound to the registered owner and path', () async {
+      final container = await authenticatedContainer();
+      final controller = container.read(authControllerProvider.notifier);
+      final owner = Object();
+      final foreign = Object();
+      const path = '/workspace/training/versions/20/modules/51/lessons/new';
+      controller.registerLessonDraft(owner, path);
+      when(() => mockRepository.getCurrentIdentity())
+          .thenThrow(ApiError(message: 'Session expired.', statusCode: 401));
+      await expectLater(controller.refreshProfile(), throwsA(isA<ApiError>()));
+      final expired = container.read(authControllerProvider) as AuthUnauthenticated;
+      expect(expired.expiredIdentity?.username, 'EMP001');
+      expect(controller.canRecoverLessonDraft(path, owner: owner), isTrue);
+      expect(controller.canRecoverLessonDraft('/workspace'), isFalse);
+      expect(controller.canRecoverLessonDraft(path, owner: foreign), isFalse);
+      controller.registerLessonDraft(foreign, '/workspace');
+      controller.unregisterLessonDraft(foreign);
+      expect(controller.canRecoverLessonDraft(path, owner: owner), isTrue);
+      controller.unregisterLessonDraft(owner);
+      expect(controller.canRecoverLessonDraft(path), isFalse);
+    });
+
+    test('logout during expired reauthentication cannot restore draft ownership', () async {
+      final container = await authenticatedContainer();
+      final controller = container.read(authControllerProvider.notifier);
+      const path = '/workspace/training/versions/20/modules/51/lessons/new';
+      controller.registerLessonDraft(Object(), path);
+      when(() => mockRepository.getCurrentIdentity())
+          .thenThrow(ApiError(message: 'Session expired.', statusCode: 401));
+      await expectLater(controller.refreshProfile(), throwsA(isA<ApiError>()));
+      final response = Completer<AuthenticatedIdentity>();
+      when(() => mockRepository.login('EMP001', 'test-only-password'))
+          .thenAnswer((_) => response.future);
+      final recovery = expectLater(controller.reauthenticate('test-only-password'), throwsA(isA<ApiError>()));
+      await Future<void>.delayed(Duration.zero);
+      final logout = controller.logout();
+      response.complete(AuthenticatedIdentity.fromEmployee(tEmployee));
+      await Future.wait([recovery, logout]);
+      final ended = container.read(authControllerProvider) as AuthUnauthenticated;
+      expect(ended.expiredIdentity, isNull);
+      expect(controller.canRecoverLessonDraft(path), isFalse);
+    });
+
+    test('same-account reauthentication preserves authenticated state while pending', () async {
+      final container = await authenticatedContainer();
+      final response = Completer<AuthenticatedIdentity>();
+      when(() => mockRepository.login('EMP001', 'test-only-password'))
+          .thenAnswer((_) => response.future);
+      final states = <AuthState>[];
+      container.listen(authControllerProvider, (_, next) => states.add(next));
+      final work = container
+          .read(authControllerProvider.notifier)
+          .reauthenticate('test-only-password');
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(authControllerProvider), isA<AuthAuthenticated>());
+      response.complete(AuthenticatedIdentity.fromEmployee(tEmployee));
+      await work;
+      expect(states.every((state) => state is AuthAuthenticated), isTrue);
+      verifyNever(() => mockRepository.logout());
+    });
+
+    test(
+      'failed in-place reauthentication preserves the draft route state',
+      () async {
+        final container = await authenticatedContainer();
+        when(
+          () => mockRepository.login('EMP001', 'wrong'),
+        ).thenThrow(ApiError(message: 'Check your password.', statusCode: 401));
+        await expectLater(
+          container
+              .read(authControllerProvider.notifier)
+              .reauthenticate('wrong'),
+          throwsA(isA<ApiError>()),
+        );
+        expect(
+          (container.read(
+            authControllerProvider,
+          ) as AuthAuthenticated).employee,
+          tEmployee,
+        );
+      },
+    );
+
+    test(
+      'in-place reauthentication rejects a changed account identity',
+      () async {
+        final container = await authenticatedContainer();
+        when(() => mockRepository.login('EMP001', 'test-only-password'))
+            .thenAnswer(
+              (_) async => AuthenticatedIdentity.fromEmployee(otherEmployee),
+            );
+        await expectLater(
+          container
+              .read(authControllerProvider.notifier)
+              .reauthenticate('test-only-password'),
+          throwsA(isA<ApiError>()),
+        );
+        expect(
+          container.read(authControllerProvider),
+          isA<AuthUnauthenticated>(),
+        );
+        verify(() => mockRepository.logout()).called(1);
+      },
+    );
+
     test('refresh preserves displayed profile while pending and updates on success', () async {
       final container = await authenticatedContainer();
       final response = Completer<AuthenticatedIdentity>();

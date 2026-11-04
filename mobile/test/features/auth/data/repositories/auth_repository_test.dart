@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:training_app/core/network/dio_client.dart';
+import 'package:training_app/core/network/auth_session.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/storage/secure_token_storage.dart';
 import 'package:training_app/features/auth/data/repositories/auth_repository.dart';
@@ -18,12 +19,21 @@ void main() {
   late MockSecureTokenStorage mockTokenStorage;
   late MockDio mockDio;
 
+  setUpAll(() => registerFallbackValue(Options()));
+
   setUp(() {
     mockApiClient = MockApiClient();
     mockTokenStorage = MockSecureTokenStorage();
     mockDio = MockDio();
+    when(() => mockTokenStorage.markSessionInvalid()).thenAnswer((_) async {});
+    when(() => mockTokenStorage.clearInvalidationMarker())
+        .thenAnswer((_) async {});
+    when(() => mockTokenStorage.isSessionInvalid())
+        .thenAnswer((_) async => false);
 
     when(() => mockApiClient.dio).thenReturn(mockDio);
+    when(() => mockApiClient.session)
+        .thenReturn(AuthSession(dio: mockDio, storage: mockTokenStorage));
 
     repository = AuthRepository(
       apiClient: mockApiClient,
@@ -121,7 +131,10 @@ void main() {
             ),
           );
           expect(
-            (await repository.login('EMP001', 'password')).employee!.employeeCode,
+            (await repository.login(
+              'EMP001',
+              'password',
+            )).employee!.employeeCode,
             'EMP001',
           );
         },
@@ -129,16 +142,35 @@ void main() {
     }
 
     test('management login and restoration parse identity without a fabricated Employee', () async {
-      when(() => mockDio.post('/auth/login/', data: {'username': 'administrator', 'password': 'password'}))
-          .thenAnswer((_) async => Response(requestOptions: RequestOptions(path: '/'),
-            data: {'access': 'access_token', 'refresh': 'refresh_token'}));
-      when(() => mockTokenStorage.saveAccessToken('access_token')).thenAnswer((_) async {});
-      when(() => mockTokenStorage.saveRefreshToken('refresh_token')).thenAnswer((_) async {});
-      when(() => mockDio.get('/auth/me/')).thenAnswer((_) async => Response(
-        requestOptions: RequestOptions(path: '/'), data: {
-          'user': {'id': 20, 'username': 'administrator', 'display_name': 'Administrator'},
-          'employee': null, 'capabilities': ['management_workspace'],
-        }));
+      when(
+        () => mockDio.post(
+          '/auth/login/',
+          data: {'username': 'administrator', 'password': 'password'},
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: '/'),
+          data: {'access': 'access_token', 'refresh': 'refresh_token'},
+        ),
+      );
+      when(() => mockTokenStorage.saveAccessToken('access_token'))
+          .thenAnswer((_) async {});
+      when(() => mockTokenStorage.saveRefreshToken('refresh_token'))
+          .thenAnswer((_) async {});
+      when(() => mockDio.get('/auth/me/')).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: '/'),
+          data: {
+            'user': {
+              'id': 20,
+              'username': 'administrator',
+              'display_name': 'Administrator',
+            },
+            'employee': null,
+            'capabilities': ['management_workspace'],
+          },
+        ),
+      );
       final identity = await repository.login('administrator', 'password');
       expect(identity.employee, isNull);
       expect(identity.canManage, isTrue);
@@ -194,11 +226,16 @@ void main() {
     test(
       'logout successfully clears local storage even on network error',
       () async {
+        when(() => mockTokenStorage.readAccessToken())
+            .thenAnswer((_) async => 'access_token');
         when(() => mockTokenStorage.readRefreshToken())
             .thenAnswer((_) async => 'refresh_token');
         when(
-          () =>
-              mockDio.post('/auth/logout/', data: {'refresh': 'refresh_token'}),
+          () => mockDio.post(
+            '/auth/logout/',
+            data: {'refresh': 'refresh_token'},
+            options: any(named: 'options'),
+          ),
         ).thenThrow(DioException(requestOptions: RequestOptions(path: '/')));
         when(() => mockTokenStorage.clearAuthenticationState())
             .thenAnswer((_) async {});
@@ -206,8 +243,11 @@ void main() {
         await repository.logout();
 
         verify(
-          () =>
-              mockDio.post('/auth/logout/', data: {'refresh': 'refresh_token'}),
+          () => mockDio.post(
+            '/auth/logout/',
+            data: {'refresh': 'refresh_token'},
+            options: any(named: 'options'),
+          ),
         ).called(1);
         verify(() => mockTokenStorage.clearAuthenticationState()).called(1);
       },

@@ -43,6 +43,18 @@ class MockAuthController extends Notifier<AuthState> implements AuthController {
   Future<void> logout() async {}
 
   @override
+  void registerLessonDraft(Object owner, String path) {}
+
+  @override
+  void unregisterLessonDraft(Object owner) {}
+
+  @override
+  bool canRecoverLessonDraft(String path, {Object? owner}) => false;
+
+  @override
+  Future<void> reauthenticate(String password) async {}
+
+  @override
   Future<void> retryAuthentication() async {}
 
   @override

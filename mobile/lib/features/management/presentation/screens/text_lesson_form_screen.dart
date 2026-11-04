@@ -8,6 +8,7 @@ import 'package:training_app/core/presentation/components/content_skeleton.dart'
 import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
+import 'package:training_app/features/auth/presentation/widgets/reauthenticate_button.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
@@ -43,6 +44,7 @@ class _TextLessonFormScreenState extends ConsumerState<TextLessonFormScreen> {
   bool _isSubmitting = false;
   CancelToken? _activeRequest;
   String? _serverError;
+  bool _signInRequired = false;
   Map<String, String> _fieldErrors = const {};
 
   bool _initialLoaded = false;
@@ -52,6 +54,29 @@ class _TextLessonFormScreenState extends ConsumerState<TextLessonFormScreen> {
   bool? _initialIsRequired;
 
   late String _account;
+  late final AuthController _authController;
+  String get _draftPath =>
+      '/workspace/training/versions/${widget.versionId}/modules/${widget.moduleId}/lessons/${_isEditing ? '${widget.lessonId}/edit' : 'new'}';
+
+  bool _ownsDraft(AuthState auth) {
+    if (managementAccount(auth) == _account) return true;
+    if (auth is! AuthUnauthenticated || auth.expiredIdentity == null) {
+      return false;
+    }
+    return managementAccount(
+              AuthAuthenticated.identity(auth.expiredIdentity!),
+            ) ==
+            _account &&
+        _authController.canRecoverLessonDraft(_draftPath, owner: this);
+  }
+
+  void _showSignInRequired() {
+    setState(() {
+      _signInRequired = true;
+      _serverError = 'Your session has ended. Sign in again to continue. Your unsaved changes are still here.';
+      _isSubmitting = false;
+    });
+  }
 
   bool get _isEditing => widget.lessonId != null;
 
@@ -89,6 +114,8 @@ class _TextLessonFormScreenState extends ConsumerState<TextLessonFormScreen> {
     super.initState();
     final auth = ref.read(authControllerProvider);
     _account = managementAccount(auth) ?? '';
+    _authController = ref.read(authControllerProvider.notifier);
+    _authController.registerLessonDraft(this, _draftPath);
 
     _titleController = TextEditingController();
     _positionController = TextEditingController();
@@ -133,6 +160,7 @@ class _TextLessonFormScreenState extends ConsumerState<TextLessonFormScreen> {
 
   @override
   void dispose() {
+    _authController.unregisterLessonDraft(this);
     _activeRequest?.cancel('Form disposed');
     _titleController.dispose();
     _positionController.dispose();
@@ -169,7 +197,7 @@ class _TextLessonFormScreenState extends ConsumerState<TextLessonFormScreen> {
 
   void _markChanged() {
     setState(() {
-      _serverError = null;
+      if (!_signInRequired) _serverError = null;
       _fieldErrors = const {};
     });
   }
@@ -199,6 +227,11 @@ class _TextLessonFormScreenState extends ConsumerState<TextLessonFormScreen> {
   }
 
   Future<void> _submitForm() async {
+    final current = ref.read(authControllerProvider);
+    if (current is AuthUnauthenticated && _ownsDraft(current)) {
+      _showSignInRequired();
+      return;
+    }
     setState(() {
       _serverError = null;
       _fieldErrors = const {};
@@ -302,8 +335,15 @@ class _TextLessonFormScreenState extends ConsumerState<TextLessonFormScreen> {
       final fields = _fieldErrorsFrom(parsed);
 
       setState(() {
+        _signInRequired =
+            parsed.statusCode == 401 &&
+            parsed.code != 'authentication_retry_required';
         _fieldErrors = fields;
-        if (parsed.statusCode == 409) {
+        if (parsed.statusCode == 401) {
+          _serverError = parsed.code == 'authentication_retry_required'
+              ? parsed.message
+              : 'Your session has ended. Sign in again to continue. Your unsaved changes are still here.';
+        } else if (parsed.statusCode == 409) {
           _serverError = 'That position was taken by another edit. Refresh and choose an unused position.';
         } else if (parsed.statusCode == 404) {
           _serverError = 'The curriculum version, module, or lesson was not found, or is no longer in draft.';
@@ -356,7 +396,10 @@ class _TextLessonFormScreenState extends ConsumerState<TextLessonFormScreen> {
     }
 
     ref.listen<AuthState>(authControllerProvider, (_, next) {
-      if (managementAccount(next) != _account) {
+      if (next is AuthUnauthenticated && _ownsDraft(next)) {
+        _activeRequest?.cancel('Session expired');
+        _showSignInRequired();
+      } else if (!_ownsDraft(next)) {
         _activeRequest?.cancel('Account changed');
       }
     });
@@ -368,6 +411,24 @@ class _TextLessonFormScreenState extends ConsumerState<TextLessonFormScreen> {
         (_isEditing
             ? canAccessLessonEditForm(auth.identity)
             : canCreateLessons(auth.identity));
+
+    if (auth is AuthUnauthenticated && _ownsDraft(auth)) {
+      if (_initialLoaded) return _buildForm(context);
+      return Scaffold(
+        appBar: AppBar(title: const Text('Sign in to continue')),
+        body: Column(
+          children: [
+            const Text('Your session has ended. Sign in again to continue.'),
+            ReauthenticateButton(
+              onRestored: () => setState(() {
+                _signInRequired = false;
+                _serverError = null;
+              }),
+            ),
+          ],
+        ),
+      );
+    }
 
     if (!permitted) {
       return Scaffold(
@@ -519,6 +580,16 @@ class _TextLessonFormScreenState extends ConsumerState<TextLessonFormScreen> {
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            if (_signInRequired) ...[
+              ReauthenticateButton(
+                onRestored: () => setState(() {
+                  _signInRequired = false;
+                  _serverError =
+                      'Signed in. Review your changes and tap Save when ready.';
+                }),
               ),
               const SizedBox(height: AppSpacing.md),
             ],

@@ -33,10 +33,20 @@ class AppShell extends ConsumerWidget {
       );
     }
 
+    if (authState is AuthUnauthenticated &&
+        ref
+            .read(authControllerProvider.notifier)
+            .canRecoverLessonDraft(location)) {
+      // Keep the owned local draft mounted, without authenticated navigation.
+      return Scaffold(body: child);
+    }
+
     if (authState is! AuthAuthenticated) return const SizedBox.shrink();
     final identity = authState.identity;
     final canAccessWorkspace =
-        identity.canManage || identity.canViewTeam || identity.canManageTraining;
+        identity.canManage ||
+        identity.canViewTeam ||
+        identity.canManageTraining;
     final paths = [
       if (identity.canLearn) '/dashboard',
       if (identity.canLearn) '/learning',

@@ -583,6 +583,7 @@ class ManagementRepository {
       throw ArgumentError.value(minimumWatchPercent, 'minimumWatchPercent');
     }
 
+    await apiClient.prepareUpload(cancelToken: cancelToken);
     final multipart = await videoFile.toMultipartFile();
     final formData = FormData.fromMap({
       'title': normalizedTitle,
@@ -598,6 +599,7 @@ class ManagementRepository {
       final response = await apiClient.dio.post(
         '/management/versions/$versionId/modules/$moduleId/video-lessons/',
         data: formData,
+        options: ApiClient.uploadOptions,
         onSendProgress: onSendProgress,
         cancelToken: cancelToken,
       );
@@ -675,6 +677,7 @@ class ManagementRepository {
 
     dynamic requestData;
     if (hasFile) {
+      await apiClient.prepareUpload(cancelToken: cancelToken);
       final multipart = await videoFile.toMultipartFile();
       final formData = FormData();
       if (normalizedTitle != null) {
@@ -711,6 +714,7 @@ class ManagementRepository {
       final response = await apiClient.dio.patch(
         '/management/versions/$versionId/modules/$moduleId/video-lessons/$lessonId/',
         data: requestData,
+        options: hasFile ? ApiClient.uploadOptions : null,
         onSendProgress: onSendProgress,
         cancelToken: cancelToken,
       );

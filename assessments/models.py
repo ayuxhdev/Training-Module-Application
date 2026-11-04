@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import F, Q
@@ -8,6 +9,17 @@ from django.utils import timezone
 
 from config.model_utils import TimestampedModel, protect_delete, require
 from training.models import Lesson, TrainingAssignment, VersionContent
+
+DRAFT_QUESTION_PLACEHOLDER = "draft question"
+
+
+def validate_freezable_prompt(prompt):
+    cleaned = " ".join((prompt or "").split())
+    if not cleaned:
+        raise ValidationError({"prompt": ["Question prompt cannot be blank when freezing a revision."]})
+    if cleaned.lower() == DRAFT_QUESTION_PLACEHOLDER:
+        raise ValidationError({"prompt": ["Question prompt must be updated from the default placeholder before freezing."]})
+
 
 
 class Question(TimestampedModel):
@@ -58,6 +70,7 @@ class QuestionRevision(TimestampedModel):
         if old and old.status == self.Status.FROZEN:
             self.require_frozen(old)
         elif self.status == self.Status.FROZEN:
+            validate_freezable_prompt(self.prompt)
             require(self.pk is not None, "Create a draft question before freezing it.")
             options = list(self.options.all())
             require(len(options) >= 2 and sum(option.is_correct for option in options) == 1,

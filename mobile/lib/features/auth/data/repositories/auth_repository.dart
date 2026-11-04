@@ -18,17 +18,7 @@ class AuthRepository {
 
   Future<AuthenticatedIdentity> login(String username, String password) async {
     try {
-      final response = await apiClient.dio.post(
-        '/auth/login/',
-        data: {'username': username, 'password': password},
-      );
-
-      final data = response.data as Map<String, dynamic>;
-      final accessToken = data['access'] as String;
-      final refreshToken = data['refresh'] as String;
-
-      await tokenStorage.saveAccessToken(accessToken);
-      await tokenStorage.saveRefreshToken(refreshToken);
+      await apiClient.session.login(username, password);
 
       return await getCurrentIdentity();
     } catch (e) {
@@ -49,22 +39,16 @@ class AuthRepository {
 
   Future<void> logout() async {
     try {
-      final refreshToken = await tokenStorage.readRefreshToken();
-      if (refreshToken != null) {
-        await apiClient.dio.post(
-          '/auth/logout/',
-          data: {'refresh': refreshToken},
-        );
-      }
+      await apiClient.session.logout();
     } catch (_) {
-      // Logout API failure should still clear local credentials silently
-    } finally {
-      await tokenStorage.clearAuthenticationState();
+      // Offline logout still clears credentials in the session's finally block.
     }
   }
 
   Future<bool> hasStoredCredentials() async {
     final token = await tokenStorage.readAccessToken();
-    return token != null && token.isNotEmpty;
+    if (token != null && token.isNotEmpty) return true;
+    final refresh = await tokenStorage.readRefreshToken();
+    return refresh != null && refresh.isNotEmpty;
   }
 }

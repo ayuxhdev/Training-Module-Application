@@ -43,7 +43,13 @@ class ApiError implements Exception {
         structured?['message'] ?? (error is String ? error : data['detail']);
     final code = structured?['code'] ?? data['code'];
     return ApiError(
-      message: message is String && message.isNotEmpty
+      message:
+          statusCode == 401 &&
+              message is String &&
+              (message.toLowerCase().contains('token') ||
+                  message.toLowerCase().contains('jwt'))
+          ? 'Your session has ended. Sign in again to continue.'
+          : message is String && message.isNotEmpty
           ? message
           : 'An API error occurred.',
       statusCode: statusCode,

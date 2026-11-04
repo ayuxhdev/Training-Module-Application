@@ -9,6 +9,7 @@ import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
+import 'package:training_app/features/auth/presentation/widgets/reauthenticate_button.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/management/data/services/video_file_picker.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
@@ -49,6 +50,7 @@ class _VideoLessonFormScreenState extends ConsumerState<VideoLessonFormScreen> {
   bool _isSubmitting = false;
   CancelToken? _activeRequest;
   String? _serverError;
+  bool _signInRequired = false;
   Map<String, String> _fieldErrors = const {};
 
   bool _initialLoaded = false;
@@ -60,6 +62,31 @@ class _VideoLessonFormScreenState extends ConsumerState<VideoLessonFormScreen> {
   int _currentDurationSeconds = 0;
 
   late String _account;
+  late final AuthController _authController;
+  String get _draftPath =>
+      '/workspace/training/versions/${widget.versionId}/modules/${widget.moduleId}/video-lessons/${_isEditing ? '${widget.lessonId}/edit' : 'new'}';
+
+  bool _ownsDraft(AuthState auth) {
+    if (managementAccount(auth) == _account) return true;
+    if (auth is! AuthUnauthenticated || auth.expiredIdentity == null) {
+      return false;
+    }
+    return managementAccount(
+              AuthAuthenticated.identity(auth.expiredIdentity!),
+            ) ==
+            _account &&
+        _authController.canRecoverLessonDraft(_draftPath, owner: this);
+  }
+
+  void _showSignInRequired() {
+    setState(() {
+      _signInRequired = true;
+      _serverError = 'Your session has ended. Sign in again to continue. Your unsaved changes are still here.';
+      _isSubmitting = false;
+      _uploadProgress = null;
+    });
+  }
+
   late final VideoFilePicker _videoFilePicker;
 
   bool get _isEditing => widget.lessonId != null;
@@ -103,6 +130,8 @@ class _VideoLessonFormScreenState extends ConsumerState<VideoLessonFormScreen> {
     super.initState();
     final auth = ref.read(authControllerProvider);
     _account = managementAccount(auth) ?? '';
+    _authController = ref.read(authControllerProvider.notifier);
+    _authController.registerLessonDraft(this, _draftPath);
     _videoFilePicker = ref.read(videoFilePickerProvider);
 
     _titleController = TextEditingController();
@@ -151,6 +180,7 @@ class _VideoLessonFormScreenState extends ConsumerState<VideoLessonFormScreen> {
 
   @override
   void dispose() {
+    _authController.unregisterLessonDraft(this);
     _activeRequest?.cancel('Form disposed');
     _titleController.dispose();
     _positionController.dispose();
@@ -193,7 +223,7 @@ class _VideoLessonFormScreenState extends ConsumerState<VideoLessonFormScreen> {
 
   void _markChanged() {
     setState(() {
-      _serverError = null;
+      if (!_signInRequired) _serverError = null;
       _fieldErrors = const {};
     });
   }
@@ -242,6 +272,10 @@ class _VideoLessonFormScreenState extends ConsumerState<VideoLessonFormScreen> {
         return;
       }
       if (picked == null) return;
+      if (!_ownsDraft(ref.read(authControllerProvider))) {
+        picked.delete();
+        return;
+      }
 
       final validationError = _validateVideoFile(picked, isEditing: _isEditing);
       if (validationError != null) {
@@ -352,6 +386,11 @@ class _VideoLessonFormScreenState extends ConsumerState<VideoLessonFormScreen> {
   }
 
   Future<void> _submitForm() async {
+    final current = ref.read(authControllerProvider);
+    if (current is AuthUnauthenticated && _ownsDraft(current)) {
+      _showSignInRequired();
+      return;
+    }
     setState(() {
       _serverError = null;
       _fieldErrors = const {};
@@ -508,17 +547,24 @@ class _VideoLessonFormScreenState extends ConsumerState<VideoLessonFormScreen> {
       if (!mounted) return;
       if (cancelToken.isCancelled) return;
       final currentAuth = ref.read(authControllerProvider);
-      if (managementAccount(currentAuth) != _account) return;
+      if (!_ownsDraft(currentAuth)) return;
 
       final parsed = error is ApiError ? error : ApiError.unexpected();
       final fields = _fieldErrorsFrom(parsed);
 
       setState(() {
+        _signInRequired =
+            parsed.statusCode == 401 &&
+            parsed.code != 'authentication_retry_required';
         _fieldErrors = fields;
         if (fields.containsKey('video_file')) {
           _videoFileError = fields['video_file'];
         }
-        if (parsed.statusCode == 409) {
+        if (parsed.statusCode == 401) {
+          _serverError = parsed.code == 'authentication_retry_required'
+              ? parsed.message
+              : 'Your session has ended. Sign in again to continue. Your unsaved changes are still here.';
+        } else if (parsed.statusCode == 409) {
           _serverError = 'That position was taken by another edit. Refresh and choose an unused position.';
         } else if (parsed.statusCode == 404) {
           _serverError = 'The curriculum version, module, or lesson was not found, or is no longer in draft.';
@@ -529,6 +575,10 @@ class _VideoLessonFormScreenState extends ConsumerState<VideoLessonFormScreen> {
           _serverError = parsed.message.isNotEmpty ? parsed.message : 'Video storage is unavailable. Contact your administrator and try again.';
         } else {
           _serverError = _nonFieldErrorFrom(parsed) ?? parsed.message;
+          if (parsed.code == 'timeout' && _selectedVideoFile != null) {
+            _serverError =
+                '$_serverError Your selected video is still in this form.';
+          }
         }
       });
     } finally {
@@ -574,7 +624,10 @@ class _VideoLessonFormScreenState extends ConsumerState<VideoLessonFormScreen> {
     }
 
     ref.listen<AuthState>(authControllerProvider, (_, next) {
-      if (managementAccount(next) != _account) {
+      if (next is AuthUnauthenticated && _ownsDraft(next)) {
+        _activeRequest?.cancel('Session expired');
+        _showSignInRequired();
+      } else if (!_ownsDraft(next)) {
         _activeRequest?.cancel('Account changed');
         final fileToDelete = _selectedVideoFile;
         _selectedVideoFile = null;
@@ -599,6 +652,24 @@ class _VideoLessonFormScreenState extends ConsumerState<VideoLessonFormScreen> {
         (_isEditing
             ? canAccessLessonEditForm(auth.identity)
             : canCreateLessons(auth.identity));
+
+    if (auth is AuthUnauthenticated && _ownsDraft(auth)) {
+      if (_initialLoaded) return _buildFormScaffold(context);
+      return Scaffold(
+        appBar: AppBar(title: const Text('Sign in to continue')),
+        body: Column(
+          children: [
+            const Text('Your session has ended. Sign in again to continue.'),
+            ReauthenticateButton(
+              onRestored: () => setState(() {
+                _signInRequired = false;
+                _serverError = null;
+              }),
+            ),
+          ],
+        ),
+      );
+    }
 
     if (!permitted) {
       return Scaffold(
@@ -764,6 +835,15 @@ class _VideoLessonFormScreenState extends ConsumerState<VideoLessonFormScreen> {
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                ],
+                if (_signInRequired) ...[
+                  ReauthenticateButton(
+                    onRestored: () => setState(() {
+                      _signInRequired = false;
+                      _serverError = 'Signed in. Review your changes and tap Save when ready.';
+                    }),
                   ),
                   const SizedBox(height: AppSpacing.md),
                 ],

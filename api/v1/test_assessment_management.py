@@ -7,10 +7,16 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, OperationalError, connection, models, transaction
+from django.http import Http404
+from django.test import Client
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from assessments.models import Assessment, AssessmentQuestion, AttemptAnswer, Question, QuestionOption, QuestionRevision
+from assessments.models import (
+    Assessment, AssessmentQuestion, AttemptAnswer, Question, QuestionOption, QuestionRevision,
+    validate_freezable_prompt,
+)
 from audit.models import AuditLog
 from config.model_test_utils import CurriculumTestCase
 from organization.models import Employee
@@ -282,6 +288,151 @@ class AssessmentManagementAPITests(CurriculumTestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(self.client.post(self.revision_url() + "freeze/", {}, format="json").status_code, 200)
 
+    def test_freeze_rejects_empty_and_whitespace_only_prompts(self):
+        self.prepare_options()
+        for invalid in ("", "   ", "\t\r\n", "  \n  \t  "):
+            with self.subTest(prompt=invalid):
+                # Stored empty / whitespace draft prompts must be blocked at freeze time
+                self.bank_revision.prompt = invalid
+                models.Model.save(self.bank_revision)
+                self.bank_revision.refresh_from_db()
+                self.assertEqual(self.bank_revision.status, QuestionRevision.Status.DRAFT)
+                before = self.snapshot()
+
+                # Freezing rejects empty or whitespace-only prompts with structured 400 error
+                response = self.client.post(self.revision_url() + "freeze/", {}, format="json")
+                self.assert_field_error(response, "prompt")
+                self.assertIn("Question prompt cannot be blank when freezing a revision.", response.data["error"]["fields"]["prompt"])
+                self.assertEqual(self.snapshot(), before)
+
+        # Normal editing permits saving incomplete drafts without freezing
+        self.bank_revision.prompt = "Draft question"
+        self.bank_revision.save()
+        response = self.client.patch(self.revision_url(), {"explanation": "Incomplete draft notes"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.bank_revision.refresh_from_db()
+        self.assertEqual(self.bank_revision.status, QuestionRevision.Status.DRAFT)
+
+    def test_freeze_rejects_default_placeholder_prompt_variants(self):
+        self.prepare_options()
+        placeholders = (
+            "Draft question",
+            "draft question",
+            "DRAFT QUESTION",
+            "   Draft Question   \n",
+            "  Draft   question  ",
+            "\tDraft\nquestion\t",
+        )
+        for placeholder in placeholders:
+            with self.subTest(placeholder=placeholder):
+                # Normal editing permits saving draft with placeholder
+                response = self.client.patch(self.revision_url(), {"prompt": placeholder}, format="json")
+                self.assertEqual(response.status_code, 200, response.data)
+                self.bank_revision.refresh_from_db()
+                self.assertEqual(self.bank_revision.status, QuestionRevision.Status.DRAFT)
+                before = self.snapshot()
+
+                # Freezing rejects placeholder prompts
+                response = self.client.post(self.revision_url() + "freeze/", {}, format="json")
+                self.assert_field_error(response, "prompt")
+                self.assertIn("Question prompt must be updated from the default placeholder before freezing.", response.data["error"]["fields"]["prompt"])
+                self.assertEqual(self.snapshot(), before)
+
+    def test_freeze_succeeds_with_valid_prompt_and_records_audit_log(self):
+        self.prepare_options()
+        valid_prompt = "What is the standard procedure for reporting a chemical spill?"
+        response = self.client.patch(self.revision_url(), {"prompt": valid_prompt}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.revision_url() + "freeze/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], "FROZEN")
+        self.assertIsNotNone(response.data["frozen_at"])
+
+        self.bank_revision.refresh_from_db()
+        self.assertEqual(self.bank_revision.status, QuestionRevision.Status.FROZEN)
+        self.assertEqual(self.bank_revision.prompt, valid_prompt)
+
+        event = AuditLog.objects.get(action="assessments.questionrevision.frozen", entity_id=str(self.bank_revision.pk))
+        self.assertEqual(event.actor_id, self.user.pk)
+        self.assertEqual(event.after_data["status"], "FROZEN")
+
+    def test_freeze_already_frozen_revision_is_rejected_and_immutable(self):
+        self.prepare_options()
+        self.client.patch(self.revision_url(), {"prompt": "Valid question prompt?"}, format="json")
+        response = self.client.post(self.revision_url() + "freeze/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        # Once frozen, attempting another freeze via API returns 404 (draft locked query)
+        response = self.client.post(self.revision_url() + "freeze/", {}, format="json")
+        self.assertEqual(response.status_code, 404)
+
+        # Direct service call also fails because _locked_revision requires DRAFT status
+        with self.assertRaises(Http404):
+            services.freeze_revision(self.user, self.bank_question.pk, self.bank_revision.pk, {})
+
+        # Direct model update on frozen revision prompt is rejected by model clean
+        self.bank_revision.refresh_from_db()
+        self.bank_revision.prompt = "Mutated prompt"
+        with self.assertRaises(ValidationError):
+            self.bank_revision.save()
+
+    def test_freeze_rejects_unauthorized_actor(self):
+        unauthorized_user = self.identity("unauthorized-freeze-user", "view_questionrevision")
+        self.authenticate(unauthorized_user)
+        response = self.client.post(self.revision_url() + "freeze/", {}, format="json")
+        self.assertEqual(response.status_code, 403)
+
+    def test_web_freeze_view_enforces_prompt_validation(self):
+        self.prepare_options()
+        web_client = Client()
+        web_client.force_login(self.user)
+
+        # 1. Web freeze with placeholder prompt fails with HTTP 400
+        self.bank_revision.prompt = "Draft question"
+        self.bank_revision.save()
+        response = web_client.post(f"/revisions/{self.bank_revision.pk}/freeze/")
+        self.assertEqual(response.status_code, 400)
+        self.bank_revision.refresh_from_db()
+        self.assertEqual(self.bank_revision.status, QuestionRevision.Status.DRAFT)
+        self.assertFalse(AuditLog.objects.filter(action="assessments.questionrevision.frozen", entity_id=str(self.bank_revision.pk)).exists())
+
+        # 2. Web freeze with empty prompt fails with HTTP 400
+        self.bank_revision.prompt = "   "
+        self.bank_revision.save()
+        response = web_client.post(f"/revisions/{self.bank_revision.pk}/freeze/")
+        self.assertEqual(response.status_code, 400)
+        self.bank_revision.refresh_from_db()
+        self.assertEqual(self.bank_revision.status, QuestionRevision.Status.DRAFT)
+
+        # 3. Web freeze with valid prompt succeeds with 302 redirect
+        self.bank_revision.prompt = "Valid prompt for web freeze"
+        self.bank_revision.save()
+        with self.captureOnCommitCallbacks(execute=True):
+            response = web_client.post(f"/revisions/{self.bank_revision.pk}/freeze/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f"/revisions/{self.bank_revision.pk}/", response.url)
+        self.bank_revision.refresh_from_db()
+        self.assertEqual(self.bank_revision.status, QuestionRevision.Status.FROZEN)
+        self.assertTrue(AuditLog.objects.filter(action="assessments.questionrevision.frozen", entity_id=str(self.bank_revision.pk)).exists())
+
+    def test_validate_freezable_prompt_unit(self):
+        for bad_prompt in ("", "   ", "\t\n", None):
+            with self.subTest(bad=bad_prompt):
+                with self.assertRaises(ValidationError) as ctx:
+                    validate_freezable_prompt(bad_prompt)
+                self.assertIn("prompt", ctx.exception.message_dict)
+
+        for placeholder in ("Draft question", "draft question", "DRAFT QUESTION", "  Draft   question  "):
+            with self.subTest(placeholder=placeholder):
+                with self.assertRaises(ValidationError) as ctx:
+                    validate_freezable_prompt(placeholder)
+                self.assertIn("prompt", ctx.exception.message_dict)
+
+        # Valid prompt does not raise
+        validate_freezable_prompt("Valid question prompt")
+
     def test_revision_noop_does_not_write_or_audit(self):
         self.prepare_options()
         before = self.snapshot()
@@ -426,7 +577,7 @@ class AssessmentManagementAPITests(CurriculumTestCase):
         for url in urls:
             self.assertEqual(self.client.get(url).status_code, 401)
         manager = get_user_model().objects.create_user(username="authoring-manager")
-        manager.groups.add(Group.objects.get(name="Manager"))
+        manager.groups.add(Group.objects.get_or_create(name="Manager")[0])
         Employee.objects.create(
             employee_code="AUTHOR-MANAGER", display_name="Manager", user=manager,
             department=self.department, job_role=self.role, date_joined=self.now.date(),
