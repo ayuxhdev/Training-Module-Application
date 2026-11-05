@@ -1,6 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/content_skeleton.dart';
@@ -26,9 +28,119 @@ class ManagedVersionDetailScreen extends ConsumerStatefulWidget {
 class _ManagedVersionDetailScreenState
     extends ConsumerState<ManagedVersionDetailScreen> {
   int _assessmentsPage = 1;
+  CancelToken? _lifecycleRequest;
+  String? _lifecycleAccount;
+  String? _lifecycleError;
+  String? _lifecycleErrorAccount;
+
+  @override
+  void dispose() {
+    _lifecycleRequest?.cancel('Version screen closed');
+    super.dispose();
+  }
+
+  Future<void> _transition({required bool publish}) async {
+    if (_lifecycleRequest != null) return;
+    final initial = ref.read(authControllerProvider);
+    if (initial is! AuthAuthenticated || !canEditVersions(initial.identity)) {
+      return;
+    }
+    final account = managementAccount(initial);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        scrollable: true,
+        title: Text(publish ? 'Publish this version?' : 'Retire this version?'),
+        content: Text(
+          publish
+              ? 'Publication validates the curriculum and assessments. Published content cannot be edited. Existing assignments keep their current version.'
+              : 'No new assignments can use a retired version. Existing assignments and learner history are preserved.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(publish ? 'Publish' : 'Retire'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted ||
+        confirmed != true ||
+        managementAccount(ref.read(authControllerProvider)) != account) {
+      return;
+    }
+    final request = CancelToken();
+    setState(() {
+      _lifecycleRequest = request;
+      _lifecycleAccount = account;
+      _lifecycleError = null;
+    });
+    try {
+      await ref
+          .read(versionLifecycleProvider)
+          .transition(
+            versionId: widget.versionId,
+            publish: publish,
+            cancelToken: request,
+          );
+      if (!mounted ||
+          request.isCancelled ||
+          managementAccount(ref.read(authControllerProvider)) != account) {
+        return;
+      }
+      ref.invalidate(managedVersionDetailProvider(widget.versionId));
+      ref.invalidate(managedTrainingVersionsProvider);
+      ref.invalidate(allTrainingVersionsProvider);
+      ref.invalidate(managedTrainingDetailProvider);
+      ref.invalidate(managedTrainingsProvider);
+      ref.invalidate(assignableTrainingVersionsProvider);
+      ref.invalidate(managementDashboardProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(publish ? 'Version published.' : 'Version retired.'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted ||
+          request.isCancelled ||
+          managementAccount(ref.read(authControllerProvider)) != account) {
+        return;
+      }
+      final parsed = error is ApiError ? error : ApiError.unexpected();
+      final details = parsed.details;
+      final validation = details is Map
+          ? details.values
+                .map(
+                  (value) => value is List ? value.join(' ') : value.toString(),
+                )
+                .join('\n')
+          : '';
+      setState(() {
+        _lifecycleError = validation.isNotEmpty ? validation : parsed.message;
+        _lifecycleErrorAccount = account;
+      });
+    } finally {
+      if (mounted && identical(_lifecycleRequest, request)) {
+        setState(() {
+          _lifecycleRequest = null;
+          _lifecycleAccount = null;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AuthState>(authControllerProvider, (_, next) {
+      if (_lifecycleRequest != null &&
+          managementAccount(next) != _lifecycleAccount) {
+        _lifecycleRequest?.cancel('Account changed');
+      }
+    });
     final versionId = widget.versionId;
     final auth = ref.watch(authControllerProvider);
     if (auth is! AuthAuthenticated || !canViewVersions(auth.identity)) {
@@ -170,6 +282,42 @@ class _ManagedVersionDetailScreenState
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+                      if (_lifecycleError != null &&
+                          _lifecycleErrorAccount == managementAccount(auth))
+                        Semantics(
+                          liveRegion: true,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: AppSpacing.sm),
+                            child: Text(
+                              _lifecycleError!,
+                              style: TextStyle(color: theme.colorScheme.error),
+                            ),
+                          ),
+                        ),
+                      if (canEditVersions(identity) &&
+                          (status == 'DRAFT' || status == 'PUBLISHED'))
+                        Padding(
+                          padding: const EdgeInsets.only(top: AppSpacing.md),
+                          child: FilledButton.icon(
+                            onPressed: _lifecycleRequest != null
+                                ? null
+                                : () => _transition(publish: status == 'DRAFT'),
+                            icon: Icon(
+                              status == 'DRAFT'
+                                  ? Icons.publish
+                                  : Icons.archive_outlined,
+                            ),
+                            label: Text(
+                              _lifecycleRequest != null
+                                  ? (status == 'DRAFT'
+                                        ? 'Publishing...'
+                                        : 'Retiring...')
+                                  : (status == 'DRAFT'
+                                        ? 'Publish version'
+                                        : 'Retire version'),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),

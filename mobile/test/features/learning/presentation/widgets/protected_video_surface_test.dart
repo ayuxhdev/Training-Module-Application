@@ -247,7 +247,12 @@ void main() {
         );
         expect(
           tester
-              .widget<AnimatedSwitcher>(find.byType(AnimatedSwitcher))
+              .widget<AnimatedSwitcher>(
+                find.descendant(
+                  of: find.byKey(const ValueKey('video-playback-action')),
+                  matching: find.byType(AnimatedSwitcher),
+                ),
+              )
               .duration,
           Duration.zero,
         );
@@ -297,7 +302,7 @@ void main() {
   );
 
   testWidgets(
-    'one stable playback action moves from center to the floating deck',
+    'bottom playback action stays in the floating deck while playback changes',
     (tester) async {
       final previous = FocusManager.instance.highlightStrategy;
       FocusManager.instance.highlightStrategy =
@@ -308,9 +313,10 @@ void main() {
       final frame = find.byKey(const ValueKey('cinematic-video-stage'));
       final deck = find.byKey(const ValueKey('floating-control-deck'));
       expect(action, findsOneWidget);
+      final initialActionRect = tester.getRect(action);
       expect(
-        tester.getCenter(action).dx,
-        closeTo(tester.getCenter(frame).dx, 1),
+        tester.getRect(deck).contains(tester.getRect(action).topLeft),
+        isTrue,
       );
       expect(
         tester.getRect(frame).contains(tester.getRect(deck).topLeft),
@@ -320,7 +326,6 @@ void main() {
         tester.getRect(deck).bottom,
         lessThan(tester.getRect(frame).bottom),
       );
-      expect(tester.getRect(action).bottom, lessThan(tester.getRect(deck).top));
       final focus = tester.widget<IconButton>(action).focusNode!;
       focus.requestFocus();
       await tester.pump();
@@ -329,8 +334,26 @@ void main() {
       expect(action, findsOneWidget);
       expect(focus.hasFocus, isTrue);
       expect(tester.widget<IconButton>(action).focusNode, same(focus));
-      expect(tester.getRect(deck).contains(tester.getCenter(action)), isTrue);
-      expect(find.byTooltip('Pause'), findsOneWidget);
+      expect(
+        tester.getRect(action).topLeft.dx,
+        closeTo(initialActionRect.topLeft.dx, 1),
+      );
+      expect(
+        tester.getRect(action).topLeft.dy,
+        closeTo(initialActionRect.topLeft.dy, 1),
+      );
+      expect(
+        find.byKey(const ValueKey('video-central-playback-action')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(const ValueKey('video-playback-action')),
+            )
+            .tooltip,
+        'Pause',
+      );
     },
   );
 

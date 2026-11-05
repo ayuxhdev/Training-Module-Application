@@ -11,6 +11,7 @@ import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:training_app/features/learning/domain/models/assignment_detail.dart';
+import 'package:training_app/features/learning/domain/models/assignment.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:training_app/features/profile/presentation/widgets/appearance_settings.dart';
@@ -29,6 +30,24 @@ void main() {
       overrides: [
         authControllerProvider.overrideWith(() => auth),
         appearanceStorageProvider.overrideWithValue(storage),
+        // Lesson navigation also mounts the Learning list in the app shell.
+        // Keep that read deterministic, just like the detail read below.
+        assignmentListProvider.overrideWith(
+          (_) async => [
+            Assignment(
+              id: 1,
+              trainingId: 1,
+              trainingTitle: 'Working safely',
+              versionNumber: 1,
+              status: 'IN_PROGRESS',
+              isOverdue: false,
+              progressSummary: ProgressSummary(
+                requiredLessonsCompleted: 1,
+                requiredLessonsTotal: 1,
+              ),
+            ),
+          ],
+        ),
         assignmentDetailProvider(1).overrideWith(
           (_) async => AssignmentDetail(
             id: 1,
@@ -273,6 +292,10 @@ void main() {
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
           expect(find.text('Complete Lesson'), findsNothing);
+          expect(
+            container.read(assignmentListProvider).requireValue.single.id,
+            1,
+          );
         },
       );
     }

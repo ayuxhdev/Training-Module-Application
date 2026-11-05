@@ -6,7 +6,17 @@
 <header class="page-header"><h1>{% if form.instance.pk %}Edit lesson{% else %}Add lesson{% endif %}</h1></header>
 <section class="catalog-panel catalog-editor" aria-labelledby="lesson-editor-heading">
   <header class="catalog-panel-heading"><h2 id="lesson-editor-heading">Lesson information</h2><p>Choose the lesson type, enter a title and select your video. Length and integrity checks are automatic.</p></header>
-{% if form.instance.pk and form.instance.content_type == 'VIDEO' and form.instance.video_file %}<p class="catalog-notice">A video is already saved ({{ form.instance.video_duration_seconds }} seconds). Leave the file picker empty to keep it, or choose a replacement.</p>{% endif %}
+{% if form.instance.pk and form.instance.content_type == 'VIDEO' and form.instance.video_file %}
+<section class="catalog-notice" style="border-left: 4px solid var(--color-success-border, #1b873f); background: var(--color-surface, #fff); color: var(--color-text, inherit); padding: var(--space-4); margin: var(--space-4) 0;" aria-labelledby="attached-video-heading">
+  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2);">
+    <h3 id="attached-video-heading" style="margin: 0; font-size: var(--font-size-base); font-weight: 600;">Current Video Attached</h3>
+    <span class="status-badge status-completed status-badge--success">Attached</span>
+  </div>
+  <p style="margin: 0 0 var(--space-2); font-size: var(--font-size-sm); color: var(--color-text-muted);">Duration: {{ form.instance.video_duration_seconds }} seconds</p>
+  <p style="margin: 0 0 var(--space-2); font-size: var(--font-size-sm);">A video is already saved for this lesson. If the lesson remains a video lesson, leaving the replacement file picker below empty keeps the existing attached video.</p>
+  <p style="margin: 0; font-size: var(--font-size-sm); color: var(--color-text-muted);"><strong>Please note:</strong> If you change the lesson type to Written lesson (Text) and save, the existing video attachment will be removed.</p>
+</section>
+{% endif %}
 <form method="post" enctype="multipart/form-data" class="form-stack catalog-form">
 	{% include "training/components/editor_fields.html" %}
 	<div class="catalog-form-actions"><button class="btn btn-primary" type="submit">Save lesson</button><a href="{% url 'training:version-detail' form.instance.module.training_version_id %}" class="btn btn-secondary">Cancel</a></div>

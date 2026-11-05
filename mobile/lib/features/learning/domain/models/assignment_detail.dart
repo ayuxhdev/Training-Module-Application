@@ -147,6 +147,7 @@ class AssignmentDetail {
   final String trainingTitle;
   final int versionNumber;
   final String status;
+  final int? certificateId;
   final DateTime? assignedAt;
   final DateTime? dueAt;
   final DateTime? startedAt;
@@ -160,6 +161,7 @@ class AssignmentDetail {
     required this.trainingTitle,
     required this.versionNumber,
     required this.status,
+    this.certificateId,
     this.assignedAt,
     this.dueAt,
     this.startedAt,
@@ -175,6 +177,7 @@ class AssignmentDetail {
       trainingTitle: json['training_title'] as String? ?? '',
       versionNumber: json['version_number'] as int? ?? 1,
       status: json['status'] as String? ?? '',
+      certificateId: json['certificate_id'] as int?,
       assignedAt: json['assigned_at'] != null
           ? DateTime.tryParse(json['assigned_at'])
           : null,

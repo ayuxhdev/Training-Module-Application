@@ -178,3 +178,31 @@ class AssessmentManagementConcurrencyTests(SimpleTestCase):
         self.assertEqual(self.revision.explanation, "Second")
         self.assertEqual(self.revision.options.get(position=1).text, "First")
         self.assertEqual(AuditLog.objects.filter(actor_id__in=self.actor_ids).count(), 2)
+
+    def prepare_true_false_revision(self):
+        self.revision.question_type = "TRUE_FALSE"
+        self.revision.save()
+        for option, text in zip(self.revision.options.order_by("position"), ("True", "False")):
+            option.text = text
+            option.save()
+
+    def test_true_false_freeze_validates_committed_concurrent_option_addition(self):
+        self.prepare_true_false_revision()
+        changes = {"options": [{"text": "Legacy", "position": 3}]}
+        self.race([self.edit_call(changes), self.freeze_call()], (200, 400), QuestionRevision, Question)
+        self.revision.refresh_from_db()
+        self.assertEqual((self.revision.status, self.revision.frozen_at), ("DRAFT", None))
+        self.assertEqual(list(self.revision.options.order_by("position").values_list("text", flat=True)), ["True", "False", "Legacy"])
+        events = AuditLog.objects.filter(actor_id__in=self.actor_ids)
+        self.assertEqual(list(events.values_list("action", flat=True)), ["assessments.questionrevision.updated"])
+
+    def test_true_false_freeze_blocks_concurrent_answer_key_mutation(self):
+        self.prepare_true_false_revision()
+        option = self.revision.options.get(position=1)
+        changes = {"options": [{"id": option.pk, "is_correct": False}]}
+        self.race([self.freeze_call(), self.edit_call(changes)], (200, 404), QuestionRevision, Question)
+        self.revision.refresh_from_db()
+        self.assertEqual(self.revision.status, "FROZEN")
+        self.assertEqual(list(self.revision.options.order_by("position").values_list("is_correct", flat=True)), [True, False])
+        events = AuditLog.objects.filter(actor_id__in=self.actor_ids)
+        self.assertEqual(list(events.values_list("action", flat=True)), ["assessments.questionrevision.frozen"])

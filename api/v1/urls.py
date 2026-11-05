@@ -19,6 +19,7 @@ from .assessment_management_views import (
 from .training_management_views import (
     TrainingCatalogDetailView, TrainingCatalogView,
     TrainingVersionDetailView, TrainingVersionHistoryView, TrainingVersionDiscoveryView,
+    TrainingVersionPublishView, TrainingVersionRetireView,
 )
 from .management_views import (
     DepartmentReferenceUpdateView, DepartmentReferenceView, EmployeeDeactivationView,
@@ -65,6 +66,8 @@ urlpatterns = [
     path("management/trainings/<int:pk>/versions/", TrainingVersionHistoryView.as_view(), name="management-training-history"),
     path("management/versions/", TrainingVersionDiscoveryView.as_view(), name="management-versions"),
     path("management/versions/<int:pk>/", TrainingVersionDetailView.as_view(), name="management-version-detail"),
+    path("management/versions/<int:pk>/publish/", TrainingVersionPublishView.as_view(), name="management-version-publish"),
+    path("management/versions/<int:pk>/retire/", TrainingVersionRetireView.as_view(), name="management-version-retire"),
     path("management/versions/<int:version_pk>/modules/", ModuleCreateView.as_view(), name="management-module-create"),
     path("management/versions/<int:version_pk>/modules/<int:pk>/", ModuleDetailView.as_view(), name="management-module-detail"),
     path("management/versions/<int:version_pk>/modules/<int:module_pk>/text-lessons/", TextLessonCreateView.as_view(), name="management-text-lesson-create"),

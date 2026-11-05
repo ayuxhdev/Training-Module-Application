@@ -60,6 +60,7 @@ class AssignmentDetailView(JWTActiveEmployeeAPIView):
 		assignment = get_object_or_404(
 			TrainingAssignment.objects.filter(employee=request.user.employee).select_related(
 				"training_version__training",
+				"certificate",
 			).annotate(
 				is_overdue=Case(
 					When(overdue_condition(now), then=Value(True)),

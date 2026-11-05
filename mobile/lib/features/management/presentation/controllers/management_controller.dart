@@ -637,6 +637,51 @@ final draftVersionMutationProvider = Provider<DraftVersionMutationController>(
   ),
 );
 
+class VersionLifecycleController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  const VersionLifecycleController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<ManagedTrainingVersionItem> transition({
+    required int versionId,
+    required bool publish,
+    CancelToken? cancelToken,
+  }) async {
+    final initial = readAuth();
+    if (initial is! AuthAuthenticated || !canEditVersions(initial.identity)) {
+      throw ApiError(
+        message: 'This account cannot publish or retire training versions.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initial);
+    final result = publish
+        ? await repository.publishVersion(versionId, cancelToken: cancelToken)
+        : await repository.retireVersion(versionId, cancelToken: cancelToken);
+    final current = readAuth();
+    if (current is! AuthAuthenticated ||
+        managementAccount(current) != account ||
+        !canEditVersions(current.identity)) {
+      throw ApiError(
+        message: 'The account changed. Refresh the version before continuing.',
+        statusCode: 403,
+      );
+    }
+    return result;
+  }
+}
+
+final versionLifecycleProvider = Provider<VersionLifecycleController>(
+  (ref) => VersionLifecycleController(
+    repository: ref.watch(managementRepositoryProvider),
+    readAuth: () => ref.read(authControllerProvider),
+  ),
+);
+
 class ModuleMutationController {
   final ManagementRepository repository;
   final AuthState Function() readAuth;

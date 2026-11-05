@@ -149,11 +149,70 @@ class _ProtectedVideoSurfaceState extends State<ProtectedVideoSurface> {
     ],
   );
 
+  Widget _playbackButton({
+    required Key key,
+    required String tooltip,
+    required VideoPlayerValue value,
+    required Duration motion,
+    required bool central,
+    FocusNode? focusNode,
+  }) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: _emerald.withValues(alpha: central ? .15 : .08),
+            blurRadius: central ? 24 : 12,
+          ),
+        ],
+      ),
+      child: IconButton(
+        key: key,
+        focusNode: focusNode,
+        tooltip: tooltip,
+        onPressed: !widget.busy && widget.canPlay
+            ? () => widget.onPlaybackRequested(!value.isPlaying)
+            : null,
+        style: ButtonStyle(
+          animationDuration: motion,
+          minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+          maximumSize: const WidgetStatePropertyAll(Size(48, 48)),
+          shape: const WidgetStatePropertyAll(CircleBorder()),
+          backgroundColor: WidgetStatePropertyAll(
+            central ? const Color(0xe00d1520) : const Color(0xd906382d),
+          ),
+          foregroundColor: WidgetStatePropertyAll(
+            central ? Colors.white : _emerald,
+          ),
+          side: WidgetStateProperty.resolveWith(
+            (states) => BorderSide(
+              color: states.contains(WidgetState.focused)
+                  ? _emerald
+                  : Colors.white24,
+              width: states.contains(WidgetState.focused) ? 2 : 1,
+            ),
+          ),
+        ),
+        icon: AnimatedSwitcher(
+          duration: motion,
+          child: Icon(
+            value.isPlaying ? Icons.pause : Icons.play_arrow_rounded,
+            key: ValueKey(value.isPlaying),
+            size: central ? 32 : 24,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _deck(
     double duration,
     double position,
     double rowHeight,
-    bool central,
+    String action,
+    VideoPlayerValue value,
+    Duration motion,
   ) => ClipRRect(
     borderRadius: BorderRadius.circular(18),
     child: BackdropFilter(
@@ -233,7 +292,18 @@ class _ProtectedVideoSurfaceState extends State<ProtectedVideoSurface> {
               height: rowHeight,
               child: Row(
                 children: [
-                  if (!central) const SizedBox(width: 60),
+                  FocusTraversalOrder(
+                    order: const NumericFocusOrder(2),
+                    child: _playbackButton(
+                      key: const ValueKey('video-playback-action'),
+                      focusNode: _playbackFocus,
+                      tooltip: action,
+                      value: value,
+                      motion: motion,
+                      central: false,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
                   Expanded(
                     child: Text.rich(
                       TextSpan(
@@ -337,7 +407,6 @@ class _ProtectedVideoSurfaceState extends State<ProtectedVideoSurface> {
         final centerTop = inset + hudHeight + 8;
         final centerSpace = height - inset - deckHeight - 8 - centerTop;
         final central =
-            !value.isPlaying &&
             !widget.busy &&
             !value.isBuffering &&
             widget.message == null &&
@@ -345,9 +414,7 @@ class _ProtectedVideoSurfaceState extends State<ProtectedVideoSurface> {
         final size = central
             ? math.min(widget.fullscreen ? 76.0 : 64.0, centerSpace)
             : 48.0;
-        final actionTop = central
-            ? centerTop + (centerSpace - size) / 2
-            : height - inset - 9 - rowHeight / 2 - size / 2;
+        final actionTop = centerTop + (centerSpace - size) / 2;
 
         final overlays = ExcludeFocus(
           excluding: !widget.controlsVisible,
@@ -391,77 +458,39 @@ class _ProtectedVideoSurfaceState extends State<ProtectedVideoSurface> {
                       left: inset,
                       right: inset,
                       bottom: inset,
-                      child: _deck(duration, position, rowHeight, central),
+                      child: _deck(
+                        duration,
+                        position,
+                        rowHeight,
+                        action,
+                        value,
+                        motion,
+                      ),
                     ),
-                    AnimatedPositioned(
-                      duration: motion,
-                      curve: Curves.easeOutCubic,
-                      left: central ? (width - size) / 2 : inset + 13,
-                      top: actionTop,
-                      width: size,
-                      height: size,
-                      child: FocusTraversalOrder(
-                        order: const NumericFocusOrder(2),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: _emerald.withValues(alpha: .15),
-                                blurRadius: 24,
+                    if (central)
+                      AnimatedPositioned(
+                        duration: motion,
+                        curve: Curves.easeOutCubic,
+                        left: (width - size) / 2,
+                        top: actionTop,
+                        width: size,
+                        height: size,
+                        // Mirror the stationary action for touch users without
+                        // adding a transient keyboard or screen-reader stop.
+                        child: ExcludeFocus(
+                          child: ExcludeSemantics(
+                            child: _playbackButton(
+                              key: const ValueKey(
+                                'video-central-playback-action',
                               ),
-                            ],
-                          ),
-                          child: IconButton(
-                            key: const ValueKey('video-playback-action'),
-                            focusNode: _playbackFocus,
-                            tooltip: action,
-                            onPressed: !widget.busy && widget.canPlay
-                                ? () => widget.onPlaybackRequested(
-                                    !value.isPlaying,
-                                  )
-                                : null,
-                            style: ButtonStyle(
-                              animationDuration: motion,
-                              minimumSize: const WidgetStatePropertyAll(
-                                Size(48, 48),
-                              ),
-                              shape: const WidgetStatePropertyAll(
-                                CircleBorder(),
-                              ),
-                              backgroundColor: WidgetStatePropertyAll(
-                                central
-                                    ? const Color(0xe00d1520)
-                                    : const Color(0xd906382d),
-                              ),
-                              foregroundColor: WidgetStatePropertyAll(
-                                central ? Colors.white : _emerald,
-                              ),
-                              side: WidgetStateProperty.resolveWith(
-                                (states) => BorderSide(
-                                  color: states.contains(WidgetState.focused)
-                                      ? _emerald
-                                      : Colors.white24,
-                                  width: states.contains(WidgetState.focused)
-                                      ? 2
-                                      : 1,
-                                ),
-                              ),
-                            ),
-                            icon: AnimatedSwitcher(
-                              duration: motion,
-                              child: Icon(
-                                value.isPlaying
-                                    ? Icons.pause
-                                    : Icons.play_arrow_rounded,
-                                key: ValueKey(value.isPlaying),
-                                size: central ? 32 : 24,
-                              ),
+                              tooltip: action,
+                              value: value,
+                              motion: motion,
+                              central: true,
                             ),
                           ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),

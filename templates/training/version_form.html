@@ -3,9 +3,19 @@
 {% block content %}
 <div class="catalog-workspace">
 <nav aria-label="Breadcrumb"><ol class="breadcrumbs"><li><a href="{% url 'training:training-list' %}">Training</a></li><li><a href="{% url 'training:training-detail' form.instance.training_id %}">{{ form.instance.training.catalog_title }}</a></li>{% if form.instance.pk %}<li><a href="{% url 'training:version-detail' form.instance.pk %}">Version {{ form.instance.version_number }}</a></li><li>Edit draft</li>{% else %}<li>Add version</li>{% endif %}</ol></nav>
-<header class="page-header"><h1>{% if form.instance.pk %}Edit draft version{% else %}Add version{% endif %}</h1></header>
+<header class="page-header">
+  <div class="page-header-main">
+    <h1>{% if form.instance.pk %}Edit draft version{% else %}Add version{% endif %}</h1>
+  </div>
+  {% if form.instance.pk and perms.training.view_trainingversion %}
+    <a class="btn btn-secondary" href="{% url 'training:version-detail' form.instance.pk %}">Curriculum workspace</a>
+  {% endif %}
+</header>
 <section class="catalog-panel catalog-editor" aria-labelledby="version-editor-heading">
   <header class="catalog-panel-heading"><h2 id="version-editor-heading">Version information</h2><p>Edit this draft on its own page before publishing.</p></header>
+  {% if form.instance.pk and perms.training.view_trainingversion %}
+    <p class="catalog-notice" style="margin: var(--space-4) var(--space-6) 0;">This form edits version details (title, objectives, revision notes). To manage modules, lessons, and video attachments, go to the <a href="{% url 'training:version-detail' form.instance.pk %}">Curriculum workspace</a>.</p>
+  {% endif %}
 <form method="post" class="form-stack catalog-form">
   {% csrf_token %}
   {% if form.errors %}<p class="catalog-validation" role="alert">Please correct the errors below. Text entries have been preserved.</p>{% endif %}

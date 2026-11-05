@@ -334,7 +334,13 @@ test("reduced-motion regression checks prove assertions fail if declarations are
 
   // Removing base .app-sidebar while keeping .app-sidebar.is-open causes failure
   assert.throws(
-    () => validateReducedMotion(validCss.replace("  .app-sidebar,\n", "")),
+    () =>
+      validateReducedMotion(
+        validCss.replace(
+          "  .app-sidebar,\n  .app-sidebar.is-open {",
+          "  .app-sidebar.is-open {",
+        ),
+      ),
     /Base \.app-sidebar selector missing from reduced motion/,
   );
 

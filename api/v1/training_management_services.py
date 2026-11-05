@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Max
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from audit.services import audit_snapshot, record_event
 from training.forms import LessonForm, ModuleForm, TrainingForm, TrainingVersionForm
@@ -115,3 +116,27 @@ def update_text_lesson(actor, version_id, module_id, lesson_id, values):
         content_type=Lesson.ContentType.TEXT,
     )
     return _save_form(_text_lesson_form(instance, values), actor, creating=False)
+
+
+class InvalidVersionTransition(ValidationError):
+    """A concurrent author or a stale client has already changed the lifecycle."""
+
+
+@transaction.atomic
+def transition_version(actor, version_id, *, publish):
+    # Use the same aggregate lock as curriculum/assessment authoring, and read
+    # fresh state before changing it. Model.save() owns publication validation.
+    version = get_object_or_404(TrainingVersion.objects.select_for_update(), pk=version_id)
+    expected = TrainingVersion.Status.DRAFT if publish else TrainingVersion.Status.PUBLISHED
+    if version.status != expected:
+        raise InvalidVersionTransition("This version's status has changed. Refresh it before trying again.")
+    before = audit_snapshot(version)
+    version.status = TrainingVersion.Status.PUBLISHED if publish else TrainingVersion.Status.RETIRED
+    if publish:
+        version.published_at = timezone.now()
+        version.published_by = actor
+    version.save()
+    action = "published" if publish else "retired"
+    record_event(actor, f"training.trainingversion.{action}", version,
+                 before=before, after=audit_snapshot(version))
+    return version

@@ -9,8 +9,8 @@
         <td>{% include "components/status_badge.html" with status=version.status label=version.get_status_display %}</td>
         <td>{% if version.published_at %}<time datetime="{{ version.published_at|date:'Y-m-d' }}">{{ version.published_at|date:"Y-m-d" }}</time>{% else %}<span class="muted">Not published</span>{% endif %}</td>
         <td class="catalog-table-actions"><div class="record-actions">
-          {% if perms.training.view_trainingversion %}<a class="btn btn-secondary" href="{% url 'training:version-detail' version.pk %}" aria-label="View version {{ version.version_number }}: {{ version.title }}">View</a>{% endif %}
-          {% if version.status == 'DRAFT' and perms.training.change_trainingversion %}<a class="btn btn-secondary" href="{% url 'training:version-update' version.pk %}" aria-label="Edit draft version {{ version.version_number }}: {{ version.title }}">Edit draft</a>{% endif %}
+          {% if perms.training.view_trainingversion %}<a class="btn btn-secondary" href="{% url 'training:version-detail' version.pk %}" aria-label="Manage curriculum for version {{ version.version_number }}: {{ version.title }}">Manage curriculum</a>{% endif %}
+          {% if version.status == 'DRAFT' and perms.training.change_trainingversion %}<a class="btn btn-secondary" href="{% url 'training:version-update' version.pk %}" aria-label="Edit details for version {{ version.version_number }}: {{ version.title }}">Edit details</a>{% endif %}
         </div></td>
       </tr>
     {% empty %}

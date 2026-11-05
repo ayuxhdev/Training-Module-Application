@@ -774,7 +774,10 @@ void main() {
       expect(player.value.isPlaying, isFalse);
       player.value = player.value.copyWith(isBuffering: false);
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Resume video'), findsOneWidget);
+      final resume = find.byKey(const ValueKey('video-playback-action'));
+      expect(resume.hitTestable(), findsOneWidget);
+      expect(tester.widget<IconButton>(resume).tooltip, 'Resume video');
+      expect(tester.widget<IconButton>(resume).onPressed, isNotNull);
       await remove(tester);
       verify(() => repository.protectedReplayMediaRequest(1, 2)).called(1);
       verifyNoMoreInteractions(repository);
@@ -2037,6 +2040,201 @@ void main() {
       },
     );
   }
+
+  for (final playing in [false, true]) {
+    testWidgets(
+      'central touch shortcut has one stable accessible playback action (playing=$playing)',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        final player = Player();
+        addTearDown(player.dispose);
+        try {
+          await player.initialize();
+          player.value = player.value.copyWith(isPlaying: playing);
+          final requests = <bool>[];
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: ProtectedVideoSurface(
+                  controller: player,
+                  busy: false,
+                  controlsVisible: true,
+                  canPlay: true,
+                  canSeek: true,
+                  fullscreen: false,
+                  onToggleControls: () {},
+                  onPlaybackRequested: requests.add,
+                  onSeek: (_) {},
+                  onScrubbingChanged: (_) {},
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final bottom = find.byKey(const ValueKey('video-playback-action'));
+          final central = find.byKey(
+            const ValueKey('video-central-playback-action'),
+          );
+          expect(bottom, findsOneWidget);
+          expect(central, findsOneWidget);
+          final label = tester.widget<IconButton>(bottom).tooltip!;
+          // The stationary button owns keyboard and assistive-technology actions.
+          final actions = tester.semantics
+              .simulatedAccessibilityTraversal()
+              .where((node) => node.getSemanticsData().tooltip == label);
+          expect(actions, hasLength(1));
+          expect(actions.single.id, tester.getSemantics(bottom).id);
+          expect(
+            tester
+                .getSemantics(bottom)
+                .getSemanticsData()
+                .flagsCollection
+                .isButton,
+            isTrue,
+          );
+          expect(
+            tester
+                .widget<ExcludeFocus>(
+                  find
+                      .ancestor(
+                        of: central,
+                        matching: find.byType(ExcludeFocus),
+                      )
+                      .first,
+                )
+                .excluding,
+            isTrue,
+          );
+          final focus = tester.widget<IconButton>(bottom).focusNode!;
+          focus.requestFocus();
+          await tester.pump();
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+          await tester.pump();
+          expect(
+            find.descendant(
+              of: find.byType(Slider),
+              matching: find.byElementPredicate(
+                (element) =>
+                    element == FocusManager.instance.primaryFocus?.context,
+              ),
+              matchRoot: true,
+            ),
+            findsOneWidget,
+          );
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.pump();
+          expect(focus.hasFocus, isTrue);
+          for (final control in [bottom, central]) {
+            expect(tester.getSize(control).width, greaterThanOrEqualTo(48));
+            expect(tester.getSize(control).height, greaterThanOrEqualTo(48));
+            await tester.tap(control);
+            await tester.pump();
+            expect(requests, [!playing]);
+            requests.clear();
+            expect(focus.hasFocus, isTrue);
+          }
+          for (final key in [
+            LogicalKeyboardKey.enter,
+            LogicalKeyboardKey.space,
+          ]) {
+            await tester.sendKeyEvent(key);
+            await tester.pump();
+            expect(requests, [!playing]);
+            requests.clear();
+          }
+          expect(tester.takeException(), isNull);
+        } finally {
+          semantics.dispose();
+          await remove(tester);
+        }
+      },
+    );
+  }
+
+  testWidgets(
+    'hidden and fading player actions cannot receive focus, semantics or playback taps',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      final player = Player();
+      addTearDown(player.dispose);
+      try {
+        await player.initialize();
+        player.value = player.value.copyWith(isPlaying: true);
+        final requests = <bool>[];
+        var toggles = 0;
+        Future<void> surface(bool visible) async {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: ProtectedVideoSurface(
+                  controller: player,
+                  busy: false,
+                  controlsVisible: visible,
+                  canPlay: true,
+                  canSeek: true,
+                  fullscreen: false,
+                  onToggleControls: () => toggles++,
+                  onPlaybackRequested: requests.add,
+                  onSeek: (_) {},
+                  onScrubbingChanged: (_) {},
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+        }
+
+        await surface(true);
+        final bottom = find.byKey(const ValueKey('video-playback-action'));
+        final central = find.byKey(
+          const ValueKey('video-central-playback-action'),
+        );
+        final focus = tester.widget<IconButton>(bottom).focusNode!;
+        await surface(false);
+        // Assert during the fade, before the controls become transparent.
+        final opacity = tester.widget<AnimatedOpacity>(
+          find.byType(AnimatedOpacity),
+        );
+        expect(opacity.opacity, 0);
+        expect(
+          tester.semantics.simulatedAccessibilityTraversal().where(
+            (node) => node.getSemanticsData().tooltip == 'Pause',
+          ),
+          isEmpty,
+        );
+        expect(
+          tester.semantics.simulatedAccessibilityTraversal().where(
+            (node) =>
+                node.getSemanticsData().label.contains('Playback position'),
+          ),
+          isEmpty,
+        );
+        for (final control in [bottom, central]) {
+          expect(control.hitTestable(), findsNothing);
+        }
+        focus.requestFocus();
+        await tester.pump();
+        expect(focus.hasFocus, isFalse);
+        await tester.tapAt(tester.getCenter(central));
+        await tester.pump();
+        expect(requests, isEmpty);
+        expect(toggles, 1);
+        await tester.pumpAndSettle();
+        expect(
+          tester.semantics.simulatedAccessibilityTraversal().where(
+            (node) => node.getSemanticsData().tooltip == 'Pause',
+          ),
+          isEmpty,
+        );
+        expect(tester.takeException(), isNull);
+      } finally {
+        semantics.dispose();
+        await remove(tester);
+      }
+    },
+  );
 
   testWidgets(
     'completed presentation comes only from confirmed server progress',

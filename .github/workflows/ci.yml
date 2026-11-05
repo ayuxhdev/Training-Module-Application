@@ -89,6 +89,12 @@ jobs:
       - name: Run Javascript tests
         run: npm test
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -111,3 +117,7 @@ jobs:
       - name: Run Flutter tests
         working-directory: mobile
         run: flutter test
+
+      - name: Build Android debug APK
+        working-directory: mobile
+        run: flutter build apk --debug --dart-define=API_BASE_URL=https://training.example.com

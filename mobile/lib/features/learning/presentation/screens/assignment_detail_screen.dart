@@ -116,13 +116,15 @@ class AssignmentDetailScreen extends ConsumerWidget {
                           icon: const Icon(Icons.quiz_outlined),
                           label: const Text('Assessments and attempts'),
                         ),
-                        if (detail.status.toUpperCase() == 'COMPLETED') ...[
+                        if (detail.status.toUpperCase() == 'COMPLETED' &&
+                            detail.certificateId != null) ...[
                           const SizedBox(height: 12),
                           OutlinedButton.icon(
-                            onPressed: () =>
-                                context.push('/profile/certificates'),
+                            onPressed: () => context.push(
+                              '/profile/certificates/${detail.certificateId}',
+                            ),
                             icon: const Icon(Icons.workspace_premium_outlined),
-                            label: const Text('My Certificates'),
+                            label: const Text('Certificate'),
                           ),
                         ],
                       ],

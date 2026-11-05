@@ -1721,8 +1721,599 @@ void main() {
     });
 
     testWidgets(
-      'changing question type to TRUE_FALSE applies preset and persists via PATCH',
+      'empty True/False draft initializes locally and supports deselection and freezing',
       (tester) async {
+        var detail = ManagedQuestionRevisionDetail.fromJson(
+          managedQuestionRevisionDetailJson(
+            id: 10,
+            questionId: 5,
+            questionType: 'TRUE_FALSE',
+            status: 'DRAFT',
+            prompt: 'New True/False prompt',
+            options: [],
+          ),
+        );
+        List<Map<String, dynamic>>? savedOptions;
+        when(
+          () => repository.questionRevisionDetail(
+            5,
+            10,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async => detail);
+        when(
+          () => repository.updateQuestionRevision(
+            5,
+            10,
+            questionType: any(named: 'questionType'),
+            prompt: any(named: 'prompt'),
+            explanation: any(named: 'explanation'),
+            options: any(named: 'options'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((call) async {
+          savedOptions =
+              call.namedArguments[#options] as List<Map<String, dynamic>>;
+          detail = ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              questionType: 'TRUE_FALSE',
+              status: 'DRAFT',
+              prompt: 'New True/False prompt',
+              options: [
+                for (var i = 0; i < savedOptions!.length; i++)
+                  {
+                    ...savedOptions![i],
+                    'id': savedOptions![i]['id'] ?? 201 + i,
+                  },
+              ],
+            ),
+          );
+          return detail;
+        });
+        when(
+          () => repository.freezeQuestionRevision(
+            5,
+            10,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async => detail);
+        await launch(
+          tester,
+          path: '/workspace/training/questions/5/revisions/10',
+        );
+        final yes = find.byKey(const ValueKey('correct-option-true'));
+        final no = find.byKey(const ValueKey('correct-option-false'));
+        expect(find.text('True'), findsOneWidget);
+        expect(find.text('False'), findsOneWidget);
+        expect(tester.widget<Checkbox>(yes).value, isFalse);
+        expect(tester.widget<Checkbox>(no).value, isFalse);
+        verifyNever(
+          () => repository.updateQuestionRevision(
+            any(),
+            any(),
+            questionType: any(named: 'questionType'),
+            prompt: any(named: 'prompt'),
+            explanation: any(named: 'explanation'),
+            options: any(named: 'options'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+        await tester.tap(yes);
+        await tester.pumpAndSettle();
+        expect(tester.widget<Checkbox>(yes).value, isTrue);
+        expect(tester.widget<Checkbox>(no).value, isFalse);
+        await tester.tap(yes);
+        await tester.pumpAndSettle();
+        expect(tester.widget<Checkbox>(yes).value, isFalse);
+        await tester.tap(yes);
+        await tester.pumpAndSettle();
+        await tester.tap(no);
+        await tester.pumpAndSettle();
+        expect(tester.widget<Checkbox>(yes).value, isFalse);
+        expect(tester.widget<Checkbox>(no).value, isTrue);
+        await tester.tap(no);
+        await tester.pumpAndSettle();
+        expect(tester.widget<Checkbox>(no).value, isFalse);
+        await tester.tap(find.text('Save draft changes'));
+        await tester.pumpAndSettle();
+        expect(savedOptions!.map((o) => o['text']), ['True', 'False']);
+        expect(savedOptions!.every((o) => o['is_correct'] == false), isTrue);
+        expect(savedOptions!.every((o) => !o.containsKey('id')), isTrue);
+        expect(find.text('Revision saved successfully.'), findsOneWidget);
+        await tester.tap(find.text('Freeze revision permanently'));
+        await tester.pumpAndSettle();
+        expect(find.text('Freeze revision?'), findsNothing);
+        verifyNever(
+          () => repository.freezeQuestionRevision(
+            5,
+            10,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+        await tester.tap(no);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Freeze revision permanently'));
+        await tester.pumpAndSettle();
+        expect(find.text('Freeze revision?'), findsOneWidget);
+        await tester.tap(find.text('Freeze permanently'));
+        await tester.pumpAndSettle();
+        expect(
+          savedOptions!.where((o) => o['is_correct'] == true),
+          hasLength(1),
+        );
+        expect(
+          savedOptions!.singleWhere((o) => o['is_correct'] == true)['text'],
+          'False',
+        );
+        expect(savedOptions!.map((o) => o['id']), [201, 202]);
+        verify(
+          () => repository.freezeQuestionRevision(
+            5,
+            10,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'saved True/False answer can be deselected without changing the other answer',
+      (tester) async {
+        when(
+          () => repository.questionRevisionDetail(
+            5,
+            10,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              questionType: 'TRUE_FALSE',
+              status: 'DRAFT',
+              prompt: 'Saved prompt',
+              options: [
+                managedQuestionOptionJson(
+                  id: 201,
+                  text: 'True',
+                  position: 1,
+                  isCorrect: true,
+                ),
+                managedQuestionOptionJson(
+                  id: 202,
+                  text: 'False',
+                  position: 2,
+                  isCorrect: false,
+                ),
+              ],
+            ),
+          ),
+        );
+        await launch(
+          tester,
+          path: '/workspace/training/questions/5/revisions/10',
+        );
+        final yes = find.byKey(const ValueKey('correct-option-true'));
+        final no = find.byKey(const ValueKey('correct-option-false'));
+        expect(tester.widget<Checkbox>(yes).value, isTrue);
+        await tester.tap(yes);
+        await tester.pumpAndSettle();
+        expect(tester.widget<Checkbox>(yes).value, isFalse);
+        expect(tester.widget<Checkbox>(no).value, isFalse);
+      },
+    );
+
+    testWidgets(
+      'True/False with three answers cannot freeze even with one correct answer',
+      (tester) async {
+        when(
+          () => repository.questionRevisionDetail(
+            5,
+            10,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              questionType: 'TRUE_FALSE',
+              status: 'DRAFT',
+              prompt: 'Valid prompt',
+              options: [
+                managedQuestionOptionJson(
+                  id: 201,
+                  text: 'True',
+                  position: 1,
+                  isCorrect: true,
+                ),
+                managedQuestionOptionJson(
+                  id: 202,
+                  text: 'False',
+                  position: 2,
+                  isCorrect: false,
+                ),
+                managedQuestionOptionJson(
+                  id: 203,
+                  text: 'True',
+                  position: 3,
+                  isCorrect: false,
+                ),
+              ],
+            ),
+          ),
+        );
+        await launch(
+          tester,
+          path: '/workspace/training/questions/5/revisions/10',
+        );
+        await tester.tap(find.text('Freeze revision permanently'));
+        await tester.pumpAndSettle();
+        expect(find.text('Freeze revision?'), findsNothing);
+        expect(
+          find.text(
+            'True/false questions require exactly the True and False options.',
+          ),
+          findsWidgets,
+        );
+        verifyNever(
+          () => repository.freezeQuestionRevision(
+            5,
+            10,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+      },
+    );
+
+    for (final extraOption in [false, true]) {
+      testWidgets(
+        'invalid True/False structure repairs explicitly and preserves IDs and edits (extra=$extraOption)',
+        (tester) async {
+          var detail = ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              questionType: 'TRUE_FALSE',
+              status: 'DRAFT',
+              prompt: 'Saved prompt',
+              options: [
+                managedQuestionOptionJson(
+                  id: 201,
+                  text: extraOption ? 'True' : 'Yes',
+                  position: 1,
+                  isCorrect: true,
+                ),
+                managedQuestionOptionJson(
+                  id: 202,
+                  text: 'False',
+                  position: 2,
+                  isCorrect: false,
+                ),
+                if (extraOption)
+                  managedQuestionOptionJson(
+                    id: 203,
+                    text: 'Legacy option',
+                    position: 3,
+                    isCorrect: false,
+                  ),
+              ],
+            ),
+          );
+          List<Map<String, dynamic>>? savedOptions;
+          when(
+            () => repository.questionRevisionDetail(
+              5,
+              10,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenAnswer((_) async => detail);
+          when(
+            () => repository.updateQuestionRevision(
+              5,
+              10,
+              questionType: any(named: 'questionType'),
+              prompt: any(named: 'prompt'),
+              explanation: any(named: 'explanation'),
+              options: any(named: 'options'),
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenAnswer((call) async {
+            savedOptions =
+                call.namedArguments[#options] as List<Map<String, dynamic>>;
+            expect(call.namedArguments[#prompt], 'Unsaved author edit');
+            detail = ManagedQuestionRevisionDetail.fromJson(
+              managedQuestionRevisionDetailJson(
+                id: 10,
+                questionId: 5,
+                questionType: 'TRUE_FALSE',
+                status: 'DRAFT',
+                prompt: 'Unsaved author edit',
+                options: savedOptions!
+                    .where((o) => o['delete'] != true)
+                    .toList(),
+              ),
+            );
+            return detail;
+          });
+          await launch(
+            tester,
+            path: '/workspace/training/questions/5/revisions/10',
+          );
+          expect(
+            find.text(extraOption ? 'Legacy option' : 'Yes'),
+            findsOneWidget,
+          );
+          expect(
+            find.textContaining('Use Edit, Remove or Add option'),
+            findsOneWidget,
+          );
+          expect(
+            find.widgetWithText(FilledButton, 'Add option'),
+            findsOneWidget,
+          );
+          verifyNever(
+            () => repository.updateQuestionRevision(
+              any(),
+              any(),
+              questionType: any(named: 'questionType'),
+              prompt: any(named: 'prompt'),
+              explanation: any(named: 'explanation'),
+              options: any(named: 'options'),
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          );
+          await tester.enterText(
+            find.widgetWithText(TextFormField, 'Saved prompt'),
+            'Unsaved author edit',
+          );
+          if (extraOption) {
+            await tester.tap(find.byTooltip('Remove option').last);
+            await tester.pumpAndSettle();
+          } else {
+            await tester.tap(find.byTooltip('Edit option').first);
+            await tester.pumpAndSettle();
+            final dialog = find.byType(AlertDialog);
+            await tester.enterText(
+              find
+                  .descendant(of: dialog, matching: find.byType(TextField))
+                  .first,
+              'True',
+            );
+            expect(
+              tester
+                  .widget<CheckboxListTile>(find.byType(CheckboxListTile))
+                  .value,
+              isTrue,
+            );
+            await tester.tap(find.widgetWithText(FilledButton, 'Save option'));
+            await tester.pumpAndSettle();
+          }
+          expect(find.byTooltip('Edit option'), findsNothing);
+          expect(find.byTooltip('Remove option'), findsNothing);
+          expect(find.text('Add option'), findsNothing);
+          expect(
+            tester
+                .widget<Checkbox>(
+                  find.byKey(const ValueKey('correct-option-true')),
+                )
+                .value,
+            isTrue,
+          );
+          expect(
+            tester
+                .widget<Checkbox>(
+                  find.byKey(const ValueKey('correct-option-false')),
+                )
+                .value,
+            isFalse,
+          );
+          await tester.tap(find.text('Save draft changes'));
+          await tester.pumpAndSettle();
+          expect(
+            savedOptions!.where((o) => o['delete'] != true).map((o) => o['id']),
+            [201, 202],
+          );
+          expect(
+            savedOptions!.singleWhere((o) => o['id'] == 201)['is_correct'],
+            isTrue,
+          );
+          if (extraOption) {
+            expect(savedOptions!.singleWhere((o) => o['id'] == 203), {
+              'id': 203,
+              'delete': true,
+            });
+          } else {
+            expect(savedOptions!.any((o) => o['delete'] == true), isFalse);
+          }
+          expect(find.text('Unsaved author edit'), findsOneWidget);
+          expect(find.text('Revision saved successfully.'), findsOneWidget);
+        },
+      );
+    }
+
+    testWidgets(
+      'switching to True/False preserves nonempty options and unsaved author edits',
+      (tester) async {
+        await launch(
+          tester,
+          path: '/workspace/training/questions/5/revisions/10',
+        );
+        final before = find.byType(TextFormField).first;
+        await tester.enterText(before, 'Keep this unsaved prompt');
+        await tester.tap(find.text('Single choice (Multiple choice)').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('True / False').last);
+        await tester.pumpAndSettle();
+        expect(find.text('No PPE required'), findsOneWidget);
+        expect(find.text('True'), findsNothing);
+        expect(find.text('False'), findsNothing);
+        expect(find.text('Keep this unsaved prompt'), findsOneWidget);
+        expect(find.byTooltip('Edit option'), findsNWidgets(2));
+        expect(
+          find.textContaining('Use Edit, Remove or Add option'),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('True / False').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Single choice (Multiple choice)').last);
+        await tester.pumpAndSettle();
+        expect(find.text('No PPE required'), findsOneWidget);
+        expect(find.text('Keep this unsaved prompt'), findsOneWidget);
+        verifyNever(
+          () => repository.updateQuestionRevision(
+            any(),
+            any(),
+            questionType: any(named: 'questionType'),
+            prompt: any(named: 'prompt'),
+            explanation: any(named: 'explanation'),
+            options: any(named: 'options'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+      },
+    );
+
+    testWidgets(
+      'view-only True/False draft does not initialize or expose editing controls',
+      (tester) async {
+        when(
+          () => repository.questionRevisionDetail(
+            5,
+            10,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              questionType: 'TRUE_FALSE',
+              status: 'DRAFT',
+              options: [],
+            ),
+          ),
+        );
+        await launch(
+          tester,
+          path: '/workspace/training/questions/5/revisions/10',
+          identity: managementIdentity(
+            capabilities: {
+              'management_workspace',
+              'assessments.view_questionrevision',
+            },
+          ),
+        );
+        expect(
+          find.text('No options configured for this revision.'),
+          findsOneWidget,
+        );
+        expect(find.text('True'), findsNothing);
+        expect(find.text('False'), findsNothing);
+        expect(find.text('Add option'), findsNothing);
+        expect(find.text('Save draft changes'), findsNothing);
+        expect(find.byType(Checkbox), findsNothing);
+        verifyNever(
+          () => repository.updateQuestionRevision(
+            any(),
+            any(),
+            questionType: any(named: 'questionType'),
+            prompt: any(named: 'prompt'),
+            explanation: any(named: 'explanation'),
+            options: any(named: 'options'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+      },
+    );
+
+    for (final empty in [true, false]) {
+      testWidgets(
+        'frozen True/False remains read-only without local setup (empty=$empty)',
+        (tester) async {
+          when(
+            () => repository.questionRevisionDetail(
+              5,
+              10,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenAnswer(
+            (_) async => ManagedQuestionRevisionDetail.fromJson(
+              managedQuestionRevisionDetailJson(
+                id: 10,
+                questionId: 5,
+                questionType: 'TRUE_FALSE',
+                status: 'FROZEN',
+                options: empty
+                    ? []
+                    : [
+                        managedQuestionOptionJson(
+                          id: 201,
+                          text: 'True',
+                          position: 1,
+                          isCorrect: true,
+                        ),
+                        managedQuestionOptionJson(
+                          id: 202,
+                          text: 'False',
+                          position: 2,
+                          isCorrect: false,
+                        ),
+                      ],
+              ),
+            ),
+          );
+          await launch(
+            tester,
+            path: '/workspace/training/questions/5/revisions/10',
+          );
+          expect(find.text('True'), empty ? findsNothing : findsOneWidget);
+          expect(find.text('False'), empty ? findsNothing : findsOneWidget);
+          expect(find.byType(Checkbox), findsNothing);
+          expect(find.byTooltip('Edit option'), findsNothing);
+          expect(find.byTooltip('Remove option'), findsNothing);
+          expect(find.text('Add option'), findsNothing);
+          expect(find.text('Save draft changes'), findsNothing);
+          expect(find.text('Freeze revision permanently'), findsNothing);
+          verifyNever(
+            () => repository.updateQuestionRevision(
+              any(),
+              any(),
+              questionType: any(named: 'questionType'),
+              prompt: any(named: 'prompt'),
+              explanation: any(named: 'explanation'),
+              options: any(named: 'options'),
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          );
+        },
+      );
+    }
+
+    testWidgets(
+      'changing question type to TRUE_FALSE creates two unchecked options without Add Option',
+      (tester) async {
+        when(
+          () => repository.questionRevisionDetail(
+            5,
+            10,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              prompt: 'What PPE is required when handling chemicals?',
+              options: [],
+            ),
+          ),
+        );
+        List<Map<String, dynamic>>? capturedOptions;
         when(
           () => repository.updateQuestionRevision(
             any(),
@@ -1733,8 +2324,11 @@ void main() {
             options: any(named: 'options'),
             cancelToken: any(named: 'cancelToken'),
           ),
-        ).thenAnswer(
-          (_) async => ManagedQuestionRevisionDetail.fromJson(
+        ).thenAnswer((invocation) async {
+          capturedOptions =
+              invocation.namedArguments[#options]
+                  as List<Map<String, dynamic>>?;
+          return ManagedQuestionRevisionDetail.fromJson(
             managedQuestionRevisionDetailJson(
               id: 10,
               questionId: 5,
@@ -1757,8 +2351,8 @@ void main() {
                 ),
               ],
             ),
-          ),
-        );
+          );
+        });
 
         await launch(
           tester,
@@ -1771,12 +2365,20 @@ void main() {
         await tester.tap(find.text('True / False').last);
         await tester.pumpAndSettle();
 
-        // Tap Preset T/F
-        await tester.tap(find.text('Preset T/F'));
-        await tester.pumpAndSettle();
-
         expect(find.text('True'), findsOneWidget);
         expect(find.text('False'), findsOneWidget);
+        expect(find.text('Add option'), findsNothing);
+        expect(find.byTooltip('Remove option'), findsNothing);
+        expect(find.byTooltip('Edit option'), findsNothing);
+
+        final trueCorrect = find.byKey(const ValueKey('correct-option-true'));
+        final falseCorrect = find.byKey(const ValueKey('correct-option-false'));
+        expect(tester.widget<Checkbox>(trueCorrect).value, isFalse);
+        expect(tester.widget<Checkbox>(falseCorrect).value, isFalse);
+        await tester.tap(trueCorrect);
+        await tester.pumpAndSettle();
+        expect(tester.widget<Checkbox>(trueCorrect).value, isTrue);
+        expect(tester.widget<Checkbox>(falseCorrect).value, isFalse);
 
         await tester.tap(find.text('Save draft changes'));
         await tester.pumpAndSettle();
@@ -1793,7 +2395,178 @@ void main() {
           ),
         ).called(1);
 
+        expect(capturedOptions, isNotNull);
+        final activeCapturedOptions = capturedOptions!
+            .where((option) => !option.containsKey('delete'))
+            .toList();
+        expect(activeCapturedOptions.length, 2);
+        expect(
+          activeCapturedOptions.where((option) => option['is_correct'] == true),
+          hasLength(1),
+        );
+        expect(
+          activeCapturedOptions.singleWhere(
+            (option) => option['text'] == 'True',
+          )['is_correct'],
+          isTrue,
+        );
         expect(find.text('Revision saved successfully.'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'True/False no-correct draft can save incompletely but cannot freeze',
+      (tester) async {
+        when(
+          () => repository.questionRevisionDetail(
+            5,
+            10,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              revisionNumber: 1,
+              questionType: 'TRUE_FALSE',
+              status: 'DRAFT',
+              prompt: 'Incomplete draft',
+              options: [
+                managedQuestionOptionJson(
+                  id: 201,
+                  text: 'True',
+                  position: 1,
+                  isCorrect: false,
+                ),
+                managedQuestionOptionJson(
+                  id: 202,
+                  text: 'False',
+                  position: 2,
+                  isCorrect: false,
+                ),
+              ],
+            ),
+          ),
+        );
+        when(
+          () => repository.updateQuestionRevision(
+            any(),
+            any(),
+            questionType: any(named: 'questionType'),
+            prompt: any(named: 'prompt'),
+            explanation: any(named: 'explanation'),
+            options: any(named: 'options'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              revisionNumber: 1,
+              questionType: 'TRUE_FALSE',
+              status: 'DRAFT',
+              prompt: 'Incomplete draft',
+              options: [
+                managedQuestionOptionJson(
+                  id: 201,
+                  text: 'True',
+                  position: 1,
+                  isCorrect: false,
+                ),
+                managedQuestionOptionJson(
+                  id: 202,
+                  text: 'False',
+                  position: 2,
+                  isCorrect: false,
+                ),
+              ],
+            ),
+          ),
+        );
+
+        await launch(
+          tester,
+          path: '/workspace/training/questions/5/revisions/10',
+        );
+
+        await tester.tap(find.text('Save draft changes'));
+        await tester.pumpAndSettle();
+        expect(find.text('Revision saved successfully.'), findsOneWidget);
+
+        await tester.tap(find.text('Freeze revision permanently'));
+        await tester.pumpAndSettle();
+        expect(find.text('Freeze revision?'), findsNothing);
+        verifyNever(
+          () => repository.freezeQuestionRevision(
+            any(),
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+      },
+    );
+
+    testWidgets(
+      'existing True/False draft preserves its saved correct answer',
+      (tester) async {
+        when(
+          () => repository.questionRevisionDetail(
+            5,
+            10,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedQuestionRevisionDetail.fromJson(
+            managedQuestionRevisionDetailJson(
+              id: 10,
+              questionId: 5,
+              revisionNumber: 1,
+              questionType: 'TRUE_FALSE',
+              status: 'DRAFT',
+              prompt: 'Saved True/False prompt',
+              options: [
+                managedQuestionOptionJson(
+                  id: 201,
+                  text: 'True',
+                  position: 1,
+                  isCorrect: false,
+                ),
+                managedQuestionOptionJson(
+                  id: 202,
+                  text: 'False',
+                  position: 2,
+                  isCorrect: true,
+                ),
+              ],
+            ),
+          ),
+        );
+
+        await launch(
+          tester,
+          path: '/workspace/training/questions/5/revisions/10',
+        );
+
+        expect(find.text('Saved True/False prompt'), findsOneWidget);
+        expect(find.text('Add option'), findsNothing);
+        expect(
+          tester
+              .widget<Checkbox>(
+                find.byKey(const ValueKey('correct-option-true')),
+              )
+              .value,
+          isFalse,
+        );
+        expect(
+          tester
+              .widget<Checkbox>(
+                find.byKey(const ValueKey('correct-option-false')),
+              )
+              .value,
+          isTrue,
+        );
       },
     );
 

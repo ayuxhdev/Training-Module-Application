@@ -114,6 +114,8 @@ class LearningAPITests(CurriculumTestCase):
 		self.assertNotIn("video_file", lessons[1])
 		self.assertNotIn("video_checksum", lessons[1])
 		self.assertNotIn("employee_id", response.data)
+		self.assertIn("certificate_id", response.data)
+		self.assertIsNone(response.data["certificate_id"])
 
 	def test_retired_assignment_keeps_its_curriculum_and_progress(self):
 		LessonProgress.objects.create(
@@ -202,6 +204,95 @@ class LearningAPITests(CurriculumTestCase):
 		response = self.client.get(reverse("api:v1:assignment-detail", args=[self.assignment.pk]))
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.data["modules"], [])
+
+	def create_certificate(self, assignment, attempt=None, revoked=False):
+		from decimal import Decimal
+		from django.db import models as dj_models
+		from assessments.models import AssessmentAttempt
+		from certifications.models import Certificate
+
+		if attempt is None:
+			attempt = AssessmentAttempt.objects.filter(
+				assignment=assignment,
+				assessment=self.final,
+				passed=True,
+			).first()
+			if not attempt:
+				attempt = AssessmentAttempt(
+					assignment=assignment,
+					assessment=self.final,
+					attempt_number=(
+						AssessmentAttempt.objects.filter(assignment=assignment, assessment=self.final).count() + 1
+					),
+					started_at=self.now,
+					submitted_at=self.now + timedelta(minutes=5),
+					status=AssessmentAttempt.Status.SUBMITTED,
+					passed=True,
+					score_points=Decimal("2.00"),
+					maximum_points=Decimal("2.00"),
+					pass_percentage_snapshot=self.final.pass_percentage,
+				)
+				dj_models.Model.save(attempt, force_insert=True)
+
+		cert = Certificate(
+			certificate_number=f"GN-TEST-{assignment.pk}",
+			assignment=assignment,
+			training_version=assignment.training_version,
+			qualifying_final_attempt=attempt,
+			issued_at=self.now,
+			employee_code_snapshot=assignment.employee.employee_code,
+			employee_name_snapshot=assignment.employee.display_name,
+			training_title_snapshot=assignment.training_version.title,
+			version_number_snapshot=assignment.training_version.version_number,
+			issued_by=self.user,
+		)
+		if revoked:
+			cert.revoked_at = self.now + timedelta(hours=1)
+			cert.revocation_reason = "Revoked for test policy validation"
+			cert.revoked_by = self.user
+		dj_models.Model.save(cert, force_insert=True)
+		return cert
+
+	def test_assignment_detail_includes_certificate_id_when_certified(self):
+		self.complete_assignment()
+		certificate = self.create_certificate(self.assignment)
+		self.auth_as()
+		url = reverse("api:v1:assignment-detail", args=[self.assignment.pk])
+		response = self.client.get(url)
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["status"], "COMPLETED")
+		self.assertEqual(response.data["certificate_id"], certificate.pk)
+		self.assertIsInstance(response.data["certificate_id"], int)
+
+	def test_assignment_detail_without_certificate_returns_explicit_null(self):
+		self.auth_as()
+		url = reverse("api:v1:assignment-detail", args=[self.assignment.pk])
+		response = self.client.get(url)
+		self.assertEqual(response.status_code, 200)
+		self.assertIn("certificate_id", response.data)
+		self.assertIsNone(response.data["certificate_id"])
+
+	def test_assignment_detail_includes_certificate_id_for_revoked_certificate(self):
+		self.complete_assignment()
+		certificate = self.create_certificate(self.assignment, revoked=True)
+		self.auth_as()
+		url = reverse("api:v1:assignment-detail", args=[self.assignment.pk])
+		response = self.client.get(url)
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["certificate_id"], certificate.pk)
+
+	def test_assignment_detail_does_not_leak_other_employee_certificate(self):
+		_, _, other_assignment = self.other_assignment()
+		self.create_certificate(other_assignment)
+		self.auth_as()
+		url = reverse("api:v1:assignment-detail", args=[self.assignment.pk])
+		response = self.client.get(url)
+		self.assertEqual(response.status_code, 200)
+		self.assertIsNone(response.data["certificate_id"])
+
+		other_url = reverse("api:v1:assignment-detail", args=[other_assignment.pk])
+		other_response = self.client.get(other_url)
+		self.assertEqual(other_response.status_code, 404)
 
 	def test_progress_reads_existing_state_and_rejects_mismatched_lesson(self):
 		self.auth_as()

@@ -288,6 +288,112 @@ class AssessmentManagementAPITests(CurriculumTestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(self.client.post(self.revision_url() + "freeze/", {}, format="json").status_code, 200)
 
+    def test_true_false_malformed_persisted_options_cannot_freeze_or_change_audit_state(self):
+        cases = (
+            ("legacy", [("True", True), ("False", False), ("Legacy", False)]),
+            ("duplicate true", [("True", True), ("False", False), (" true ", False)]),
+            ("duplicate false", [("True", True), ("False", False), ("FALSE", False)]),
+            ("only true", [("True", True)]),
+            ("only false", [("False", True)]),
+            ("missing true", [("Yes", True), ("False", False)]),
+            ("missing false", [("True", True), ("No", False)]),
+            ("no correct", [("True", False), ("False", False)]),
+            ("two correct", [("True", True), ("False", True)]),
+        )
+        for number, (label, options) in enumerate(cases, start=2):
+            with self.subTest(case=label):
+                revision = QuestionRevision.objects.create(
+                    question=self.bank_question, revision_number=number,
+                    question_type="TRUE_FALSE", prompt="A valid prompt", created_by=self.user,
+                )
+                for position, (text, correct) in enumerate(options, start=1):
+                    QuestionOption.objects.create(
+                        question_revision=revision, position=position, text=text, is_correct=correct,
+                    )
+                before = self.snapshot()
+                before_options = list(QuestionOption.objects.order_by("pk").values())
+                before_audit = list(AuditLog.objects.order_by("pk").values())
+                with self.captureOnCommitCallbacks(execute=True) as callbacks:
+                    response = self.client.post(self.revision_url(revision) + "freeze/", {}, format="json")
+                self.assertEqual(response.status_code, 400, response.data)
+                self.assertEqual(response.data["error"]["code"], "validation_error")
+                self.assertEqual(callbacks, [])
+                self.assertEqual(self.snapshot(), before)
+                self.assertEqual(list(QuestionOption.objects.order_by("pk").values()), before_options)
+                self.assertEqual(list(AuditLog.objects.order_by("pk").values()), before_audit)
+                revision.refresh_from_db()
+                self.assertEqual((revision.status, revision.frozen_at), ("DRAFT", None))
+
+    def test_true_false_normalized_labels_freeze_without_rewriting_saved_options(self):
+        self.bank_revision.question_type = "TRUE_FALSE"
+        self.bank_revision.save()
+        for position, (text, correct) in enumerate((("  TrUe\n", True), ("\tFALSE  ", False)), start=1):
+            QuestionOption.objects.create(
+                question_revision=self.bank_revision, position=position, text=text, is_correct=correct,
+            )
+        before_options = list(self.bank_revision.options.order_by("pk").values())
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.revision_url() + "freeze/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], "FROZEN")
+        self.assertEqual(list(self.bank_revision.options.order_by("pk").values()), before_options)
+        event = AuditLog.objects.get(action="assessments.questionrevision.frozen")
+        self.assertEqual((event.before_data["status"], event.after_data["status"]), ("DRAFT", "FROZEN"))
+        before = self.snapshot()
+        for changes in ({"prompt": "Forbidden"}, {"options": [{"id": before_options[0]["id"], "is_correct": False}]}):
+            with self.captureOnCommitCallbacks(execute=True) as callbacks:
+                response = self.client.patch(self.revision_url(), changes, format="json")
+            self.assertEqual(response.status_code, 404, response.data)
+            self.assertEqual(callbacks, [])
+            self.assertEqual(self.snapshot(), before)
+            self.assertEqual(list(self.bank_revision.options.order_by("pk").values()), before_options)
+        self.assertEqual(AuditLog.objects.count(), 1)
+
+    def test_true_false_incomplete_draft_updates_and_explicit_repairs_preserve_option_ids(self):
+        response = self.client.patch(self.revision_url(), {"question_type": "TRUE_FALSE", "options": []}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual((response.data["status"], response.data["options"]), ("DRAFT", []))
+        changes = [{"text": "True", "position": 1, "is_correct": False}]
+        response = self.client.patch(self.revision_url(), {"options": changes}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        first_id = response.data["options"][0]["id"]
+        response = self.client.patch(self.revision_url(), {"options": [
+            {"text": "False", "position": 2, "is_correct": False},
+            {"text": "Legacy", "position": 3, "is_correct": False},
+        ]}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        options = response.data["options"]
+        self.assertEqual(options[0]["id"], first_id)
+        self.assertEqual(len(options), 3)
+        self.assertFalse(any(option["is_correct"] for option in options))
+        response = self.client.patch(self.revision_url(), {"prompt": "Author edit"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["options"], options)
+        response = self.client.patch(self.revision_url(), {"options": [
+            {"id": options[2]["id"], "delete": True}, {"id": first_id, "is_correct": True},
+        ]}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual([option["id"] for option in response.data["options"]], [first_id, options[1]["id"]])
+        self.assertEqual(response.data["prompt"], "Author edit")
+        self.assertEqual(self.client.post(self.revision_url() + "freeze/", {}, format="json").status_code, 200)
+
+    def test_true_false_freeze_cannot_accept_repairs_in_payload_or_bypass_change_permission(self):
+        response = self.client.patch(self.revision_url(), {"question_type": "TRUE_FALSE"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        before = self.snapshot()
+        self.assert_field_error(self.client.post(self.revision_url() + "freeze/", {
+            "options": [{"text": "True", "position": 1, "is_correct": True}, {"text": "False", "position": 2}],
+        }, format="json"), "options")
+        for permission in ("view_questionrevision", "add_questionrevision"):
+            self.authenticate(self.identity("true-false-" + permission, permission))
+            with self.captureOnCommitCallbacks(execute=True) as callbacks:
+                response = self.client.post(self.revision_url() + "freeze/", {}, format="json")
+            self.assertEqual(response.status_code, 403, response.data)
+            self.assertEqual(callbacks, [])
+        self.bank_revision.refresh_from_db()
+        self.assertEqual((self.bank_revision.status, self.bank_revision.frozen_at), ("DRAFT", None))
+        self.assertEqual(self.snapshot(), before)
+
     def test_freeze_rejects_empty_and_whitespace_only_prompts(self):
         self.prepare_options()
         for invalid in ("", "   ", "\t\r\n", "  \n  \t  "):

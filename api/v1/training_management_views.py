@@ -18,7 +18,7 @@ from training.models import Lesson, Module, Training, TrainingVersion
 
 from . import training_management_services as services
 from .training_management_serializers import (
-    CatalogQuerySerializer, DraftVersionInputSerializer, TrainingCatalogSerializer,
+    CatalogQuerySerializer, DraftVersionInputSerializer, ExplicitInputSerializer, TrainingCatalogSerializer,
     TrainingInputSerializer, TrainingVersionDetailSerializer,
     TrainingVersionSummarySerializer, VersionQuerySerializer,
     TrainingVersionDiscoverySerializer, VersionDiscoveryQuerySerializer,
@@ -238,3 +238,34 @@ class TrainingVersionDetailView(TrainingManagementMixin, generics.RetrieveAPIVie
 
     def get_queryset(self):
         return version_detail_queryset()
+
+
+class VersionStateConflict(APIException):
+    status_code = 409
+    default_code = "conflict"
+    default_detail = "This version's status has changed. Refresh it before trying again."
+
+
+class TrainingVersionPublishView(TrainingManagementMixin, generics.GenericAPIView):
+    http_method_names = ["post", "options"]
+    method_permissions = {
+        method: "training.change_trainingversion" for method in ("POST", "GET", "OPTIONS")
+    }
+    serializer_class = TrainingVersionSummarySerializer
+    publish = True
+
+    def post(self, request, *args, **kwargs):
+        # Lifecycle metadata, actor and timestamps are always server-derived.
+        payload = ExplicitInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            version = services.transition_version(request.user, self.kwargs["pk"], publish=self.publish)
+        except services.InvalidVersionTransition as exc:
+            raise VersionStateConflict() from exc
+        except DjangoValidationError as exc:
+            raise _validation_error(exc) from exc
+        return Response(TrainingVersionSummarySerializer(version).data)
+
+
+class TrainingVersionRetireView(TrainingVersionPublishView):
+    publish = False

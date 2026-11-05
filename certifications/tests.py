@@ -1,5 +1,8 @@
 from datetime import timedelta
+from decimal import Decimal
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
@@ -7,11 +10,12 @@ from django.db import IntegrityError, models, transaction
 from django.test import Client
 from django.utils import timezone
 
+from assessments.models import Assessment, AssessmentAttempt, AssessmentQuestion, AttemptAnswer
 from assessments.views import _try_complete_assignment
 from audit.models import AuditLog
 from config.model_test_utils import CurriculumTestCase
 from organization.models import Employee
-from training.models import TrainingAssignment
+from training.models import Lesson, LessonProgress, Module, Training, TrainingAssignment, TrainingVersion
 from .models import Certificate
 
 
@@ -305,3 +309,224 @@ class CertificateWorkflowTests(CurriculumTestCase):
         self.assertEqual(Certificate.objects.filter(assignment=self.assignment).count(), 0)
         self.assignment.refresh_from_db()
         self.assertEqual(self.assignment.status, TrainingAssignment.Status.IN_PROGRESS)
+
+
+class CertificatePrintTests(CurriculumTestCase):
+    def client_for(self, user):
+        client = Client()
+        client.force_login(user)
+        return client
+
+    def certificate(self, attempt, **kwargs):
+        values = dict(
+            certificate_number="GN-CERT-PRINT-001",
+            assignment=self.assignment,
+            training_version=self.version,
+            qualifying_final_attempt=attempt,
+            issued_at=self.now + timedelta(seconds=140),
+            employee_code_snapshot=self.employee.employee_code,
+            employee_name_snapshot=self.employee.display_name,
+            training_title_snapshot=self.version.title,
+            version_number_snapshot=self.version.version_number,
+            issued_by=self.user,
+        )
+        values.update(kwargs)
+        return Certificate.objects.create(**values)
+
+    def test_certificate_detail_page_includes_print_button_and_scoped_workspace(self):
+        attempt = self.complete_assignment()
+        certificate = self.certificate(attempt)
+        client = self.client_for(self.employee_user)
+        response = client.get(f"/certificates/{certificate.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="catalog-workspace certificate-workspace"')
+        self.assertContains(response, 'onclick="window.print()"')
+        self.assertContains(response, "Print certificate")
+        self.assertContains(response, 'class="certificate-credential-card"')
+        self.assertContains(response, 'class="certificate-header-title"')
+        self.assertContains(response, 'class="certificate-print-seal"')
+        self.assertContains(response, "Garden’s Need Training Academy")
+
+    def test_certificate_detail_preserves_verification_metadata_in_credential_card(self):
+        attempt = self.complete_assignment()
+        certificate = self.certificate(attempt)
+        client = self.client_for(self.employee_user)
+        response = client.get(f"/certificates/{certificate.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, certificate.certificate_number)
+        self.assertContains(response, certificate.employee_name_snapshot)
+        self.assertContains(response, certificate.employee_code_snapshot)
+        self.assertContains(response, certificate.training_title_snapshot)
+        self.assertContains(response, f"Version {certificate.version_number_snapshot}")
+        self.assertContains(response, "Verified Record")
+
+    def test_revoked_certificate_renders_revocation_banner_directly_on_card(self):
+        attempt = self.complete_assignment()
+        certificate = self.certificate(
+            attempt,
+            certificate_number="GN-CERT-REVOKED-001",
+            revoked_at=self.now + timedelta(seconds=200),
+            revoked_by=self.user,
+            revocation_reason="Procedural re-certification required",
+        )
+        client = self.client_for(self.employee_user)
+        response = client.get(f"/certificates/{certificate.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="certificate-revocation-banner"')
+        self.assertContains(response, 'class="certificate-revocation-badge"')
+        self.assertContains(response, "REVOKED")
+        self.assertContains(response, "Procedural re-certification required")
+        self.assertContains(response, "This certificate was revoked on")
+        self.assertContains(response, "Revoked")
+
+    def test_long_recipient_name_and_long_training_title_render_safely(self):
+        long_name = "Dr. Bartholomew Alexander Montgomery-Chamberlain III, Senior Agronomy Specialist"
+        long_title = "Advanced Industrial Horticultural Chemical Formulation & Hazardous Material Handling Protocol"
+        self.employee.display_name = long_name
+        self.employee.save()
+
+        long_training = Training.objects.create(code="TR-LONG", catalog_title=long_title, created_by=self.user)
+        long_version = TrainingVersion.objects.create(
+            training=long_training, version_number=1, title=long_title, created_by=self.user,
+        )
+        module = Module.objects.create(training_version=long_version, title="Core Module", position=1)
+        lesson = Lesson.objects.create(module=module, title="Intro Lesson", position=1, content_type="TEXT", body="Content")
+        final = Assessment.objects.create(training_version=long_version, kind="FINAL", title="Final Exam")
+        final_item = AssessmentQuestion.objects.create(assessment=final, question_revision=self.revision, position=1, points=Decimal("2.00"))
+        long_version.status = "PUBLISHED"
+        long_version.published_at = self.now
+        long_version.published_by = self.user
+        long_version.save()
+
+        assignment = TrainingAssignment.objects.create(
+            employee=self.employee, training_version=long_version,
+            department_at_assignment=self.department, job_role_at_assignment=self.role,
+            assigned_by=self.user, assigned_at=self.now, started_at=self.now,
+            status=TrainingAssignment.Status.IN_PROGRESS,
+        )
+        LessonProgress.objects.create(
+            assignment=assignment,
+            lesson=lesson,
+            started_at=self.now,
+            last_accessed_at=self.now + timedelta(seconds=110),
+            completed_at=self.now + timedelta(seconds=110),
+        )
+        attempt = AssessmentAttempt.objects.create(
+            assignment=assignment,
+            assessment=final,
+            attempt_number=1,
+            started_at=self.now + timedelta(seconds=120),
+            maximum_points=Decimal("2.00"),
+            pass_percentage_snapshot=Decimal("80.00"),
+        )
+        AttemptAnswer.objects.create(
+            attempt=attempt,
+            assessment_question=final_item,
+            selected_option=self.correct_option,
+            presented_position=1,
+            answered_at=attempt.started_at + timedelta(seconds=1),
+            points_possible=Decimal("2.00"),
+            points_awarded=Decimal("2.00"),
+            is_correct=True,
+        )
+        attempt.status = "SUBMITTED"
+        attempt.submitted_at = attempt.started_at + timedelta(seconds=2)
+        attempt.score_points = Decimal("2.00")
+        attempt.passed = True
+        attempt.save()
+
+        assignment.status = TrainingAssignment.Status.COMPLETED
+        assignment.completed_at = self.now + timedelta(seconds=130)
+        assignment.save()
+        certificate = Certificate.objects.create(
+            certificate_number="GN-CERT-LONG-001",
+            assignment=assignment,
+            training_version=long_version,
+            qualifying_final_attempt=attempt,
+            issued_at=self.now + timedelta(seconds=140),
+            employee_code_snapshot=self.employee.employee_code,
+            employee_name_snapshot=long_name,
+            training_title_snapshot=long_title,
+            version_number_snapshot=1,
+            issued_by=self.user,
+        )
+        client = self.client_for(self.employee_user)
+        response = client.get(f"/certificates/{certificate.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, long_name)
+        self.assertContains(response, "Advanced Industrial Horticultural Chemical Formulation &amp; Hazardous Material Handling Protocol")
+        self.assertContains(response, 'class="certificate-recipient"')
+        self.assertContains(response, 'class="certificate-training-title"')
+
+    def test_print_css_rules_configured_for_single_page_a4(self):
+        css_path = Path(settings.BASE_DIR) / "accounts" / "static" / "accounts" / "shell.css"
+        self.assertTrue(css_path.exists(), "shell.css must exist")
+        css_content = css_path.read_text(encoding="utf-8")
+
+        self.assertIn("@media print", css_content)
+        self.assertIn("size: A4 portrait", css_content)
+        self.assertIn(".app-shell-header", css_content)
+        self.assertIn(".app-topbar", css_content)
+        self.assertIn(".app-sidebar", css_content)
+        self.assertIn(".certificate-workspace > .page-header", css_content)
+        self.assertIn(".certificate-workspace > .catalog-panel", css_content)
+        self.assertIn(".certificate-credential-card", css_content)
+        self.assertIn("page-break-inside: avoid", css_content)
+        self.assertIn("break-inside: avoid", css_content)
+
+        # Ensure card does not use overflow: hidden or max-height: 255mm which truncate long content
+        card_start = css_content.find(".certificate-credential-card {", css_content.find("@media print"))
+        self.assertNotEqual(card_start, -1, ".certificate-credential-card print rule should exist")
+        card_block = css_content[card_start:css_content.find("}", card_start)]
+        self.assertNotIn("overflow: hidden", card_block)
+        self.assertNotIn("max-height: 255mm", card_block)
+        self.assertIn("overflow: visible", card_block)
+
+    def test_revoked_certificate_with_multiline_reason_renders_with_line_breaks(self):
+        attempt = self.complete_assignment()
+        multiline_reason = "First finding of violation.\nSecond finding on appeal.\nFinal determination."
+        certificate = self.certificate(
+            attempt,
+            certificate_number="GN-CERT-REVOKED-MULTI",
+            revoked_at=self.now + timedelta(seconds=200),
+            revoked_by=self.user,
+            revocation_reason=multiline_reason,
+        )
+        client = self.client_for(self.employee_user)
+        response = client.get(f"/certificates/{certificate.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="certificate-revocation-reason"')
+        self.assertContains(response, "First finding of violation.<br>Second finding on appeal.<br>Final determination.")
+
+    def test_multipage_capable_certificate_displays_all_required_metadata(self):
+        long_reason = (
+            "Comprehensive audit identified non-compliance with statutory biological pathogen "
+            "containment protocols during Q3 field inspection.\nCorrective action plan was not submitted "
+            "within mandatory 30-day reporting window.\nImmediate revocation required under workplace safety code. "
+        ) * 5  # ~850 characters
+        attempt = self.complete_assignment()
+        certificate = self.certificate(
+            attempt,
+            certificate_number="GN-CERT-REVOKED-MAX",
+            revoked_at=self.now + timedelta(seconds=250),
+            revoked_by=self.user,
+            revocation_reason=long_reason,
+        )
+        client = self.client_for(self.employee_user)
+        response = client.get(f"/certificates/{certificate.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, certificate.certificate_number)
+        self.assertContains(response, certificate.employee_name_snapshot)
+        self.assertContains(response, certificate.training_title_snapshot)
+        self.assertContains(response, 'class="certificate-revocation-badge"')
+        self.assertContains(response, "REVOKED")
+        self.assertContains(response, "Revoked")
+        self.assertContains(response, "Garden’s Need Training Academy")
+        self.assertContains(response, "<br>")
+        self.assertContains(response, "Comprehensive audit identified non-compliance")

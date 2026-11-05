@@ -329,6 +329,43 @@ class ManagementRepository {
     }
   }
 
+  Future<ManagedTrainingVersionItem> publishVersion(
+    int versionId, {
+    CancelToken? cancelToken,
+  }) => _transitionVersion(versionId, 'publish', cancelToken: cancelToken);
+
+  Future<ManagedTrainingVersionItem> retireVersion(
+    int versionId, {
+    CancelToken? cancelToken,
+  }) => _transitionVersion(versionId, 'retire', cancelToken: cancelToken);
+
+  Future<ManagedTrainingVersionItem> _transitionVersion(
+    int versionId,
+    String action, {
+    CancelToken? cancelToken,
+  }) async {
+    if (versionId <= 0) throw ArgumentError.value(versionId, 'versionId');
+    try {
+      // A lifecycle POST is never automatically replayed by ApiClient.
+      final response = await apiClient.dio.post(
+        '/management/versions/$versionId/$action/',
+        data: <String, Object?>{},
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 200) {
+        throw const FormatException(
+          'Version lifecycle returned an unexpected status.',
+        );
+      }
+      return ManagedTrainingVersionItem.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
   Future<ManagedModuleDetail> createModule(
     int versionId, {
     required String title,

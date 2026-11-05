@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:training_app/core/errors/api_error.dart';
+import 'package:training_app/core/presentation/components/cinematic_notice.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/router/app_router.dart';
 import 'package:training_app/main.dart';
@@ -184,6 +185,7 @@ void main() {
             trainingTitle: 'Safety course',
             versionNumber: 3,
             status: 'COMPLETED',
+            certificateId: 8,
             isOverdue: false,
             modules: [
               ModuleLearning(
@@ -606,6 +608,30 @@ void main() {
     },
   );
 
+  Future<void> expectRevokedCertificate(WidgetTester tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.pump();
+      final warning = find.descendant(
+        of: find.byType(CertificateDetailScreen),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is CinematicNotice && widget.isError,
+        ),
+      );
+      expect(warning, findsOneWidget);
+      final message = tester.widget<CinematicNotice>(warning).message;
+      expect(message, allOf(contains('Revoked'), contains('no longer valid')));
+      expect(find.text(message), findsOneWidget);
+      final data = tester.getSemantics(warning).getSemanticsData();
+      expect(data.flagsCollection.isLiveRegion, isTrue);
+      expect(data.label, contains(message));
+      expect(find.text('Revoked on'), findsOneWidget);
+      expect(find.text('Historical name'), findsOneWidget);
+    } finally {
+      semantics.dispose();
+    }
+  }
+
   testWidgets('revoked certificate remains viewable and clearly marked', (
     tester,
   ) async {
@@ -616,7 +642,7 @@ void main() {
       ),
     ).thenAnswer((_) async => detail(revoked: true));
     await open(tester, '/profile/certificates/8');
-    expect(find.text('Revoked'), findsOneWidget);
+    await expectRevokedCertificate(tester);
     expect(find.text('Revoked on'), findsOneWidget);
   });
 
@@ -674,12 +700,12 @@ void main() {
       );
       router.go('/learning/assignments/1');
       await tester.pumpAndSettle();
-      await tap(tester, 'My Certificates');
+      await tap(tester, 'Certificate');
       expect(
-        GoRouterState.of(tester.element(find.byType(CertificateListScreen)))
+        GoRouterState.of(tester.element(find.byType(CertificateDetailScreen)))
             .uri
             .path,
-        '/profile/certificates',
+        '/profile/certificates/8',
       );
     },
   );
@@ -974,7 +1000,7 @@ void main() {
           ),
         ).thenAnswer((_) async => detail(revoked: true));
         await tap(tester, 'Safety award');
-        expect(find.text('Revoked'), findsOneWidget);
+        await expectRevokedCertificate(tester);
         expect(
           Theme.of(tester.element(find.byType(CertificateDetailScreen)))
               .brightness,

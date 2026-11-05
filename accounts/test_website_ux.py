@@ -132,9 +132,9 @@ class WebsiteRecordActionsTests(SimpleTestCase):
                         {"training": {"view_trainingversion": view, "change_trainingversion": change}},
                         versions=[self.version])
                     self.assert_action(html, "training:version-detail", 41,
-                        "View version 2: Safety version", view)
+                        "Manage curriculum for version 2: Safety version", view)
                     self.assert_action(html, "training:version-update", 41,
-                        "Edit draft version 2: Safety version", change and status == "DRAFT")
+                        "Edit details for version 2: Safety version", change and status == "DRAFT")
                     self.assertEqual(Markup(html).row_header_links, [])
                     self.assertNotIn("<form", html)
 

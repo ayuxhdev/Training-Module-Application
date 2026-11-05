@@ -154,60 +154,75 @@ class LearningRepository {
     );
   }
 
-  Future<List<Assignment>> getAssignments({CancelToken? cancelToken}) async {
+  // One budget includes authentication, response decoding and every list page.
+  // It applies only to these reads, never uploads, playback or mutations.
+  Future<T> _read<T>(
+    Future<T> Function(CancelToken) load, {
+    CancelToken? cancelToken,
+  }) async {
+    final requests = CancelToken();
+    var pending = true;
+    cancelToken?.whenCancel.then((error) {
+      if (pending) requests.cancel(error);
+    });
     try {
-      final assignments = <Assignment>[];
-      var page = 1;
-      while (true) {
-        if (cancelToken?.cancelError case final error?) {
-          throw error;
-        }
-        // Keep every request on the scoped endpoint; never follow arbitrary URLs.
-        final response = page == 1
-            ? await apiClient.dio.get('/assignments/', cancelToken: cancelToken)
-            : await apiClient.dio.get(
-                '/assignments/',
-                queryParameters: {'page': page},
-                cancelToken: cancelToken,
-              );
-        if (cancelToken?.cancelError case final error?) {
-          throw error;
-        }
-        final data = response.data as Map<String, dynamic>;
-        final results = data['results'] as List<dynamic>;
-        assignments.addAll(
-          results.map(
-            (item) => Assignment.fromJson(item as Map<String, dynamic>),
-          ),
-        );
-        if (data['next'] == null) return assignments;
-        if (results.isEmpty || data['next'] is! String) {
-          throw const FormatException('Invalid assignment pagination.');
-        }
-        page++;
-      }
-    } catch (e) {
-      throw apiClient.mapExceptionToApiError(e);
+      if (cancelToken?.cancelError case final error?) throw error;
+      return await load(requests).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          requests.cancel('Learning request deadline exceeded.');
+          throw ApiError.timeout();
+        },
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    } finally {
+      pending = false;
     }
   }
+
+  Future<List<Assignment>> getAssignments({CancelToken? cancelToken}) => _read((
+    requests,
+  ) async {
+    final assignments = <Assignment>[];
+    var page = 1;
+    while (true) {
+      if (requests.cancelError case final error?) throw error;
+      // Keep every request on the scoped endpoint; never follow arbitrary URLs.
+      final response = page == 1
+          ? await apiClient.dio.get('/assignments/', cancelToken: requests)
+          : await apiClient.dio.get(
+              '/assignments/',
+              queryParameters: {'page': page},
+              cancelToken: requests,
+            );
+      if (requests.cancelError case final error?) throw error;
+      final data = response.data as Map<String, dynamic>;
+      final results = data['results'] as List<dynamic>;
+      assignments.addAll(
+        results.map(
+          (item) => Assignment.fromJson(item as Map<String, dynamic>),
+        ),
+      );
+      if (data['next'] == null) return assignments;
+      if (results.isEmpty || data['next'] is! String) {
+        throw const FormatException('Invalid assignment pagination.');
+      }
+      page++;
+    }
+  }, cancelToken: cancelToken);
 
   Future<AssignmentDetail> getAssignmentDetail(
     int assignmentId, {
     CancelToken? cancelToken,
-  }) async {
-    try {
-      final response = await apiClient.dio.get(
-        '/assignments/$assignmentId/',
-        cancelToken: cancelToken,
-      );
-      if (cancelToken?.cancelError case final error?) {
-        throw error;
-      }
-      return AssignmentDetail.fromJson(response.data as Map<String, dynamic>);
-    } catch (e) {
-      throw apiClient.mapExceptionToApiError(e);
-    }
-  }
+  }) => _read((requests) async {
+    final response = await apiClient.dio.get(
+      '/assignments/$assignmentId/',
+      cancelToken: requests,
+    );
+    if (requests.cancelError case final error?) throw error;
+    return AssignmentDetail.fromJson(response.data as Map<String, dynamic>);
+  }, cancelToken: cancelToken);
 
   Future<LessonProgress> completeTextLesson(
     int assignmentId,

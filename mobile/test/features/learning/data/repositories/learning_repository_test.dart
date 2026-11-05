@@ -9,10 +9,13 @@ import 'package:training_app/core/storage/secure_token_storage.dart';
 import 'package:training_app/features/learning/data/repositories/learning_repository.dart';
 
 class MockApiClient extends Mock implements ApiClient {}
+
 class MockDio extends Mock implements Dio {}
+
 class MockTokenStorage extends Mock implements SecureTokenStorage {}
 
 void main() {
+  setUpAll(() => registerFallbackValue(CancelToken()));
   late MockApiClient mockApiClient;
   late MockDio mockDio;
   late LearningRepository repository;
@@ -21,8 +24,12 @@ void main() {
     mockApiClient = MockApiClient();
     mockDio = MockDio();
     when(() => mockApiClient.dio).thenReturn(mockDio);
-    when(() => mockApiClient.mapExceptionToApiError(any())).thenReturn(ApiError.unexpected());
-    repository = LearningRepository(apiClient: mockApiClient, tokenStorage: MockTokenStorage());
+    when(() => mockApiClient.mapExceptionToApiError(any()))
+        .thenReturn(ApiError.unexpected());
+    repository = LearningRepository(
+      apiClient: mockApiClient,
+      tokenStorage: MockTokenStorage(),
+    );
   });
 
   group('LearningRepository', () {
@@ -31,8 +38,12 @@ void main() {
       () async {
         final token = CancelToken();
         final firstPage = Completer<Response<dynamic>>();
-        when(() => mockDio.get('/assignments/', cancelToken: token))
-            .thenAnswer((_) => firstPage.future);
+        when(
+          () => mockDio.get(
+            '/assignments/',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) => firstPage.future);
         final request = repository.getAssignments(cancelToken: token);
         token.cancel();
         firstPage.complete(
@@ -51,7 +62,7 @@ void main() {
           () => mockDio.get(
             '/assignments/',
             queryParameters: {'page': 2},
-            cancelToken: token,
+            cancelToken: any(named: 'cancelToken'),
           ),
         );
       },
@@ -61,14 +72,18 @@ void main() {
       'cancelled assignment detail is not parsed as a successful read',
       () async {
         final token = CancelToken();
-        when(() => mockDio.get('/assignments/1/', cancelToken: token))
-            .thenAnswer((_) async {
-              token.cancel();
-              return Response(
-                requestOptions: RequestOptions(path: '/assignments/1/'),
-                data: {'id': 1},
-              );
-            });
+        when(
+          () => mockDio.get(
+            '/assignments/1/',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async {
+          token.cancel();
+          return Response(
+            requestOptions: RequestOptions(path: '/assignments/1/'),
+            data: {'id': 1},
+          );
+        });
         await expectLater(
           repository.getAssignmentDetail(1, cancelToken: token),
           throwsA(isA<ApiError>()),
@@ -80,19 +95,35 @@ void main() {
         {
           'id': 1,
           'training_title': 'Test Training 1',
-          'progress_summary': {'required_lessons_completed': 1, 'required_lessons_total': 2}
+          'progress_summary': {
+            'required_lessons_completed': 1,
+            'required_lessons_total': 2,
+          },
         },
         {
           'id': 2,
           'training_title': 'Test Training 2',
-          'progress_summary': {'required_lessons_completed': 0, 'required_lessons_total': 3}
-        }
+          'progress_summary': {
+            'required_lessons_completed': 0,
+            'required_lessons_total': 3,
+          },
+        },
       ];
 
-      when(() => mockDio.get('/assignments/')).thenAnswer(
+      when(
+        () => mockDio.get(
+          '/assignments/',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
         (_) async => Response(
           requestOptions: RequestOptions(path: '/assignments/'),
-          data: {'count': 2, 'next': null, 'previous': null, 'results': mockData},
+          data: {
+            'count': 2,
+            'next': null,
+            'previous': null,
+            'results': mockData,
+          },
           statusCode: 200,
         ),
       );
@@ -106,52 +137,128 @@ void main() {
       expect(assignments[1].trainingTitle, 'Test Training 2');
     });
 
-    test('getAssignments loads later pages through the same scoped endpoint', () async {
-      const nextUrl = 'https://other.invalid/assignments/?page=2';
-      when(() => mockDio.get('/assignments/')).thenAnswer((_) async => Response(
-        requestOptions: RequestOptions(path: '/assignments/'),
-        data: {'count': 2, 'next': nextUrl, 'previous': null, 'results': [{'id': 1}]},
-        statusCode: 200,
-      ));
-      when(() => mockDio.get('/assignments/', queryParameters: {'page': 2})).thenAnswer((_) async => Response(
-        requestOptions: RequestOptions(path: '/assignments/'),
-        data: {'count': 2, 'next': null, 'previous': nextUrl, 'results': [{'id': 2}]},
-        statusCode: 200,
-      ));
+    test(
+      'getAssignments loads later pages through the same scoped endpoint',
+      () async {
+        const nextUrl = 'https://other.invalid/assignments/?page=2';
+        when(
+          () => mockDio.get(
+            '/assignments/',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: '/assignments/'),
+            data: {
+              'count': 2,
+              'next': nextUrl,
+              'previous': null,
+              'results': [
+                {'id': 1},
+              ],
+            },
+            statusCode: 200,
+          ),
+        );
+        when(
+          () => mockDio.get(
+            '/assignments/',
+            queryParameters: {'page': 2},
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => Response(
+            requestOptions: RequestOptions(path: '/assignments/'),
+            data: {
+              'count': 2,
+              'next': null,
+              'previous': nextUrl,
+              'results': [
+                {'id': 2},
+              ],
+            },
+            statusCode: 200,
+          ),
+        );
 
-      final assignments = await repository.getAssignments();
-      expect(assignments.map((assignment) => assignment.id), [1, 2]);
-      verify(() => mockDio.get('/assignments/', queryParameters: {'page': 2})).called(1);
-      verifyNever(() => mockDio.get(nextUrl));
-    });
+        final assignments = await repository.getAssignments();
+        expect(assignments.map((assignment) => assignment.id), [1, 2]);
+        verify(
+          () => mockDio.get(
+            '/assignments/',
+            queryParameters: {'page': 2},
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+        verifyNever(() => mockDio.get(nextUrl));
+      },
+    );
 
     test('empty paginated assignment response is valid', () async {
-      when(() => mockDio.get('/assignments/')).thenAnswer((_) async => Response(
-        requestOptions: RequestOptions(path: '/assignments/'),
-        data: {'count': 0, 'next': null, 'previous': null, 'results': []},
-        statusCode: 200,
-      ));
+      when(
+        () => mockDio.get(
+          '/assignments/',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: '/assignments/'),
+          data: {'count': 0, 'next': null, 'previous': null, 'results': []},
+          statusCode: 200,
+        ),
+      );
       expect(await repository.getAssignments(), isEmpty);
     });
 
-    test('invalid pagination fails without looping or returning partial data', () async {
-      for (final results in [{}, []]) {
-        when(() => mockDio.get('/assignments/')).thenAnswer((_) async => Response(
-          requestOptions: RequestOptions(path: '/assignments/'),
-          data: {'count': 1, 'next': '/assignments/?page=2', 'results': results},
-          statusCode: 200,
-        ));
-        await expectLater(repository.getAssignments(), throwsA(isA<ApiError>()));
-      }
-      verifyNever(() => mockDio.get('/assignments/', queryParameters: {'page': 2}));
-    });
+    test(
+      'invalid pagination fails without looping or returning partial data',
+      () async {
+        for (final results in [{}, []]) {
+          when(
+            () => mockDio.get(
+              '/assignments/',
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenAnswer(
+            (_) async => Response(
+              requestOptions: RequestOptions(path: '/assignments/'),
+              data: {
+                'count': 1,
+                'next': '/assignments/?page=2',
+                'results': results,
+              },
+              statusCode: 200,
+            ),
+          );
+          await expectLater(
+            repository.getAssignments(),
+            throwsA(isA<ApiError>()),
+          );
+        }
+        verifyNever(
+          () => mockDio.get(
+            '/assignments/',
+            queryParameters: {'page': 2},
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+      },
+    );
 
     test('getAssignments throws ApiError on failure', () async {
-      final error = DioException(requestOptions: RequestOptions(path: '/assignments/'));
+      final error = DioException(
+        requestOptions: RequestOptions(path: '/assignments/'),
+      );
       final apiError = ApiError(message: 'Failed to fetch assignments');
 
-      when(() => mockDio.get('/assignments/')).thenThrow(error);
-      when(() => mockApiClient.mapExceptionToApiError(error)).thenReturn(apiError);
+      when(
+        () => mockDio.get(
+          '/assignments/',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(error);
+      when(() => mockApiClient.mapExceptionToApiError(error))
+          .thenReturn(apiError);
 
       expect(() => repository.getAssignments(), throwsA(isA<ApiError>()));
     });
@@ -160,10 +267,15 @@ void main() {
       final mockData = {
         'id': 1,
         'training_title': 'Detail Training',
-        'modules': []
+        'modules': [],
       };
 
-      when(() => mockDio.get('/assignments/1/')).thenAnswer(
+      when(
+        () => mockDio.get(
+          '/assignments/1/',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
         (_) async => Response(
           requestOptions: RequestOptions(path: '/assignments/1/'),
           data: mockData,
@@ -178,11 +290,19 @@ void main() {
     });
 
     test('getAssignmentDetail throws ApiError on failure', () async {
-      final error = DioException(requestOptions: RequestOptions(path: '/assignments/1/'));
+      final error = DioException(
+        requestOptions: RequestOptions(path: '/assignments/1/'),
+      );
       final apiError = ApiError(message: 'Failed to fetch detail');
 
-      when(() => mockDio.get('/assignments/1/')).thenThrow(error);
-      when(() => mockApiClient.mapExceptionToApiError(error)).thenReturn(apiError);
+      when(
+        () => mockDio.get(
+          '/assignments/1/',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(error);
+      when(() => mockApiClient.mapExceptionToApiError(error))
+          .thenReturn(apiError);
 
       expect(() => repository.getAssignmentDetail(1), throwsA(isA<ApiError>()));
     });

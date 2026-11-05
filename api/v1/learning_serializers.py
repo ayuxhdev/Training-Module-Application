@@ -81,13 +81,15 @@ class AssignmentDetailSerializer(serializers.ModelSerializer):
 	training_title = serializers.CharField(source="training_version.title", read_only=True)
 	version_number = serializers.IntegerField(source="training_version.version_number", read_only=True)
 	is_overdue = serializers.BooleanField(read_only=True)
+	certificate_id = serializers.IntegerField(source="certificate.pk", default=None, allow_null=True, read_only=True)
 	modules = serializers.SerializerMethodField()
 
 	class Meta:
 		model = TrainingAssignment
 		fields = (
 			"id", "training_id", "training_title", "version_number", "status",
-			"assigned_at", "due_at", "started_at", "completed_at", "is_overdue", "modules",
+			"assigned_at", "due_at", "started_at", "completed_at", "is_overdue",
+			"certificate_id", "modules",
 		)
 
 	def get_modules(self, obj):

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ certificate.certificate_number }} | {{ certificate.training_title_snapshot }} certificate | Garden's Need Training{% endblock %}
 {% block content %}
-<div class="catalog-workspace">
+<div class="catalog-workspace certificate-workspace">
   <nav aria-label="Breadcrumb">
     <ol class="breadcrumbs">
       <li><a href="{% url 'certifications:certificate-list' %}">Certificates</a></li>
@@ -24,13 +24,23 @@
 
   <article class="certificate-credential-card" aria-label="Certificate of completion">
     <div class="certificate-watermark">Garden’s Need Training Academy</div>
-    <h2 style="margin: 0; font-size: var(--font-size-base); color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;">Certificate of Completion</h2>
-    <p class="muted" style="margin: var(--space-4) 0 0;">This is to certify that</p>
+    <h2 class="certificate-header-title">Certificate of Completion</h2>
+    <p class="muted certificate-lead-text">This is to certify that</p>
     <div class="certificate-recipient">{{ certificate.employee_name_snapshot }}</div>
-    <p class="muted" style="margin: 0 0 var(--space-2);">Employee code: <strong>{{ certificate.employee_code_snapshot }}</strong></p>
-    <p class="muted" style="margin: var(--space-3) 0 0;">has successfully completed the accredited training curriculum for</p>
+    <p class="muted certificate-employee-code">Employee code: <strong>{{ certificate.employee_code_snapshot }}</strong></p>
+    <p class="muted certificate-completion-text">has successfully completed the accredited training curriculum for</p>
     <div class="certificate-training-title">{{ certificate.training_title_snapshot }}</div>
-    <p class="muted" style="margin: 0;">Version {{ certificate.version_number_snapshot }}</p>
+    <p class="muted certificate-version-text">Version {{ certificate.version_number_snapshot }}</p>
+
+    {% if certificate.revoked_at %}
+      <div class="certificate-revocation-banner" role="status" aria-label="Certificate revocation notice">
+        <span class="certificate-revocation-badge">REVOKED</span>
+        <p class="certificate-revocation-details">
+          This certificate was revoked on <time datetime="{{ certificate.revoked_at|date:'c' }}">{{ certificate.revoked_at|date:"M j, Y" }}</time>{% if certificate.revoked_by %} by {{ certificate.revoked_by }}{% endif %}.
+          {% if certificate.revocation_reason %}<span class="certificate-revocation-reason">Reason: {{ certificate.revocation_reason|linebreaksbr }}</span>{% endif %}
+        </p>
+      </div>
+    {% endif %}
 
     <div class="certificate-meta-row">
       <div>
@@ -47,6 +57,9 @@
           {% if certificate.revoked_at %}Revoked{% else %}Verified Record{% endif %}
         </strong>
       </div>
+    </div>
+    <div class="certificate-print-seal" aria-hidden="true">
+      Authoritative Record &bull; Garden’s Need Training Academy
     </div>
   </article>
 

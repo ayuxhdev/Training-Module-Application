@@ -167,6 +167,13 @@ class _QuestionRevisionDetailScreenState
         )
         .toList();
     _initialOptions = _options.map((o) => o.clone()).toList();
+    final auth = ref.read(authControllerProvider);
+    if (detail.isDraft &&
+        auth is AuthAuthenticated &&
+        canEditQuestionRevisions(auth.identity) &&
+        _questionType == 'TRUE_FALSE') {
+      _initializeEmptyTrueFalseOptions();
+    }
     _initialized = true;
   }
 
@@ -500,7 +507,8 @@ class _QuestionRevisionDetailScreenState
       final labels = activeOptions
           .map((o) => o.text.trim().toLowerCase())
           .toSet();
-      if (labels.length != 2 ||
+      if (activeOptions.length != 2 ||
+          labels.length != 2 ||
           !labels.contains('true') ||
           !labels.contains('false')) {
         _showValidationError(trueFalseError);
@@ -609,6 +617,7 @@ class _QuestionRevisionDetailScreenState
   }
 
   void _addOptionDialog([_DraftOptionItem? existing, int? index]) {
+    if (_questionType == 'TRUE_FALSE' && _hasTrueFalseOptionStructure) return;
     final textCtrl = TextEditingController(text: existing?.text ?? '');
     final posCtrl = TextEditingController(
       text: existing != null
@@ -696,20 +705,31 @@ class _QuestionRevisionDetailScreenState
     );
   }
 
+  bool get _hasTrueFalseOptionStructure {
+    final active = _options.where((option) => !option.delete).toList();
+    final labels = active
+        .map((option) => option.text.trim().toLowerCase())
+        .toSet();
+    return active.length == 2 &&
+        labels.length == 2 &&
+        labels.contains('true') &&
+        labels.contains('false');
+  }
+
+  void _initializeEmptyTrueFalseOptions() {
+    // Local draft setup only. Keep the original snapshot so Save persists the pair.
+    if (_options.any((option) => !option.delete)) return;
+    _options.addAll([
+      _DraftOptionItem(text: 'True', position: 1, isCorrect: false),
+      _DraftOptionItem(text: 'False', position: 2, isCorrect: false),
+    ]);
+  }
+
   void _setupTrueFalseOptions() {
     setState(() {
       _questionType = 'TRUE_FALSE';
-      // Mark any existing options as delete
-      for (final o in _options) {
-        if (o.id != null) {
-          o.delete = true;
-        }
-      }
-      _options = [
-        ..._options.where((o) => o.delete),
-        _DraftOptionItem(text: 'True', position: 1, isCorrect: true),
-        _DraftOptionItem(text: 'False', position: 2, isCorrect: false),
-      ];
+      // Existing answers, IDs and edits must survive a question-type change.
+      _initializeEmptyTrueFalseOptions();
     });
   }
 
@@ -927,9 +947,13 @@ class _QuestionRevisionDetailScreenState
                             ],
                             onChanged: (val) {
                               if (val == null) return;
-                              setState(() {
-                                _questionType = val;
-                              });
+                              if (val == 'TRUE_FALSE') {
+                                _setupTrueFalseOptions();
+                              } else {
+                                setState(() {
+                                  _questionType = val;
+                                });
+                              }
                             },
                           ),
                           const SizedBox(height: AppSpacing.md),
@@ -1013,22 +1037,30 @@ class _QuestionRevisionDetailScreenState
                         Wrap(
                           spacing: 4,
                           children: [
-                            if (_questionType == 'TRUE_FALSE')
-                              OutlinedButton(
-                                onPressed: _setupTrueFalseOptions,
-                                child: const Text('Preset T/F'),
+                            if (_questionType != 'TRUE_FALSE' ||
+                                !_hasTrueFalseOptionStructure)
+                              FilledButton.icon(
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('Add option'),
+                                onPressed: () => _addOptionDialog(),
                               ),
-                            FilledButton.icon(
-                              icon: const Icon(Icons.add, size: 18),
-                              label: const Text('Add option'),
-                              onPressed: () => _addOptionDialog(),
-                            ),
                           ],
                         ),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.sm),
 
+                  if (canEdit &&
+                      _questionType == 'TRUE_FALSE' &&
+                      !_hasTrueFalseOptionStructure)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: AppSpacing.sm),
+                      child: Text(
+                        'True/False needs exactly two options named True and False. '
+                        'Use Edit, Remove or Add option to repair this draft. '
+                        'Existing answers are kept until you change them and save.',
+                      ),
+                    ),
                   if (visibleOptions.isEmpty)
                     const EmptyView(
                       message: 'No options configured for this revision.',
@@ -1092,34 +1124,57 @@ class _QuestionRevisionDetailScreenState
                                 ),
                               ),
                               if (canEdit) ...[
-                                IconButton(
-                                  tooltip: 'Edit option',
-                                  icon: const Icon(
-                                    Icons.edit_outlined,
-                                    size: 20,
+                                if (_questionType == 'TRUE_FALSE' &&
+                                    _hasTrueFalseOptionStructure)
+                                  Checkbox(
+                                    key: ValueKey(
+                                      'correct-option-${opt.text.toLowerCase()}',
+                                    ),
+                                    value: opt.isCorrect,
+                                    semanticLabel:
+                                        'Mark ${opt.text} as correct',
+                                    onChanged: (selected) {
+                                      if (selected == null) return;
+                                      setState(() {
+                                        if (selected) {
+                                          for (final option in _options) {
+                                            option.isCorrect = false;
+                                          }
+                                        }
+                                        opt.isCorrect = selected;
+                                      });
+                                    },
+                                  )
+                                else ...[
+                                  IconButton(
+                                    tooltip: 'Edit option',
+                                    icon: const Icon(
+                                      Icons.edit_outlined,
+                                      size: 20,
+                                    ),
+                                    onPressed: () => _addOptionDialog(
+                                      opt,
+                                      _options.indexOf(opt),
+                                    ),
                                   ),
-                                  onPressed: () => _addOptionDialog(
-                                    opt,
-                                    _options.indexOf(opt),
+                                  IconButton(
+                                    tooltip: 'Remove option',
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      size: 20,
+                                      color: Colors.red,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        if (opt.id != null) {
+                                          opt.delete = true;
+                                        } else {
+                                          _options.remove(opt);
+                                        }
+                                      });
+                                    },
                                   ),
-                                ),
-                                IconButton(
-                                  tooltip: 'Remove option',
-                                  icon: const Icon(
-                                    Icons.delete_outline,
-                                    size: 20,
-                                    color: Colors.red,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      if (opt.id != null) {
-                                        opt.delete = true;
-                                      } else {
-                                        _options.remove(opt);
-                                      }
-                                    });
-                                  },
-                                ),
+                                ],
                               ],
                             ],
                           ),

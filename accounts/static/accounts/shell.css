@@ -550,17 +550,81 @@ legend { padding: 0 var(--space-1); font-weight: 700; }
   color: var(--color-brand-primary);
   margin-bottom: var(--space-2);
 }
+.certificate-header-title {
+  margin: 0;
+  font-size: var(--font-size-base);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.certificate-lead-text {
+  margin: var(--space-4) 0 0;
+  color: var(--color-text-muted);
+}
 .certificate-recipient {
   font-size: clamp(1.5rem, 3vw, 2.25rem);
   font-weight: 800;
   color: var(--color-text);
   margin: var(--space-4) 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.certificate-employee-code {
+  margin: 0 0 var(--space-2);
+  color: var(--color-text-muted);
+}
+.certificate-completion-text {
+  margin: var(--space-3) 0 0;
+  color: var(--color-text-muted);
 }
 .certificate-training-title {
   font-size: clamp(1.125rem, 2vw, 1.5rem);
   font-weight: 700;
   color: var(--color-brand-primary);
   margin: var(--space-2) 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.certificate-version-text {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+.certificate-revocation-banner {
+  margin: var(--space-4) auto;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger-border);
+  background: var(--color-danger-background);
+  border-radius: var(--radius-md);
+  max-width: 36rem;
+  text-align: center;
+}
+.certificate-revocation-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--color-danger-foreground);
+  color: #ffffff;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-1);
+}
+.certificate-revocation-details {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-danger-foreground);
+  line-height: 1.4;
+}
+.certificate-revocation-reason {
+  display: block;
+  margin-top: var(--space-1);
+  font-style: italic;
+  color: var(--color-text);
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 .certificate-meta-row {
   display: flex;
@@ -573,16 +637,242 @@ legend { padding: 0 var(--space-1); font-weight: 700; }
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
+.certificate-print-seal {
+  display: none;
+}
 @media print {
-  .app-shell-header, .app-sidebar, .breadcrumbs, .btn, .action-link, nav {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  /* Global hide for interactive navigation, headers, footers, forms, buttons */
+  .app-shell-header,
+  .app-topbar,
+  .app-sidebar,
+  .site-header,
+  .skip-link,
+  #sidebar-backdrop,
+  .messages,
+  .breadcrumbs,
+  .btn,
+  .action-link,
+  nav {
     display: none !important;
   }
-  .catalog-workspace, .certificate-credential-card {
+
+  /* Reset document flow to pure single page print canvas */
+  html,
+  body {
+    background: #ffffff !important;
+    color: #122421 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .application-shell,
+  .app-main,
+  .page-content {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .catalog-workspace {
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
     margin: 0 !important;
     max-width: 100% !important;
+  }
+
+  /* Scoped print rules for certificate workspace */
+  .certificate-workspace {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .certificate-workspace > .page-header,
+  .certificate-workspace > .catalog-panel,
+  .certificate-workspace > p,
+  .certificate-workspace .catalog-panel,
+  .certificate-workspace .catalog-editor {
+    display: none !important;
+  }
+
+  .certificate-credential-card {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 190mm !important;
+    min-height: 235mm !important;
+    margin: 0 auto !important;
+    padding: 10mm 12mm !important;
+    background: #ffffff !important;
+    color: #122421 !important;
+    border: 3px double #006252 !important;
+    outline: 1px solid #006252 !important;
+    outline-offset: -4mm !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+    text-align: center !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    overflow: visible !important;
+  }
+
+  .certificate-watermark {
+    font-size: 10.5pt !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.15em !important;
+    color: #006252 !important;
+    text-transform: uppercase !important;
+    margin: 0 0 2mm !important;
+  }
+
+  .certificate-header-title {
+    font-size: 13pt !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.1em !important;
+    color: #4b6661 !important;
+    text-transform: uppercase !important;
+    margin: 0 !important;
+  }
+
+  .certificate-lead-text {
+    font-size: 10pt !important;
+    color: #4b6661 !important;
+    margin: 4mm 0 1mm !important;
+  }
+
+  .certificate-recipient {
+    font-size: 20pt !important;
+    font-weight: 800 !important;
+    color: #122421 !important;
+    line-height: 1.2 !important;
+    margin: 2mm 0 !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
+  }
+
+  .certificate-employee-code {
+    font-size: 9.5pt !important;
+    color: #4b6661 !important;
+    margin: 0 0 3mm !important;
+  }
+
+  .certificate-completion-text {
+    font-size: 10pt !important;
+    color: #4b6661 !important;
+    margin: 3mm 0 1mm !important;
+  }
+
+  .certificate-training-title {
+    font-size: 15pt !important;
+    font-weight: 700 !important;
+    color: #006252 !important;
+    line-height: 1.25 !important;
+    margin: 2mm 0 1mm !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
+  }
+
+  .certificate-version-text {
+    font-size: 9.5pt !important;
+    color: #4b6661 !important;
+    margin: 0 !important;
+  }
+
+  .certificate-revocation-banner {
+    border: 1px solid #dc2626 !important;
+    background: #fee2e2 !important;
+    color: #991b1b !important;
+    padding: 2.5mm 4mm !important;
+    margin: 3mm auto !important;
+    border-radius: 4px !important;
+    max-width: 90% !important;
+    width: auto !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  .certificate-revocation-badge {
+    display: inline-block !important;
+    padding: 1px 6px !important;
+    font-size: 7.5pt !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.05em !important;
+    background: #dc2626 !important;
+    color: #ffffff !important;
+    border-radius: 2px !important;
+    margin-bottom: 1mm !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .certificate-revocation-details {
+    font-size: 8.5pt !important;
+    color: #991b1b !important;
+    margin: 0 !important;
+    line-height: 1.3 !important;
+  }
+
+  .certificate-revocation-reason {
+    display: block !important;
+    font-style: italic !important;
+    color: #122421 !important;
+    margin-top: 1mm !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
+    white-space: pre-wrap !important;
+  }
+
+  .certificate-meta-row {
+    display: flex !important;
+    justify-content: space-around !important;
+    align-items: flex-start !important;
+    gap: 4mm !important;
+    margin-top: auto !important;
+    padding-top: 4mm !important;
+    border-top: 1px solid #d2ddd8 !important;
+    font-size: 8.5pt !important;
+    color: #4b6661 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .certificate-meta-row > div {
+    text-align: center !important;
+  }
+
+  .certificate-meta-row strong {
+    font-size: 9pt !important;
+    margin-top: 1mm !important;
+  }
+
+  .certificate-print-seal {
+    display: block !important;
+    font-size: 7.5pt !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+    color: #829c93 !important;
+    margin-top: 2.5mm !important;
+    text-align: center !important;
   }
 }
 .muted { color: var(--color-text-muted); }

@@ -2425,3 +2425,137 @@ class VideoWatchSessionTests(CurriculumTestCase):
         session = self.session(ended_at=self.now - timedelta(seconds=1), ending_position_seconds=90)
         with self.assertRaises(IntegrityError), transaction.atomic():
             models.Model.save(session, force_insert=True)
+
+
+class DraftCourseVideoAttachmentAndCurriculumNavigationTests(CurriculumTestCase):
+    def setUp(self):
+        super().setUp()
+        self.coordinator = self.user
+        coordinator_group, _ = Group.objects.get_or_create(name="Training Coordinator")
+        coordinator_group.user_set.add(self.coordinator)
+        self.client = Client()
+        self.client.force_login(self.coordinator)
+
+        self.draft = self.new_version()
+        self.draft_module = Module.objects.create(training_version=self.draft, title="Safety Procedures", position=1)
+        self.payload = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 12
+        self.checksum = hashlib.sha256(self.payload).hexdigest()
+
+    def test_editing_video_lesson_with_saved_file_displays_attachment_status_and_replacement_guidance(self):
+        lesson = Lesson.objects.create(
+            module=self.draft_module,
+            title="Workplace Safety Demo",
+            position=1,
+            content_type=Lesson.ContentType.VIDEO,
+            video_file=ContentFile(self.payload, name="demo.mp4"),
+            video_checksum=self.checksum,
+            video_duration_seconds=45,
+            minimum_watch_percent=80,
+        )
+        response = self.client.get(f"/lessons/{lesson.pk}/edit/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Current Video Attached")
+        self.assertContains(response, "Attached")
+        self.assertContains(response, "Duration: 45 seconds")
+        self.assertContains(response, "If the lesson remains a video lesson, leaving the replacement file picker below empty keeps the existing attached video.")
+        self.assertContains(response, "If you change the lesson type to Written lesson (Text) and save, the existing video attachment will be removed.")
+        self.assertNotContains(response, lesson.video_file.name)
+        self.assertNotContains(response, "/media/")
+        self.assertNotContains(response, "<video")
+
+    def test_editing_video_lesson_without_saved_file_does_not_falsely_show_attached(self):
+        new_form = self.client.get(f"/modules/{self.draft_module.pk}/lessons/new/")
+        self.assertEqual(new_form.status_code, 200)
+        self.assertNotContains(new_form, "Current Video Attached")
+        self.assertNotContains(new_form, "status-badge status-completed status-badge--success")
+
+    def test_editing_text_lesson_does_not_show_video_attachment_status(self):
+        text_lesson = Lesson.objects.create(
+            module=self.draft_module,
+            title="Text Safety Guidelines",
+            position=2,
+            content_type=Lesson.ContentType.TEXT,
+            body="Follow PPE guidelines.",
+        )
+        response = self.client.get(f"/lessons/{text_lesson.pk}/edit/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Current Video Attached")
+        self.assertNotContains(response, "attached video")
+
+    def test_submitting_lesson_metadata_update_without_replacement_preserves_video(self):
+        lesson = Lesson.objects.create(
+            module=self.draft_module,
+            title="Demonstration Video",
+            position=1,
+            content_type=Lesson.ContentType.VIDEO,
+            video_file=ContentFile(self.payload, name="demo.mp4"),
+            video_checksum=self.checksum,
+            video_duration_seconds=45,
+            minimum_watch_percent=80,
+        )
+        original_name = lesson.video_file.name
+        update_data = {
+            "title": "Renamed Demonstration Video",
+            "content_type": "VIDEO",
+            "position": 1,
+            "minimum_watch_percent": 85,
+            "is_required": "on",
+        }
+        response = self.client.post(f"/lessons/{lesson.pk}/edit/", update_data)
+        self.assertEqual(response.status_code, 302)
+        lesson.refresh_from_db()
+        self.assertEqual(lesson.title, "Renamed Demonstration Video")
+        self.assertEqual(lesson.minimum_watch_percent, 85)
+        self.assertEqual(lesson.video_file.name, original_name)
+        self.assertEqual(lesson.video_checksum, self.checksum)
+        self.assertEqual(lesson.video_duration_seconds, 45)
+
+    def test_changing_lesson_type_to_text_clears_video_attachment_on_save(self):
+        lesson = Lesson.objects.create(
+            module=self.draft_module,
+            title="Video Transition Demo",
+            position=1,
+            content_type=Lesson.ContentType.VIDEO,
+            video_file=ContentFile(self.payload, name="demo.mp4"),
+            video_checksum=self.checksum,
+            video_duration_seconds=45,
+            minimum_watch_percent=80,
+        )
+        update_data = {
+            "title": "Converted to Text Demo",
+            "content_type": Lesson.ContentType.TEXT,
+            "body": "Now a written safety document.",
+            "position": 1,
+            "minimum_watch_percent": 80,
+            "is_required": "on",
+        }
+        response = self.client.post(f"/lessons/{lesson.pk}/edit/", update_data)
+        self.assertEqual(response.status_code, 302)
+        lesson.refresh_from_db()
+        self.assertEqual(lesson.title, "Converted to Text Demo")
+        self.assertEqual(lesson.content_type, Lesson.ContentType.TEXT)
+        self.assertEqual(lesson.body, "Now a written safety document.")
+        self.assertFalse(lesson.video_file)
+        self.assertIsNone(lesson.video_duration_seconds)
+        self.assertEqual(lesson.video_checksum, "")
+
+    def test_version_table_actions_have_clear_curriculum_labels_and_correct_urls(self):
+        catalog_page = self.client.get(f"/trainings/{self.training.pk}/")
+        self.assertEqual(catalog_page.status_code, 200)
+        self.assertContains(catalog_page, "Manage curriculum")
+        self.assertContains(catalog_page, "Edit details")
+        self.assertContains(catalog_page, f'aria-label="Manage curriculum for version {self.version.version_number}: {self.version.title}">Manage curriculum</a>')
+        self.assertContains(catalog_page, f'aria-label="Edit details for version {self.draft.version_number}: {self.draft.title}">Edit details</a>')
+        self.assertContains(catalog_page, f'href="/versions/{self.version.pk}/"')
+        self.assertContains(catalog_page, f'href="/versions/{self.draft.pk}/edit/"')
+        self.assertNotContains(catalog_page, f'href="/versions/{self.version.pk}/edit/"')
+
+    def test_version_edit_form_links_to_curriculum_workspace_for_existing_draft_only(self):
+        edit_page = self.client.get(f"/versions/{self.draft.pk}/edit/")
+        self.assertEqual(edit_page.status_code, 200)
+        self.assertContains(edit_page, "Curriculum workspace")
+        self.assertContains(edit_page, f'href="/versions/{self.draft.pk}/"')
+
+        new_version_page = self.client.get(f"/trainings/{self.training.pk}/versions/new/")
+        self.assertEqual(new_version_page.status_code, 200)
+        self.assertNotContains(new_version_page, "Curriculum workspace")
