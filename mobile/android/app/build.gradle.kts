@@ -1,7 +1,52 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+/*
+ * Supply release credentials through the invoking process or CI secret store.
+ * Never put credentials in this file or reuse the debug signing configuration.
+ */
+val releaseSigningEnvironment = listOf(
+    "ANDROID_RELEASE_STORE_FILE",
+    "ANDROID_RELEASE_STORE_PASSWORD",
+    "ANDROID_RELEASE_KEY_ALIAS",
+    "ANDROID_RELEASE_KEY_PASSWORD",
+).associateWith { providers.environmentVariable(it).orNull }
+
+val releaseKeystore = releaseSigningEnvironment["ANDROID_RELEASE_STORE_FILE"]
+    ?.takeIf { it.isNotBlank() }
+    ?.let { File(it) }
+
+val validateReleaseSigningCredentials = tasks.register("validateReleaseSigningCredentials") {
+    group = "verification"
+    description = "Require external release signing credentials without exposing their values."
+    // Capture only names and file metadata in the task action, never passwords.
+    val missing = releaseSigningEnvironment.filterValues { it.isNullOrBlank() }.keys.toList()
+    val keystore = releaseKeystore
+    doLast {
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "Release signing requires these environment variables: ${missing.joinToString(", ")}",
+            )
+        }
+        if (keystore == null || !keystore.isAbsolute || !keystore.isFile || !keystore.canRead()) {
+            throw GradleException(
+                "ANDROID_RELEASE_STORE_FILE must identify an absolute, readable keystore file.",
+            )
+        }
+    }
+}
+
+// Guard actual release tasks, including aggregate/abbreviated build requests.
+// This also prevents an unsigned release when AGP considers signing incomplete.
+tasks.configureEach {
+    if (name == "preReleaseBuild" || name == "validateSigningRelease") {
+        dependsOn(validateReleaseSigningCredentials)
+    }
 }
 
 android {
@@ -29,11 +74,18 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = releaseKeystore
+            storePassword = releaseSigningEnvironment["ANDROID_RELEASE_STORE_PASSWORD"]
+            keyAlias = releaseSigningEnvironment["ANDROID_RELEASE_KEY_ALIAS"]
+            keyPassword = releaseSigningEnvironment["ANDROID_RELEASE_KEY_PASSWORD"]
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
