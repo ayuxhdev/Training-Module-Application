@@ -265,18 +265,27 @@ class RoleRequirementAPITests(CurriculumTestCase):
         original = RequirementCreateSerializer.is_valid
         for disable_employee in (False, True):
             with self.subTest(disable_employee=disable_employee):
-                get_user_model().objects.filter(pk=self.actor.pk).update(is_active=True)
-                Employee.objects.filter(pk=employee.pk).update(is_active=True, deactivated_at=None, deactivation_reason="")
+                actor = get_user_model().objects.get(pk=self.actor.pk)
+                actor.is_active = True
+                actor.save(update_fields=["is_active"])
+                employee.is_active = True
+                employee.deactivated_at = None
+                employee.deactivation_reason = ""
+                employee.save()
 
                 def disable_after_entry(serializer, *args, **kwargs):
                     valid = original(serializer, *args, **kwargs)
                     if disable_employee:
-                        Employee.objects.filter(pk=employee.pk).update(
-                            is_active=False, deactivated_at=timezone.now(), deactivation_reason="Fixture",
-                        )
-                        self.assertTrue(get_user_model().objects.get(pk=self.actor.pk).is_active)
+                        employee.is_active = False
+                        employee.deactivation_reason = "Fixture"
+                        employee.save()
+                        actor.refresh_from_db()
+                        actor.is_active = True
+                        actor.save(update_fields=["is_active"])
+                        self.assertTrue(actor.is_active)
                     else:
-                        get_user_model().objects.filter(pk=self.actor.pk).update(is_active=False)
+                        actor.is_active = False
+                        actor.save(update_fields=["is_active"])
                     return valid
 
                 with patch.object(RequirementCreateSerializer, "is_valid", disable_after_entry):
@@ -286,7 +295,8 @@ class RoleRequirementAPITests(CurriculumTestCase):
                     employee.refresh_from_db()
                     self.assertFalse(employee.is_active)
                     self.assertIsNotNone(employee.deactivated_at)
-                    self.assertTrue(get_user_model().objects.get(pk=self.actor.pk).is_active)
+                    actor.refresh_from_db()
+                    self.assertTrue(actor.is_active)
         self.assertEqual(RoleTrainingRequirement.objects.count(), 1)
         self.assertFalse(AuditLog.objects.exists())
 
