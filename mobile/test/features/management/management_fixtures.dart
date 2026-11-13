@@ -588,3 +588,49 @@ Map<String, dynamic> managedQuestionRevisionDetailJson({
         ),
       ],
 };
+
+Map<String, dynamic> roleTrainingRequirementJson({
+  int id = 1,
+  int jobRoleId = 1,
+  String jobRoleCode = 'OP',
+  String jobRoleName = 'Operator',
+  int trainingVersionId = 10,
+  int trainingId = 5,
+  String trainingTitle = 'Plant Safety Fundamentals',
+  String versionTitle = 'Initial Release',
+  int versionNumber = 1,
+  String versionStatus = 'PUBLISHED',
+  int dueInDays = 30,
+  bool isActive = true,
+  String createdAt = '2025-01-15T08:00:00Z',
+  String updatedAt = '2025-01-15T08:00:00Z',
+}) => {
+  'id': id,
+  'job_role_id': jobRoleId,
+  'job_role_code': jobRoleCode,
+  'job_role_name': jobRoleName,
+  'training_version_id': trainingVersionId,
+  'training_id': trainingId,
+  'training_title': trainingTitle,
+  'version_title': versionTitle,
+  'version_number': versionNumber,
+  'version_status': versionStatus,
+  'due_in_days': dueInDays,
+  'is_active': isActive,
+  'created_at': createdAt,
+  'updated_at': updatedAt,
+};
+
+Map<String, dynamic> roleBatchResultJson({
+  int roleRequirementId = 1,
+  int jobRoleId = 1,
+  int trainingVersionId = 10,
+  int createdCount = 3,
+  int skippedCount = 2,
+}) => {
+  'role_requirement_id': roleRequirementId,
+  'job_role_id': jobRoleId,
+  'training_version_id': trainingVersionId,
+  'created_count': createdCount,
+  'skipped_count': skippedCount,
+};

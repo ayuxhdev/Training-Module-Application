@@ -8,6 +8,7 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
+from api.capabilities import can_use_mobile
 from audit.services import record_event
 from notifications.models import Notification
 from notifications.services import create_assignment_notification
@@ -37,6 +38,12 @@ def save_requirement(actor, values, requirement_id=None):
     # immutable; resolve the fresh requirement only after the shared roots lock.
     get_object_or_404(TrainingVersion.objects.select_for_update(), pk=version_id)
     get_object_or_404(JobRole.objects.select_for_update(), pk=role_id)
+    if creating:
+        # Recheck after reference locks using a fresh actor, not request permission
+        # caches. This is not atomic with every possible Group/permission writer.
+        actor = get_user_model().objects.select_for_update().filter(pk=actor.pk).first()
+        if not can_use_mobile(actor) or not actor.has_perm("training.add_roletrainingrequirement"):
+            raise PermissionDenied
     instance = RoleTrainingRequirement(created_by=actor) if creating else get_object_or_404(
         RoleTrainingRequirement.objects.select_for_update(), pk=requirement_id,
     )

@@ -72,6 +72,12 @@ jobs:
       - name: Check installed dependencies
         run: python -m pip check
 
+      - name: Test QA settings
+        run: python -B -m unittest config.test_qa_settings
+
+      - name: Test QA settings with optimization
+        run: python -O -B -m unittest config.test_qa_settings
+
       - name: Run Django system check
         run: python manage.py check
 
@@ -86,8 +92,16 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Run Javascript tests
+      - name: Install JavaScript dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install Playwright-managed Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run JavaScript tests
         run: npm test
+        env:
+          PLAYER_BROWSER_MODULE: playwright
 
       - name: Set up Java
         uses: actions/setup-java@v5

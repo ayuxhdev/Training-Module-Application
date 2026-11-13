@@ -8,12 +8,14 @@ from rest_framework.exceptions import APIException, PermissionDenied as APIPermi
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
-from training.models import RoleTrainingRequirement, TrainingAssignment
+from organization.models import JobRole
+from training.models import RoleTrainingRequirement, TrainingAssignment, TrainingVersion
 
 from . import role_requirement_services as services
 from .role_requirement_serializers import (
-    RequirementCreateSerializer, RequirementQuerySerializer, RequirementSerializer,
-    RequirementUpdateSerializer, RoleBatchInputSerializer,
+    RequirementCreateSerializer, RequirementCreationOptionsQuerySerializer,
+    RequirementJobRoleOptionSerializer, RequirementQuerySerializer, RequirementSerializer,
+    RequirementUpdateSerializer, RequirementVersionOptionSerializer, RoleBatchInputSerializer,
 )
 from .training_management_views import TrainingManagementMixin, _is_unique_constraint_conflict, _validation_error
 
@@ -44,6 +46,30 @@ def write_operation(operation):
 
 def requirement_queryset():
     return RoleTrainingRequirement.objects.select_related("job_role", "training_version__training")
+
+
+class RequirementCreationOptionsView(TrainingManagementMixin, generics.ListAPIView):
+    http_method_names = ["get", "head", "options"]
+    method_permissions = {
+        method: "training.add_roletrainingrequirement" for method in ("GET", "HEAD", "OPTIONS")
+    }
+
+    def get_serializer_class(self):
+        if self.request.query_params.get("kind") == "job_roles":
+            return RequirementJobRoleOptionSerializer
+        return RequirementVersionOptionSerializer
+
+    def get_queryset(self):
+        query = RequirementCreationOptionsQuerySerializer(data=dict(self.request.query_params.items()))
+        query.is_valid(raise_exception=True)
+        if query.validated_data["kind"] == "job_roles":
+            return JobRole.objects.filter(is_active=True).only("id", "code", "name").order_by("name", "pk")
+        # Match the creation form, including published versions in inactive catalogs.
+        return TrainingVersion.objects.filter(status=TrainingVersion.Status.PUBLISHED).select_related(
+            "training",
+        ).only(
+            "id", "training_id", "title", "version_number", "training__id", "training__catalog_title",
+        ).order_by("training__catalog_title", "training_id", "version_number", "pk")
 
 
 class RequirementListView(TrainingManagementMixin, generics.ListAPIView):

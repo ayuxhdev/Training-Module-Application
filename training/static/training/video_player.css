@@ -782,12 +782,14 @@
     transition: none;
   }
 
-  /* Hover and active transforms on all player buttons */
-  .midnight-player button:hover:not(:disabled),
-  .midnight-player button:active:not(:disabled),
+  /* Centered circular playback puck — preserve centering against shell.css button rule while suppressing scale */
+  #start-video,
   #start-video:hover:not(:disabled),
-  #start-video:active:not(:disabled) {
-    transform: translate(-50%, -50%); /* keep centered; cancel scale */
+  #start-video:active:not(:disabled),
+  #start-video:disabled,
+  .btn-primary-tactile {
+    transition: none !important;
+    transform: translate(-50%, -50%) !important;
   }
 
   /* Lower deck control buttons */

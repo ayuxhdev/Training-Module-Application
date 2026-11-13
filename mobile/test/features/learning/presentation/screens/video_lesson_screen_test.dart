@@ -10,6 +10,10 @@ import 'package:training_app/features/learning/presentation/widgets/protected_vi
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:video_player/video_player.dart';
+// Exercise the locked plugin's real controller without a new app dependency.
+// ignore: depend_on_referenced_packages
+import 'package:video_player_platform_interface/video_player_platform_interface.dart'
+    as platform;
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/theme/app_theme.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
@@ -42,18 +46,92 @@ class Auth extends AuthController {
   Future<void> logout() async => state = AuthUnauthenticated();
 }
 
+/// Only the platform boundary is fake: video_player handles polling, seek,
+/// completion events, and isCompleted updates itself in these regressions.
+class PlaybackPlatform extends platform.VideoPlayerPlatform {
+  final events = <int, StreamController<platform.VideoEvent>>{};
+  final positions = <int, Duration>{};
+  final nativeEvents = <platform.VideoEvent>[];
+  final seeks = <Duration>[];
+  Completer<Duration>? positionReply;
+  Completer<void>? pauseReply;
+  int positionRequests = 0;
+
+  void emit(int id, platform.VideoEvent event) {
+    nativeEvents.add(event);
+    events[id]!.add(event);
+  }
+
+  @override
+  Future<void> init() async {}
+  @override
+  Future<int> createWithOptions(platform.VideoCreationOptions options) async {
+    final id = events.length + 1;
+    positions[id] = Duration.zero;
+    events[id] = StreamController<platform.VideoEvent>.broadcast(
+      sync: true,
+      onListen: () => scheduleMicrotask(
+        () => emit(
+          id,
+          platform.VideoEvent(
+            eventType: platform.VideoEventType.initialized,
+            duration: const Duration(seconds: 100),
+            size: const Size(1600, 900),
+          ),
+        ),
+      ),
+    );
+    return id;
+  }
+
+  @override
+  Stream<platform.VideoEvent> videoEventsFor(int playerId) =>
+      events[playerId]!.stream;
+  @override
+  Future<void> dispose(int playerId) => events[playerId]!.close();
+  @override
+  Widget buildViewWithOptions(platform.VideoViewOptions options) =>
+      const SizedBox();
+  @override
+  Future<void> play(int playerId) async {}
+  @override
+  Future<void> pause(int playerId) async => await pauseReply?.future;
+  @override
+  Future<void> setLooping(int playerId, bool looping) async {}
+  @override
+  Future<void> setVolume(int playerId, double volume) async {}
+  @override
+  Future<void> setPlaybackSpeed(int playerId, double speed) async {}
+  @override
+  Future<Duration> getPosition(int playerId) {
+    positionRequests++;
+    return positionReply?.future ?? Future.value(positions[playerId]);
+  }
+
+  @override
+  Future<void> seekTo(int playerId, Duration position) async {
+    seeks.add(position);
+    positions[playerId] = position;
+  }
+}
+
 class Player extends VideoPlayerController {
   final Completer<void>? initialization;
   final Duration mediaDuration;
+  final bool platformBacked;
   bool disposed = false;
   bool rejectSeeks = false;
   int pauseRequests = 0;
+  Completer<void>? pauseAcknowledgement;
+  final List<Duration> seekRequests = [];
   Player({
+    this.platformBacked = false,
     this.initialization,
     this.mediaDuration = const Duration(seconds: 100),
   }) : super.networkUrl(Uri.parse('https://qa.invalid/protected'));
   @override
   Future<void> initialize() async {
+    if (platformBacked) return super.initialize();
     await initialization?.future;
     if (disposed) return;
     value = VideoPlayerValue(
@@ -64,15 +142,23 @@ class Player extends VideoPlayerController {
   }
 
   @override
-  Future<void> play() async => value = value.copyWith(isPlaying: true);
+  Future<void> play() async {
+    if (platformBacked) return super.play();
+    value = value.copyWith(isPlaying: true);
+  }
+
   @override
   Future<void> pause() async {
     pauseRequests++;
+    if (platformBacked) return super.pause();
     if (!disposed) value = value.copyWith(isPlaying: false);
+    await pauseAcknowledgement?.future;
   }
 
   @override
   Future<void> seekTo(Duration position) async {
+    seekRequests.add(position);
+    if (platformBacked) return super.seekTo(position);
     if (rejectSeeks) throw StateError('Native seek failed');
     value = value.copyWith(position: position);
   }
@@ -110,6 +196,7 @@ void main() {
   late List<Player> players;
   late List<ProtectedMediaRequest> requests;
   Completer<void>? initialization;
+  bool platformBacked = false;
   Duration mediaDuration = const Duration(seconds: 100);
   LessonProgress lessonProgress = progress();
   String lessonType = 'VIDEO';
@@ -156,6 +243,7 @@ void main() {
     players = [];
     requests = [];
     initialization = null;
+    platformBacked = false;
     mediaDuration = const Duration(seconds: 100);
     lessonProgress = progress();
     lessonType = 'VIDEO';
@@ -247,6 +335,7 @@ void main() {
         protectedVideoControllerProvider.overrideWithValue((media) {
           requests.add(media);
           final player = Player(
+            platformBacked: platformBacked,
             initialization: initialization,
             mediaDuration: mediaDuration,
           );
@@ -544,7 +633,7 @@ void main() {
           2,
           7,
           any(),
-          completedNormally: true,
+          completedNormally: false,
           cancelToken: any(named: 'cancelToken'),
         ),
       ).thenAnswer(
@@ -583,7 +672,7 @@ void main() {
           2,
           7,
           any(),
-          completedNormally: true,
+          completedNormally: false,
           cancelToken: any(named: 'cancelToken'),
         ),
       ).called(1);
@@ -871,6 +960,11 @@ void main() {
       await tester.pump();
       expect(players.last.value.position, const Duration(seconds: 4));
       expect(players.last.value.isPlaying, isTrue);
+      tester.widget<Slider>(find.byType(Slider)).onChangeEnd!(70);
+      await tester.pump();
+      await tester.pump();
+      expect(players.last.value.position, const Duration(seconds: 70));
+      expect(players.last.value.isPlaying, isTrue);
       final surface = tester.widget<ProtectedVideoSurface>(
         find.byType(ProtectedVideoSurface),
       );
@@ -1043,6 +1137,199 @@ void main() {
           cancelToken: any(named: 'cancelToken'),
         ),
       ).called(1);
+      await remove(tester);
+    },
+  );
+
+  // These exercise client rejection with server-confirmed fixture coverage.
+  // Backend coverage validation remains authoritative and is not tested here.
+  testWidgets(
+    'rapid chained unwatched seeks never reach the player or credit coverage',
+    (tester) async {
+      lessonProgress = progress(resume: 20, watched: 20);
+      when(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => lessonProgress);
+      await show(tester);
+      await play(tester);
+      final player = players.single;
+      verify(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      verify(() => repository.protectedMediaRequest(1, 2, 7)).called(1);
+
+      for (final targets in [
+        [40.0, 70.0, 95.0],
+        [25.0, 60.0, 99.0],
+      ]) {
+        final observation = Completer<LessonProgress>();
+        when(
+          () => repository.submitPlaybackHeartbeat(
+            1,
+            2,
+            7,
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) => observation.future);
+        final slider = tester.widget<Slider>(find.byType(Slider));
+        for (final target in targets) {
+          slider.onChanged!(target);
+        }
+        verifyNever(
+          () => repository.submitPlaybackHeartbeat(
+            1,
+            2,
+            7,
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+        // No fake-time delay between release callbacks: the first seek holds
+        // the observation boundary while later requests arrive.
+        for (final target in targets) {
+          slider.onChangeEnd!(target);
+        }
+        await tester.pump();
+        verify(
+          () => repository.submitPlaybackHeartbeat(
+            1,
+            2,
+            7,
+            20,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+        expect(player.value.position, const Duration(seconds: 20));
+        observation.complete(lessonProgress);
+        await tester.pump();
+        await tester.pump();
+
+        expect(player.seekRequests, [const Duration(seconds: 20)]);
+        expect(player.value.isPlaying, isTrue);
+        expect(player.disposed, isFalse);
+        expect(
+          find.text('Move through unwatched video by playing it.'),
+          findsOneWidget,
+        );
+        expect(find.text('Watched coverage: 20%'), findsOneWidget);
+        expect(find.text('Lesson completed'), findsNothing);
+        expect(
+          tester
+              .widget<LinearProgressIndicator>(
+                find.byType(LinearProgressIndicator),
+              )
+              .value,
+          .2,
+        );
+        final surface = tester.widget<ProtectedVideoSurface>(
+          find.byType(ProtectedVideoSurface),
+        );
+        expect(surface.busy, isFalse);
+        expect(surface.canPlay, isTrue);
+        expect(tester.widget<Slider>(find.byType(Slider)).value, 20);
+        expect(tester.widget<Slider>(find.byType(Slider)).onChanged, isNotNull);
+        verifyNoMoreInteractions(repository);
+      }
+      expect(tester.takeException(), isNull);
+      await remove(tester);
+    },
+  );
+
+  testWidgets(
+    'watched backward seek followed by unwatched forward seeks keeps valid baseline',
+    (tester) async {
+      lessonProgress = progress(resume: 20, watched: 20);
+      when(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => lessonProgress);
+      when(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => lessonProgress);
+      await show(tester);
+      await play(tester);
+      tester.widget<Slider>(find.byType(Slider)).onChangeEnd!(10);
+      await tester.pump();
+      await tester.pump();
+      expect(players.single.value.position, const Duration(seconds: 10));
+      verifyInOrder([
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          20,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          10,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ]);
+
+      // Try again as soon as the valid seek finishes, without advancing time.
+      for (final target in [80.0, 95.0]) {
+        tester.widget<Slider>(find.byType(Slider)).onChangeEnd!(target);
+        await tester.pump();
+        await tester.pump();
+        expect(players.single.value.position, const Duration(seconds: 10));
+        expect(players.single.value.isPlaying, isTrue);
+        expect(
+          find.text('Move through unwatched video by playing it.'),
+          findsOneWidget,
+        );
+      }
+      expect(players.single.seekRequests, [
+        const Duration(seconds: 20),
+        const Duration(seconds: 10),
+      ]);
+      verify(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          10,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(2);
+      verifyNever(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          any(that: greaterThan(20)),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+      expect(find.text('Watched coverage: 20%'), findsOneWidget);
+      expect(find.text('Lesson completed'), findsNothing);
+      final surface = tester.widget<ProtectedVideoSurface>(
+        find.byType(ProtectedVideoSurface),
+      );
+      expect(surface.busy, isFalse);
+      expect(surface.canPlay, isTrue);
+      expect(tester.widget<Slider>(find.byType(Slider)).value, 10);
+      expect(tester.takeException(), isNull);
       await remove(tester);
     },
   );
@@ -1834,7 +2121,7 @@ void main() {
           2,
           7,
           any(),
-          completedNormally: true,
+          completedNormally: false,
           cancelToken: any(named: 'cancelToken'),
         ),
       ).thenAnswer((_) async => progress(watched: 50));
@@ -1853,7 +2140,7 @@ void main() {
           2,
           7,
           99,
-          completedNormally: true,
+          completedNormally: false,
           cancelToken: any(named: 'cancelToken'),
         ),
       ).called(1);
@@ -1862,6 +2149,541 @@ void main() {
       await remove(tester);
     },
   );
+
+  PlaybackPlatform useRealController() {
+    final original = platform.VideoPlayerPlatform.instance;
+    final playback = PlaybackPlatform();
+    platform.VideoPlayerPlatform.instance = playback;
+    platformBacked = true;
+    addTearDown(() => platform.VideoPlayerPlatform.instance = original);
+    return playback;
+  }
+
+  for (final stop in ['manual pause', 'background', 'buffering background']) {
+    for (final returnedPosition in [98, 100]) {
+      testWidgets(
+        'real controller $stop pending position $returnedPosition cannot claim natural completion',
+        (tester) async {
+          final playback = useRealController();
+          await show(tester);
+          await play(tester);
+          final player = players.single;
+          playback.positions[player.playerId] = const Duration(seconds: 98);
+          await tester.pump(const Duration(milliseconds: 100));
+          expect(player.value.position, const Duration(seconds: 98));
+          expect(player.value.isCompleted, isFalse);
+          final position = Completer<Duration>();
+          final paused = Completer<void>();
+          playback.positionReply = position;
+          playback.pauseReply = paused;
+          final observations = playback.positionRequests;
+          await tester.pump(const Duration(milliseconds: 100));
+          expect(playback.positionRequests, observations + 1);
+          if (stop == 'manual pause') {
+            await tester.tap(
+              find.byKey(const ValueKey('video-playback-action')),
+            );
+          } else {
+            if (stop == 'buffering background') {
+              playback.emit(
+                player.playerId,
+                platform.VideoEvent(
+                  eventType: platform.VideoEventType.bufferingStart,
+                ),
+              );
+            }
+            tester.binding.handleAppLifecycleStateChanged(
+              AppLifecycleState.paused,
+            );
+          }
+          await tester.pump();
+          expect(player.value.isPlaying, isFalse);
+          expect(player.value.isCompleted, isFalse);
+          verifyNever(
+            () => repository.endPlaybackSession(
+              1,
+              2,
+              7,
+              any(),
+              completedNormally: any(named: 'completedNormally'),
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          );
+          position.complete(Duration(seconds: returnedPosition));
+          await tester.pump();
+          // The real controller's _updatePosition sets this flag without
+          // a native completed event. Polling before end leaves it false.
+          expect(player.value.isCompleted, returnedPosition == 100);
+          expect(
+            playback.nativeEvents.where(
+              (event) => event.eventType == platform.VideoEventType.completed,
+            ),
+            isEmpty,
+          );
+          paused.complete();
+          await tester.pump();
+          await tester.pump();
+          verify(
+            () => repository.endPlaybackSession(
+              1,
+              2,
+              7,
+              any(that: closeTo(97.02, .00001)),
+              completedNormally: false,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).called(1);
+          expect(find.text('Watched coverage: 0%'), findsOneWidget);
+          expect(find.text('Lesson completed'), findsNothing);
+          if (stop != 'manual pause') {
+            tester.binding.handleAppLifecycleStateChanged(
+              AppLifecycleState.resumed,
+            );
+            await tester.pump();
+            expect(player.value.isPlaying, isFalse);
+          }
+          await remove(tester);
+          verifyNever(
+            () => repository.endPlaybackSession(
+              1,
+              2,
+              7,
+              any(),
+              completedNormally: any(named: 'completedNormally'),
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  for (final replay in [false, true]) {
+    testWidgets(
+      'real controller native completion preserves server completion (replay=$replay)',
+      (tester) async {
+        final playback = useRealController();
+        final closed = Completer<LessonProgress>();
+        if (replay) {
+          assignmentStatus = 'COMPLETED';
+          playbackMode = 'read_only_replay';
+          lessonProgress = progress(resume: 100, watched: 80, completed: true);
+        } else {
+          when(
+            () => repository.endPlaybackSession(
+              1,
+              2,
+              7,
+              any(),
+              completedNormally: false,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenAnswer((_) => closed.future);
+        }
+        await show(tester);
+        await play(tester);
+        final player = players.single;
+        playback.positions[player.playerId] = const Duration(seconds: 98);
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(player.value.isCompleted, isFalse);
+        playback.emit(
+          player.playerId,
+          platform.VideoEvent(eventType: platform.VideoEventType.completed),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(player.value.isCompleted, isTrue);
+        expect(player.value.isPlaying, isFalse);
+        expect(
+          playback.nativeEvents.where(
+            (event) => event.eventType == platform.VideoEventType.completed,
+          ),
+          hasLength(1),
+        );
+        if (!replay) {
+          expect(find.text('Watched coverage: 0%'), findsOneWidget);
+          expect(find.text('Lesson completed'), findsNothing);
+          verify(
+            () => repository.endPlaybackSession(
+              1,
+              2,
+              7,
+              any(that: closeTo(97.02, .00001)),
+              completedNormally: false,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).called(1);
+          closed.complete(progress(resume: 99, watched: 80, completed: true));
+          await tester.pump();
+          await tester.pump();
+        }
+        final surface = tester.widget<ProtectedVideoSurface>(
+          find.byType(ProtectedVideoSurface),
+        );
+        expect(surface.completed, isTrue);
+        expect(surface.coveragePercent, 80);
+        expect(find.text('Lesson completed'), findsOneWidget);
+        // Duplicate native events after closure cannot create another write.
+        playback.emit(
+          player.playerId,
+          platform.VideoEvent(eventType: platform.VideoEventType.completed),
+        );
+        await tester.pump();
+        await remove(tester);
+        if (replay) {
+          verify(() => repository.protectedReplayMediaRequest(1, 2)).called(1);
+        } else {
+          verify(
+            () => repository.startPlaybackSession(
+              1,
+              2,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).called(1);
+          verify(() => repository.protectedMediaRequest(1, 2, 7)).called(1);
+        }
+        verifyNoMoreInteractions(repository);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'real controller position-only seek to last frame cannot claim natural completion',
+    (tester) async {
+      final playback = useRealController();
+      await show(tester);
+      await play(tester);
+      // Exercise the plugin primitive, not the UI's seek authorization rules.
+      // A position-derived flag is never evidence of watched coverage.
+      await players.single.seekTo(const Duration(seconds: 100));
+      await tester.pump();
+      await tester.pump();
+      expect(players.single.value.isCompleted, isTrue);
+      expect(playback.seeks, contains(const Duration(seconds: 100)));
+      expect(
+        playback.nativeEvents.where(
+          (event) => event.eventType == platform.VideoEventType.completed,
+        ),
+        isEmpty,
+      );
+      verify(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          99,
+          completedNormally: false,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      expect(find.text('Lesson completed'), findsNothing);
+      expect(find.text('Watched coverage: 0%'), findsOneWidget);
+      await remove(tester);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'plugin pause-before-completed event closes once with unverified metadata before exit',
+    (tester) async {
+      await show(tester);
+      await play(tester);
+      final player = players.single;
+      player.value = player.value.copyWith(
+        position: const Duration(seconds: 100),
+      );
+      // video_player's completed handler calls pause() before setting
+      // isCompleted. These are separate synchronous listener notifications.
+      unawaited(player.pause());
+      player.value = player.value.copyWith(isCompleted: true);
+      await tester.pump();
+      await tester.pump();
+      verify(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          99,
+          completedNormally: false,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      expect(find.text('Watched coverage: 0%'), findsOneWidget);
+      expect(find.text('Lesson completed'), findsNothing);
+      // A late position notification with a duplicate completion flag must
+      // not close it again (a changed value actually notifies listeners).
+      player.value = player.value.copyWith(
+        position: const Duration(milliseconds: 99999),
+        isCompleted: true,
+      );
+      await tester.tap(find.byTooltip('Back to lessons'));
+      await tester.pumpAndSettle();
+      expect(find.text('Lessons'), findsOneWidget);
+      verifyNever(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          any(),
+          completedNormally: any(named: 'completedNormally'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+      expect(player.disposed, isTrue);
+      expect(tester.takeException(), isNull);
+      await remove(tester);
+    },
+  );
+
+  testWidgets(
+    'completion while native pause is pending keeps unverified metadata',
+    (tester) async {
+      await show(tester);
+      await play(tester);
+      final player = players.single;
+      final paused = Completer<void>();
+      player.pauseAcknowledgement = paused;
+      player.value = player.value.copyWith(
+        position: const Duration(seconds: 100),
+        isPlaying: false,
+      );
+      await tester.pump();
+      player.value = player.value.copyWith(isCompleted: true);
+      await tester.pump();
+      verifyNever(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          any(),
+          completedNormally: any(named: 'completedNormally'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+      paused.complete();
+      await tester.pump();
+      await tester.pump();
+      verify(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          99,
+          completedNormally: false,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      expect(find.text('Lesson completed'), findsNothing);
+      await remove(tester);
+      verifyNever(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          any(),
+          completedNormally: any(named: 'completedNormally'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'native stop without completion closes conservatively and ignores late completion',
+    (tester) async {
+      await show(tester);
+      await play(tester);
+      final player = players.single;
+      player.value = player.value.copyWith(
+        position: const Duration(seconds: 100),
+        isPlaying: false,
+      );
+      await tester.pump();
+      await tester.pump();
+      verify(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          99,
+          completedNormally: false,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      // An end position alone is not a native completion event. Once the
+      // server closure has happened, a late event cannot rewrite history.
+      player.value = player.value.copyWith(isCompleted: true);
+      await tester.pump();
+      expect(find.text('Lesson completed'), findsNothing);
+      await remove(tester);
+      verifyNever(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          any(),
+          completedNormally: any(named: 'completedNormally'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+    },
+  );
+
+  for (final naturalEnd in [true, false]) {
+    testWidgets(
+      '${naturalEnd ? 'completion' : 'pause and background'} during pending heartbeat serializes one closure',
+      (tester) async {
+        final observation = Completer<LessonProgress>();
+        when(
+          () => repository.submitPlaybackHeartbeat(
+            1,
+            2,
+            7,
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) => observation.future);
+        await show(tester);
+        await play(tester);
+        final player = players.single;
+        player.value = player.value.copyWith(
+          position: const Duration(seconds: 12),
+        );
+        await tester.pump(const Duration(seconds: 11));
+        verify(
+          () => repository.submitPlaybackHeartbeat(
+            1,
+            2,
+            7,
+            11.88,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+        if (naturalEnd) {
+          player.value = player.value.copyWith(
+            position: const Duration(seconds: 100),
+            isPlaying: false,
+            isCompleted: true,
+          );
+        } else {
+          // Reveal controls without advancing the pending observation.
+          await tester.tap(find.byKey(const ValueKey('cinematic-video-stage')));
+          await tester.pump();
+          await tester.tap(find.byKey(const ValueKey('video-playback-action')));
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.paused,
+          );
+        }
+        await tester.pump();
+        verifyNever(
+          () => repository.endPlaybackSession(
+            1,
+            2,
+            7,
+            any(),
+            completedNormally: any(named: 'completedNormally'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+        expect(player.value.isPlaying, isFalse);
+        observation.complete(progress(resume: 11, watched: 11));
+        await tester.pump();
+        await tester.pump();
+        verify(
+          () => repository.endPlaybackSession(
+            1,
+            2,
+            7,
+            naturalEnd ? 99 : 11.88,
+            completedNormally: false,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+        // Only the server response counts, not the native end or heartbeat.
+        expect(find.text('Watched coverage: 0%'), findsOneWidget);
+        expect(find.text('Lesson completed'), findsNothing);
+        await tester.pump(const Duration(seconds: 31));
+        verifyNever(
+          () => repository.submitPlaybackHeartbeat(
+            1,
+            2,
+            7,
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+        if (!naturalEnd) {
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.resumed,
+          );
+          await tester.pump();
+          expect(player.value.isPlaying, isFalse);
+          await play(tester);
+          expect(player.disposed, isTrue);
+          expect(players.last.value.isPlaying, isTrue);
+          verify(
+            () => repository.startPlaybackSession(
+              1,
+              2,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).called(2);
+        }
+        expect(tester.takeException(), isNull);
+        await remove(tester);
+      },
+    );
+  }
+
+  for (final mode in ['tracked', 'read_only_replay']) {
+    testWidgets(
+      '$mode reopens exact saved end at zero without changing earned credit',
+      (tester) async {
+        lessonProgress = progress(resume: 100, watched: 80, completed: true);
+        playbackMode = mode;
+        assignmentStatus = mode == 'tracked' ? 'IN_PROGRESS' : 'COMPLETED';
+        if (mode == 'tracked') {
+          when(
+            () => repository.startPlaybackSession(
+              1,
+              2,
+              position: 0,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenAnswer((_) async => progress(watched: 80, completed: true));
+        }
+        await show(tester);
+        await play(tester);
+        expect(players.single.value.position, Duration.zero);
+        expect(players.single.value.isPlaying, isTrue);
+        final surface = tester.widget<ProtectedVideoSurface>(
+          find.byType(ProtectedVideoSurface),
+        );
+        expect(surface.coveragePercent, 80);
+        expect(surface.completed, isTrue);
+        expect(find.text('Lesson completed'), findsOneWidget);
+        if (mode == 'tracked') {
+          verify(
+            () => repository.startPlaybackSession(
+              1,
+              2,
+              position: 0,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).called(1);
+          verify(() => repository.protectedMediaRequest(1, 2, 7)).called(1);
+        } else {
+          verify(() => repository.protectedReplayMediaRequest(1, 2)).called(1);
+        }
+        verifyNoMoreInteractions(repository);
+        await remove(tester);
+        if (mode == 'read_only_replay') verifyNoMoreInteractions(repository);
+      },
+    );
+  }
 
   testWidgets('timeline drag suspends fade until interaction ends', (
     tester,

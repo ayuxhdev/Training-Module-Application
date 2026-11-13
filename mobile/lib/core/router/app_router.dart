@@ -32,6 +32,7 @@ import 'package:training_app/features/management/presentation/screens/question_f
 import 'package:training_app/features/management/presentation/screens/question_detail_screen.dart';
 import 'package:training_app/features/management/presentation/screens/question_revision_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/question_revision_detail_screen.dart';
+import 'package:training_app/features/management/presentation/screens/role_requirements_screen.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -55,6 +56,10 @@ bool _canAccessWorkspacePath(String path, AuthenticatedIdentity identity) {
   }
   if (path == '/workspace/training') {
     return canManageTraining(identity);
+  }
+  if (path == '/workspace/training/role-requirements') {
+    return canViewRoleRequirements(identity) ||
+        canCreateRoleRequirement(identity);
   }
   if (path == '/workspace/training/catalog') {
     return canViewTraining(identity);
@@ -310,6 +315,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/workspace/training',
             builder: (_, _) => const TrainingManagementScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/training/role-requirements',
+            builder: (_, _) => const RoleRequirementsScreen(),
           ),
           GoRoute(
             path: '/workspace/training/catalog',

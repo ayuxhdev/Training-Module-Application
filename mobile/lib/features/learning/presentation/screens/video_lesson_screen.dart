@@ -201,7 +201,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
           () => _message = 'Replay is unavailable. Reload the lesson or contact your training coordinator.',
         );
       } else if (value.isCompleted && !_busy) {
-        unawaited(_pause(ended: true));
+        unawaited(_pause());
       }
       return; // Read-only media never starts a heartbeat or writes watch credit.
     }
@@ -225,7 +225,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
         () => _message = 'Video is unavailable. Try again or contact your training coordinator.',
       );
     } else if (value.isCompleted && !_busy) {
-      unawaited(_pause(ended: true));
+      unawaited(_pause());
     } else if (!value.isPlaying &&
         !value.isBuffering &&
         !_recoveringFromBuffering &&
@@ -421,7 +421,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     }
   }
 
-  Future<void> _pause({bool ended = false, bool approvedOnly = false}) async {
+  Future<void> _pause({bool approvedOnly = false}) async {
     _cancelTimers();
     _recoveringFromBuffering = false;
     final position = _reported;
@@ -429,14 +429,18 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     final assignmentId = widget.assignmentId;
     final session = _session;
     _busy = true;
-    _video?.removeListener(_onVideo);
-    await _video?.pause();
+    final video = _video;
+    video?.removeListener(_onVideo);
+    await video?.pause();
     if (!_readOnlyReplay) {
       await session?.close(
-        position: approvedOnly || _video?.value.isInitialized != true
+        position: approvedOnly || video?.value.isInitialized != true
             ? null
             : position,
-        completedNormally: ended,
+        // video_player also derives isCompleted from position/seek updates.
+        // Its public API cannot verify native completion. False means
+        // unverified, not proof playback did not finish; the server awards credit.
+        completedNormally: false,
       );
     }
     if (mounted && generation == _generation) {

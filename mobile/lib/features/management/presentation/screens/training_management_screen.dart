@@ -51,6 +51,7 @@ class TrainingManagementScreen extends ConsumerWidget {
     final canEditQ = canEditQuestions(identity);
     final canCreateAss = canCreateAssessments(identity);
     final canEditAss = canEditAssessments(identity);
+    final canManageRequirements = canManageRoleRequirements(identity);
 
     final canAuthor =
         canCreateCourses ||
@@ -390,6 +391,59 @@ class TrainingManagementScreen extends ConsumerWidget {
                           const SizedBox(height: 2),
                           Text(
                             'Author questions, draft revisions, configure options, and freeze for assessments.',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+
+            if (canManageRequirements) ...[
+              const SectionHeading(
+                'Role-training requirements',
+                subtitle: 'Configure mandatory training per job role and trigger role-based batch assignments.',
+              ),
+              CustomCard(
+                onTap: () =>
+                    context.push('/workspace/training/role-requirements'),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.tertiaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.assignment_ind_outlined,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onTertiaryContainer,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Manage role requirements',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Define mandatory courses for job roles and run employee batch assignments.',
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
                                   color: Theme.of(context)

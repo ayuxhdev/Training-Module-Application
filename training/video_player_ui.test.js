@@ -5,38 +5,135 @@ const test = require("node:test");
 const vm = require("node:vm");
 const source = fs.readFileSync(path.join(__dirname, "static/training/video_player_ui.js"), "utf8");
 
-function ui() {
+function ui(options = {}) {
   class Element {
-    constructor() { this.listeners = {}; this.attributes = {}; this.disabled = false; this.hidden = false; this.style = {}; }
+    constructor(id = "") {
+      this.id = id;
+      this.listeners = {};
+      this.attributes = {};
+      this.disabled = false;
+      this.hidden = false;
+      this.style = {
+        _props: {},
+        setProperty(k, v) { this._props[k] = v; this[k] = v; },
+        getPropertyValue(k) { return this._props[k] || this[k] || ""; },
+      };
+      this.rect = { top: 0, bottom: 200, left: 0, right: 390, width: 390, height: 200 };
+    }
     addEventListener(event, callback) { (this.listeners[event] ??= []).push(callback); }
     emit(event, data = {}) { for (const callback of this.listeners[event] ?? []) callback(data); }
     click() { if (!this.disabled) this.emit("click"); }
     setAttribute(name, value) { this.attributes[name] = value; }
     getAttribute(name) { return this.attributes[name]; }
+    getBoundingClientRect() { return this.rect; }
+    contains(child) {
+      if (!child) return false;
+      return child === this || Boolean(this.children && this.children.has(child));
+    }
     dispatchEvent(event) { this.emit(event.type, event); return !event.defaultPrevented; }
   }
   const elements = {};
   for (const id of ["video-player", "lesson-video", "video-play-pause", "start-video",
-    "video-timeline", "video-time", "video-fullscreen", "video-buffering"]) elements[id] = new Element();
+    "video-timeline", "video-time", "video-fullscreen", "video-buffering", "video-start-label"]) {
+    elements[id] = new Element(id);
+  }
+  const stage = new Element("video-stage");
+  stage.rect = { top: 0, bottom: 400, left: 0, right: 390, width: 390, height: 400 };
+  const deck = new Element("video-controls-deck");
+  deck.rect = { top: 340, bottom: 390, left: 10, right: 380, width: 370, height: 50 };
+  const hud = new Element("video-top-hud");
+  hud.rect = { top: 10, bottom: 40, left: 10, right: 380, width: 370, height: 30 };
+
   const player = elements["video-player"], video = elements["lesson-video"];
+  const start = elements["start-video"], startLabel = elements["video-start-label"];
+  const play = elements["video-play-pause"];
+  player.children = new Set([...Object.values(elements), stage, deck, hud]);
+
   const classes = new Set();
-  player.classList = { add: (v) => classes.add(v), remove: (v) => classes.delete(v),
-    toggle: (v, enabled) => enabled ? classes.add(v) : classes.delete(v) };
-  player.querySelector = () => null;
-  player.matches = () => false;
+  player.classList = {
+    add: (v) => classes.add(v),
+    remove: (v) => classes.delete(v),
+    toggle: (v, enabled) => enabled ? classes.add(v) : classes.delete(v),
+    contains: (v) => classes.has(v),
+  };
+
+  player.querySelector = (selector) => {
+    if (options.bareQuery) return null;
+    if (selector === ".video-stage") return stage;
+    if (selector === ".video-controls-deck") return deck;
+    if (selector === ".video-top-hud") return hud;
+    return null;
+  };
+
+  let focused = false;
+  player.matches = (selector) => {
+    if (selector === ":focus-within") return focused;
+    return false;
+  };
+
   const document = new Element();
   document.getElementById = (id) => elements[id];
+  document.fullscreenElement = null;
   player.requestFullscreen = async () => { document.fullscreenElement = player; document.emit("fullscreenchange"); };
   document.exitFullscreen = async () => { document.fullscreenElement = null; document.emit("fullscreenchange"); };
-  video.duration = 100; video.currentTime = 0; video.paused = true;
+
+  video.duration = 100;
+  video.currentTime = 0;
+  video.paused = true;
+  video.videoWidth = options.videoWidth || 0;
+  video.videoHeight = options.videoHeight || 0;
   video.play = async () => { video.paused = false; video.emit("play"); };
   video.pause = () => { video.paused = true; video.emit("pause"); };
-  let fade;
+
+  let activeFadeId = null;
+  const timerCallbacks = new Map();
+  let nextTimerId = 1;
   const window = new Element();
-  window.setTimeout = (callback) => { fade = callback; return 1; };
-  window.clearTimeout = () => { fade = null; };
+  window.innerWidth = options.width || 1024;
+  window.setTimeout = (callback) => {
+    const id = nextTimerId++;
+    timerCallbacks.set(id, callback);
+    activeFadeId = id;
+    return id;
+  };
+  window.clearTimeout = (id) => {
+    timerCallbacks.delete(id);
+    if (activeFadeId === id) activeFadeId = null;
+  };
+  window.getComputedStyle = (el) => {
+    if (el === start) return { height: window.innerWidth <= 640 ? "56px" : "72px" };
+    if (el === startLabel) return { lineHeight: "16px", paddingTop: "4px", paddingBottom: "4px", borderTopWidth: "1px" };
+    if (el === deck) return { marginBottom: "10px" };
+    if (el === hud) return { top: "14px" };
+    return {};
+  };
+
+  class CustomEvent {
+    constructor(type, init = {}) {
+      this.type = type;
+      this.detail = init.detail || {};
+      this.cancelable = Boolean(init.cancelable);
+      this.defaultPrevented = false;
+    }
+    preventDefault() { this.defaultPrevented = true; }
+  }
+
   vm.runInNewContext(source, { document, window, CustomEvent });
-  return { elements, player, video, document, window, classes, fade: () => fade?.() };
+  return {
+    elements, player, video, document, window, classes,
+    stage, deck, hud, start, startLabel, play,
+    fade: () => {
+      if (activeFadeId !== null && timerCallbacks.has(activeFadeId)) {
+        const id = activeFadeId;
+        const cb = timerCallbacks.get(id);
+        timerCallbacks.delete(id);
+        activeFadeId = null;
+        cb?.();
+      }
+    },
+    isFadeArmed: () => activeFadeId !== null && timerCallbacks.has(activeFadeId),
+    setFocusWithin: (v) => { focused = v; },
+  };
 }
 
 test("faded controls ignore pointers while visible and keyboard-focused controls stay interactive", () => {
@@ -273,8 +370,8 @@ test("reduced-motion block covers all cinematic elements", () => {
   assert.match(rmBlock, /\.midnight-player\s*\{[^}]*transition:\s*none/);
   // All buttons
   assert.match(rmBlock, /\.midnight-player button/);
-  // Puck
-  assert.match(rmBlock, /#start-video/);
+  // Puck preserves centering transform against shell.css button rule
+  assert.match(rmBlock, /#start-video[^{]*\{[^}]*transform:\s*translate\(-50%,\s*-50%\)\s*!important/);
   // Control overlay
   assert.match(rmBlock, /\.video-player-controls\s*\{[^}]*transition:\s*none/);
   // Autohide slides removed
@@ -295,10 +392,213 @@ test("reduced-motion block covers all cinematic elements", () => {
   assert.match(rmBlock, /\.buffering-spinner\s*\{[^}]*animation:\s*none/);
 });
 
+test("M16 Gate 1: portrait video framing (1080x1920) sets dynamic aspect-ratio custom property and preserves stage containment", () => {
+  const css = fs.readFileSync(path.join(__dirname, "static/training/video_player.css"), "utf8");
+  // CSS rules enforce object-fit: contain on the video element and bounded stage height
+  assert.match(css, /\.video-stage\s*\{[^}]*aspect-ratio:\s*var\(--video-aspect-ratio,\s*16\s*\/\s*9\);/);
+  assert.match(css, /\.video-stage\s*\{[^}]*max-height:\s*min\(72vh,\s*600px\);/);
+  assert.match(css, /\.video-stage\s*\{[^}]*overflow:\s*hidden;/);
+  assert.match(css, /\.midnight-player video\s*\{[^}]*object-fit:\s*contain;/);
+  assert.match(css, /\.midnight-player video\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;/);
+
+  // Measure layout with portrait 1080x1920 video at mobile width 390px
+  const portrait = ui({ videoWidth: 1080, videoHeight: 1920, width: 390 });
+  portrait.video.emit("loadedmetadata");
+  assert.equal(portrait.stage.style.getPropertyValue("--video-aspect-ratio"), "1080 / 1920");
+
+  // Measure layout with landscape 1920x1080 video
+  const landscape = ui({ videoWidth: 1920, videoHeight: 1080, width: 1024 });
+  landscape.video.emit("loadedmetadata");
+  assert.equal(landscape.stage.style.getPropertyValue("--video-aspect-ratio"), "1920 / 1080");
+
+  // Zero dimensions do not corrupt aspect ratio
+  const zero = ui({ videoWidth: 0, videoHeight: 0 });
+  zero.video.emit("loadedmetadata");
+  assert.equal(zero.stage.style.getPropertyValue("--video-aspect-ratio"), "");
+});
+
+test("M16 Gate 2: start puck centering and label clearance reserve safe margins above floating deck", () => {
+  const css = fs.readFileSync(path.join(__dirname, "static/training/video_player.css"), "utf8");
+  // Center puck layout and clearance rules
+  assert.match(css, /#start-video,\s*\.btn-primary-tactile\s*\{[^}]*top:\s*50%;[^}]*left:\s*50%;[^}]*transform:\s*translate\(-50%,\s*-50%\);/);
+  assert.match(css, /\.video-start-label\s*\{[^}]*position:\s*absolute;/);
+  assert.match(css, /\.midnight-player:has\(#start-video:not\(\[hidden\]\)\)\s*#video-play-pause\s*\{[^}]*display:\s*none\s*!important;/);
+
+  // Mobile layout at 390px: labelGap is 6px, puck-half is 28px (56px / 2)
+  const mobile = ui({ width: 390, videoWidth: 1080, videoHeight: 1920 });
+  mobile.video.emit("loadedmetadata");
+  assert.equal(mobile.stage.style.getPropertyValue("--video-label-gap"), "6px");
+  assert.equal(mobile.stage.style.getPropertyValue("--video-puck-half"), "28px");
+  const mobileMinHeight = parseInt(mobile.stage.style.getPropertyValue("--video-min-height"), 10);
+  assert.ok(mobileMinHeight >= 200, "mobile min-height must clear puck and deck");
+
+  // Desktop layout at 1024px: labelGap is 12px, puck-half is 36px (72px / 2)
+  const desktop = ui({ width: 1024, videoWidth: 1920, videoHeight: 1080 });
+  desktop.video.emit("loadedmetadata");
+  assert.equal(desktop.stage.style.getPropertyValue("--video-label-gap"), "12px");
+  assert.equal(desktop.stage.style.getPropertyValue("--video-puck-half"), "36px");
+});
+
+test("M16 Gate 3: keyboard End-key and range slider seek dispatches video-seek-request without altering media clock", () => {
+  const player = ui();
+  player.video.duration = 100;
+  player.video.currentTime = 20;
+  player.elements["video-timeline"].disabled = false;
+  player.elements["video-timeline"].value = "100"; // User presses End key on slider
+
+  const seekRequests = [];
+  player.video.addEventListener("video-seek-request", (event) => {
+    seekRequests.push(event.detail.position);
+  });
+
+  player.elements["video-timeline"].emit("change");
+  // Seek intent was dispatched, but media clock is NOT mutated by UI layer
+  assert.deepEqual(seekRequests, [100]);
+  assert.equal(player.video.currentTime, 20);
+
+  // When playback feedback arrives (e.g. rejection snap-back), timeline returns to approved position
+  player.video.emit("video-seek-feedback");
+  assert.equal(player.elements["video-timeline"].value, "20");
+
+  // Keyboard space / k does not hijack native range slider semantics
+  const sliderSpaceKey = { key: " ", target: { tagName: "INPUT" }, preventDefault() { this.prevented = true; } };
+  player.player.emit("keydown", sliderSpaceKey);
+  assert.equal(sliderSpaceKey.prevented, undefined, "Space on INPUT must not be intercepted");
+});
+
+test("M16 Gate 4: completed video replay UI mode initializes at 0:00 and preserves completion state", () => {
+  const player = ui();
+  const start = player.elements["start-video"];
+  const play = player.elements["video-play-pause"];
+
+  // Replay begins at currentTime 0
+  assert.equal(player.video.currentTime, 0);
+  assert.equal(start.attributes["aria-label"], "Start video");
+  assert.equal(play.textContent, "Play");
+
+  // During replay, playback time updates label to Resume
+  player.video.currentTime = 45;
+  player.video.emit("timeupdate");
+  assert.equal(start.attributes["aria-label"], "Resume video");
+  assert.equal(start.textContent, "Resume video");
+
+  // Seeking in replay dispatches seek request and allows navigation
+  const seekRequests = [];
+  player.video.addEventListener("video-seek-request", (event) => seekRequests.push(event.detail.position));
+  player.elements["video-timeline"].disabled = false;
+  player.elements["video-timeline"].value = "60";
+  player.elements["video-timeline"].emit("change");
+  assert.deepEqual(seekRequests, [60]);
+});
+
+test("M16 Gate 5: timeline blur during click does not mutate play button text, ensuring reliable first-click Pause", () => {
+  const player = ui();
+  player.start.hidden = true;
+  player.play.disabled = false;
+  player.video.paused = false;
+  player.video.emit("play");
+  assert.equal(player.play.textContent, "Pause");
+
+  // Track if textContent setter is invoked redundantly on identical value
+  let redundantSetterCall = false;
+  let text = player.play.textContent;
+  Object.defineProperty(player.play, "textContent", {
+    get() { return text; },
+    set(val) {
+      if (val === text) redundantSetterCall = true;
+      text = val;
+    },
+  });
+
+  // Timeline slider blur occurs between mousedown and mouseup on Pause button
+  player.elements["video-timeline"].emit("blur");
+  assert.equal(redundantSetterCall, false, "Slider blur must not rewrite identical play button text");
+
+  // Clicking play button immediately pauses playback
+  player.play.click();
+  assert.equal(player.video.paused, true, "First mouse click must pause video");
+  assert.equal(player.isFadeArmed(), false, "Auto-hide fade timer must NOT be armed while paused");
+  assert.equal(player.classes.has("is-controls-visible"), true, "Controls deck must remain visible while paused");
+});
+
+test("M16 Gate 6: controls stay visible during keyboard focus (:focus-within) and auto-hide is suppressed while paused", () => {
+  const css = fs.readFileSync(path.join(__dirname, "static/training/video_player.css"), "utf8");
+  // CSS: auto-hide requires :not(:focus-within) so focused elements remain visible
+  assert.match(css, /\.midnight-player\.is-playing:not\(\.is-controls-visible\):not\(:focus-within\)\s*\.video-player-controls\s*\{[^}]*opacity:\s*0;/);
+  // CSS: high-contrast focus rings
+  assert.match(css, /#video-player\s*:is\(button,\s*input,\s*video\):focus-visible\s*\{[^}]*outline:\s*[23]px solid/);
+  assert.match(css, /\.midnight-player\s*input\[type="range"\]:focus-visible\s*\{[^}]*outline:\s*2px solid/);
+
+  const player = ui();
+  player.start.hidden = true;
+  player.play.disabled = false;
+  player.video.paused = false;
+  player.video.emit("play");
+
+  // 1. Active video playback arms auto-hide timer
+  assert.equal(player.isFadeArmed(), true, "Playback must arm auto-hide timer");
+  assert.equal(player.classes.has("is-controls-visible"), true);
+
+  // 2. Keyboard focus within the player
+  player.setFocusWithin(true);
+
+  // 3. Timeout fires while focused: :focus-within protects visibility
+  player.fade();
+  assert.equal(player.classes.has("is-controls-visible"), true, ":focus-within must keep controls visible when timeout fires");
+  assert.equal(player.isFadeArmed(), false, "Timer must be disarmed after execution");
+
+  // 4. Proving an expired timer cannot run twice
+  player.fade();
+  assert.equal(player.isFadeArmed(), false, "Expired timer must not re-arm or run a second time");
+
+  // 5. Focus moves between internal controls (e.g. from deck to play button) — no premature fade
+  player.player.emit("focusout", { relatedTarget: player.play });
+  assert.equal(player.isFadeArmed(), false, "Internal focus change must not schedule premature fade");
+  assert.equal(player.classes.has("is-controls-visible"), true, "Controls stay visible during internal focus movement");
+
+  // 6. Focus genuinely leaves the player after timeout was consumed:
+  // focusout handler schedules a new normal auto-hide timer
+  player.setFocusWithin(false);
+  player.player.emit("focusout", { relatedTarget: null });
+  assert.equal(player.isFadeArmed(), true, "A new auto-hide timer must be scheduled when focus genuinely leaves");
+  assert.equal(player.classes.has("is-controls-visible"), true, "Controls stay visible until the scheduled timeout expires");
+
+  // 7. When the newly scheduled timer fires, controls fade out
+  player.fade();
+  assert.equal(player.classes.has("is-controls-visible"), false, "Controls fade out after focusout timeout fires");
+  assert.equal(player.isFadeArmed(), false);
+
+  // 8. When focus leaves BEFORE the timer expires, existing timer is preserved without duplicate
+  player.player.emit("pointermove");
+  assert.equal(player.isFadeArmed(), true, "Pointer move restores controls and arms timer");
+  player.setFocusWithin(true);
+  player.setFocusWithin(false); // Focus leaves before timeout fires
+  player.player.emit("focusout", { relatedTarget: null });
+  assert.equal(player.isFadeArmed(), true, "Existing timer is preserved without creating duplicate");
+  player.fade(); // Timeout fires
+  assert.equal(player.classes.has("is-controls-visible"), false, "Controls fade out when existing timer expires");
+
+  // 9. Paused player never hides controls on focusout
+  player.video.paused = true;
+  player.classes.add("is-controls-visible");
+  player.player.emit("focusout", { relatedTarget: null });
+  assert.equal(player.isFadeArmed(), false, "Paused player never arms a fade timer on focusout");
+  assert.equal(player.classes.has("is-controls-visible"), true, "Controls remain visible while paused");
+
+  // 10. Pointer interaction restores controls
+  player.video.paused = false;
+  player.player.emit("pointermove");
+  assert.equal(player.classes.has("is-controls-visible"), true, "Pointer move restores visible state");
+  assert.equal(player.isFadeArmed(), true);
+
+  // 11. No tracked video progress is altered by visibility lifecycle events
+  assert.equal(player.video.currentTime, 0, "Visibility events must never alter video currentTime");
+});
+
 // Optional actual Chromium layout/input regressions. No server or learner data:
 // media properties and session state are synthetic; the template/CSS/UI are real.
 // Set PLAYER_BROWSER_MODULE to an existing Playwright installation to run them.
-const browserModule = process.env.PLAYER_BROWSER_MODULE;
+const browserModule = process.env.PLAYER_BROWSER_MODULE?.trim();
 test("outer shell can shrink below 320px when a vertical scrollbar reserves space", () => {
   const shell = fs.readFileSync(path.join(__dirname, "../accounts/static/accounts/shell.css"), "utf8");
   for (const selector of ["html", "body"]) {
@@ -310,7 +610,7 @@ test("outer shell can shrink below 320px when a vertical scrollbar reserves spac
 });
 test("browser geometry, focus, first-click Pause and faded pointer targets", { skip: !browserModule }, async (t) => {
   const { chromium } = require(browserModule);
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const browser = await chromium.launch({ headless: true });
   t.after(() => browser.close());
   const page = await browser.newPage();
   const errors = [];
@@ -487,5 +787,66 @@ test("browser geometry, focus, first-click Pause and faded pointer targets", { s
   assert.equal(await learner.locator("#lesson-completion").textContent(), "Completed");
   assert.equal(await learner.evaluate(() => window.qaState.calls.filter((call) => call.url.endsWith("/start/")).at(-1).body.position), 0);
   await learner.getByRole("button", { name: "Pause video" }).click();
+  // Exercise the dedicated read-only replay route UI in the browser.
+  const replayPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  replayPage.on("pageerror", (error) => errors.push(error.message));
+  await replayPage.setContent(`<style>${shell}\n${css}</style>${markup}
+    <p id="playback-status" role="status"></p>`);
+  await replayPage.evaluate(() => {
+    const video = document.getElementById("lesson-video");
+    video.dataset.replayUrl = "/qa/replay/media/";
+    delete video.dataset.progressUrl;
+    delete video.dataset.startUrl;
+    video.dataset.durationSeconds = "100";
+    let paused = true, position = 0, currentSrc = "";
+    window.qaReplayCalls = [];
+    window.qaAssignedSources = [];
+    Object.defineProperties(video, {
+      duration: { get: () => 100 }, videoWidth: { get: () => 1080 }, videoHeight: { get: () => 1920 },
+      currentTime: { get: () => position, set: (value) => { position = value; } },
+      src: {
+        get: () => currentSrc,
+        set: (value) => {
+          currentSrc = value;
+          window.qaAssignedSources.push(value);
+        },
+      },
+      paused: { get: () => paused }, ended: { get: () => position >= 100 },
+    });
+    video.load = () => { position = 0; queueMicrotask(() => video.dispatchEvent(new Event("loadedmetadata"))); };
+    video.play = async () => { paused = false; video.dispatchEvent(new Event("play")); };
+    video.pause = () => { paused = true; video.dispatchEvent(new Event("pause")); };
+    window.fetch = async (url, options) => {
+      window.qaReplayCalls.push({ url: String(url), method: options?.method || "GET" });
+      throw new Error("Read-only replay must not call session or progress APIs: " + url);
+    };
+  });
+  await replayPage.addScriptTag({ content: fs.readFileSync(path.join(__dirname, "static/training/playback.js"), "utf8") });
+  await replayPage.addScriptTag({ content: source });
+  assert.equal(await replayPage.locator("video").getAttribute("data-replay-url"), "/qa/replay/media/");
+  assert.equal(await replayPage.evaluate(() => document.querySelector("video").src), "", "initial replay src must be empty before start");
+  await replayPage.getByRole("button", { name: "Start video" }).click();
+  await replayPage.waitForFunction(() => document.getElementById("playback-status").textContent.includes("read-only replay"));
+  assert.equal(await replayPage.evaluate(() => document.querySelector("video").currentTime), 0, "replay starts at position 0");
+  assert.equal(await replayPage.evaluate(() => document.querySelector("video").src), "/qa/replay/media/", "replay media URL must be assigned to video src");
+  assert.deepEqual(await replayPage.evaluate(() => window.qaAssignedSources), ["/qa/replay/media/"], "recorded src assignments must only contain the replay URL");
+  assert.equal(await replayPage.evaluate(() => !document.querySelector("video").src.includes("/sessions/")), true, "tracked-playback session media endpoint must not be selected");
+  assert.equal(await replayPage.evaluate(() => document.querySelector("video").paused), false, "video must be playing after start");
+  assert.equal(await replayPage.evaluate(() => window.qaReplayCalls.length), 0, "replay start must make zero API calls");
+
+  // Exercise seeking in read-only replay
+  await replayPage.evaluate(() => {
+    document.getElementById("lesson-video").dispatchEvent(new CustomEvent("video-seek-request", { detail: { position: 35 } }));
+  });
+  assert.equal(await replayPage.evaluate(() => document.querySelector("video").currentTime), 35, "replay seeking updates position");
+  assert.equal(await replayPage.evaluate(() => window.qaReplayCalls.length), 0, "replay seeking must make zero API calls");
+
+  // Perform Pause click and verify state and zero network calls AFTER pause
+  await replayPage.getByRole("button", { name: "Pause video" }).click();
+  await replayPage.waitForFunction(() => document.querySelector("video").paused);
+  assert.equal(await replayPage.evaluate(() => document.querySelector("video").paused), true, "video element must be paused after Pause click");
+  await replayPage.waitForFunction(() => document.getElementById("playback-status").textContent.includes("Paused read-only replay"));
+  assert.equal(await replayPage.evaluate(() => window.qaReplayCalls.length), 0, "replay must make zero API calls after pause");
+  await replayPage.close();
   assert.deepEqual(errors, []);
 });

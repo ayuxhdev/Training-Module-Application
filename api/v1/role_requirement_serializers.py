@@ -2,7 +2,27 @@
 
 from rest_framework import serializers
 
-from .training_management_serializers import CatalogQuerySerializer, ExplicitInputSerializer
+from .training_management_serializers import CatalogQuerySerializer, ExplicitInputSerializer, VersionQuerySerializer
+
+
+class RequirementCreationOptionsQuerySerializer(VersionQuerySerializer):
+    kind = serializers.ChoiceField(choices=("job_roles", "training_versions"))
+
+
+class RequirementJobRoleOptionSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    label = serializers.SerializerMethodField()
+
+    def get_label(self, role):
+        return f"{role.code} — {role.name}"
+
+
+class RequirementVersionOptionSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    label = serializers.SerializerMethodField()
+
+    def get_label(self, version):
+        return f"{version.training.catalog_title} — {version.title} (v{version.version_number})"
 
 
 class RequirementQuerySerializer(CatalogQuerySerializer):

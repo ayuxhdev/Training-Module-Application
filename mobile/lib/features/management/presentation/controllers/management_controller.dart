@@ -41,7 +41,23 @@ bool canAssignTraining(AuthenticatedIdentity identity) =>
 bool canManageTraining(AuthenticatedIdentity identity) =>
     identity.canManageTraining ||
     canManageAssessments(identity) ||
-    canManageQuestionBank(identity);
+    canManageQuestionBank(identity) ||
+    canManageRoleRequirements(identity);
+
+bool canManageRoleRequirements(AuthenticatedIdentity identity) =>
+    canViewRoleRequirements(identity) || canCreateRoleRequirement(identity);
+
+bool canViewRoleRequirements(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.view_roletrainingrequirement');
+
+bool canCreateRoleRequirement(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.add_roletrainingrequirement');
+
+bool canEditRoleRequirement(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.change_roletrainingrequirement');
+
+bool canExecuteRoleBatchAssignment(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('training.add_trainingassignment');
 
 bool canViewTraining(AuthenticatedIdentity identity) =>
     identity.capabilities.contains('training.view_training');
@@ -1388,6 +1404,121 @@ final questionRevisionMutationProvider =
       ),
     );
 
+class RoleRequirementMutationController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  const RoleRequirementMutationController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<RoleTrainingRequirement> create({
+    required int jobRoleId,
+    required int trainingVersionId,
+    int dueInDays = 30,
+    bool isActive = true,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canCreateRoleRequirement(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot create role requirements.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final created = await repository.createRoleRequirement(
+      jobRoleId: jobRoleId,
+      trainingVersionId: trainingVersionId,
+      dueInDays: dueInDays,
+      isActive: isActive,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canCreateRoleRequirement(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before requirement creation completed. Reopen to continue.',
+        statusCode: 403,
+      );
+    }
+    return created;
+  }
+
+  Future<RoleTrainingRequirement> update({
+    required int id,
+    int? dueInDays,
+    bool? isActive,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canEditRoleRequirement(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot modify role requirements.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final updated = await repository.updateRoleRequirement(
+      id: id,
+      dueInDays: dueInDays,
+      isActive: isActive,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canEditRoleRequirement(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before requirement update completed. Reopen to continue.',
+        statusCode: 403,
+      );
+    }
+    return updated;
+  }
+
+  Future<RoleBatchResult> executeBatch({
+    required int id,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (initialAuth is! AuthAuthenticated ||
+        !canExecuteRoleBatchAssignment(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot execute role batch assignments.',
+        statusCode: 403,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final result = await repository.executeRoleBatchAssignment(
+      id,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canExecuteRoleBatchAssignment(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before batch assignment completed. Reopen to continue.',
+        statusCode: 403,
+      );
+    }
+    return result;
+  }
+}
+
+final roleRequirementMutationProvider =
+    Provider<RoleRequirementMutationController>(
+      (ref) => RoleRequirementMutationController(
+        repository: ref.watch(managementRepositoryProvider),
+        readAuth: () => ref.read(authControllerProvider),
+      ),
+    );
+
 CancelToken _request(Ref ref, bool Function(AuthenticatedIdentity) allowed) {
   final account = ref.watch(authControllerProvider.select(managementAccount));
   final auth = ref.read(authControllerProvider);
@@ -1849,4 +1980,39 @@ final managedQuestionRevisionDetailProvider = FutureProvider.autoDispose
         key.revisionId,
         cancelToken: cancelToken,
       );
+    }, retry: (_, _) => null);
+
+typedef RoleRequirementsRequest = ({
+  int page,
+  String? search,
+  int? jobRoleId,
+  int? trainingVersionId,
+  bool? isActive,
+});
+
+final roleRequirementsProvider = FutureProvider.autoDispose
+    .family<ManagementPage<RoleTrainingRequirement>, RoleRequirementsRequest>((
+      ref,
+      request,
+    ) {
+      final cancelToken = _request(ref, canViewRoleRequirements);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.roleRequirements(
+        page: request.page,
+        search: request.search,
+        jobRoleId: request.jobRoleId,
+        trainingVersionId: request.trainingVersionId,
+        isActive: request.isActive,
+        cancelToken: cancelToken,
+      );
+    }, retry: (_, _) => null);
+
+final roleRequirementDetailProvider = FutureProvider.autoDispose
+    .family<RoleTrainingRequirement, int>((ref, id) {
+      if (id <= 0) {
+        throw ArgumentError.value(id, 'id');
+      }
+      final cancelToken = _request(ref, canViewRoleRequirements);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.roleRequirement(id, cancelToken: cancelToken);
     }, retry: (_, _) => null);

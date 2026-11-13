@@ -1726,4 +1726,315 @@ class ManagementRepository {
       );
     }
   }
+
+  Future<ManagementPage<RoleTrainingRequirement>> roleRequirements({
+    int page = 1,
+    int? pageSize,
+    String? search,
+    int? jobRoleId,
+    int? trainingVersionId,
+    bool? isActive,
+    CancelToken? cancelToken,
+  }) {
+    if (jobRoleId != null && jobRoleId <= 0) {
+      throw ArgumentError.value(jobRoleId, 'jobRoleId');
+    }
+    if (trainingVersionId != null && trainingVersionId <= 0) {
+      throw ArgumentError.value(trainingVersionId, 'trainingVersionId');
+    }
+    final normalizedSearch = search?.trim();
+    return _get(
+      'role-requirements/',
+      (json) => ManagementPage.fromJson(json, RoleTrainingRequirement.fromJson),
+      page: page,
+      pageSize: pageSize,
+      additionalQueryParameters: {
+        'search': ?(normalizedSearch?.isNotEmpty == true
+            ? normalizedSearch
+            : null),
+        'job_role_id': ?jobRoleId,
+        'training_version_id': ?trainingVersionId,
+        'is_active': ?isActive,
+      },
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<RoleTrainingRequirement> roleRequirement(
+    int id, {
+    CancelToken? cancelToken,
+  }) async {
+    if (id <= 0) throw ArgumentError.value(id, 'id');
+    return _get(
+      'role-requirements/$id/',
+      RoleTrainingRequirement.fromJson,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<RoleTrainingRequirement> createRoleRequirement({
+    required int jobRoleId,
+    required int trainingVersionId,
+    int dueInDays = 30,
+    bool isActive = true,
+    CancelToken? cancelToken,
+  }) async {
+    if (jobRoleId <= 0) throw ArgumentError.value(jobRoleId, 'jobRoleId');
+    if (trainingVersionId <= 0) {
+      throw ArgumentError.value(trainingVersionId, 'trainingVersionId');
+    }
+    if (dueInDays < 0) throw ArgumentError.value(dueInDays, 'dueInDays');
+    final path = '/management/role-requirements/';
+    try {
+      final response = await apiClient.dio.post(
+        path,
+        data: {
+          'job_role_id': jobRoleId,
+          'training_version_id': trainingVersionId,
+          'due_in_days': dueInDays,
+          'is_active': isActive,
+        },
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      return RoleTrainingRequirement.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<RoleTrainingRequirement> updateRoleRequirement({
+    required int id,
+    int? dueInDays,
+    bool? isActive,
+    CancelToken? cancelToken,
+  }) async {
+    if (id <= 0) throw ArgumentError.value(id, 'id');
+    if (dueInDays != null && dueInDays < 0) {
+      throw ArgumentError.value(dueInDays, 'dueInDays');
+    }
+    if (dueInDays == null && isActive == null) {
+      throw ArgumentError(
+        'At least one field (dueInDays or isActive) must be provided.',
+      );
+    }
+    final path = '/management/role-requirements/$id/';
+    final payload = <String, dynamic>{
+      'due_in_days': ?dueInDays,
+      'is_active': ?isActive,
+    };
+    try {
+      final response = await apiClient.dio.patch(
+        path,
+        data: payload,
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      return RoleTrainingRequirement.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<RoleBatchResult> executeRoleBatchAssignment(
+    int id, {
+    CancelToken? cancelToken,
+  }) async {
+    if (id <= 0) throw ArgumentError.value(id, 'id');
+    final path = '/management/role-requirements/$id/assignments/';
+    try {
+      final response = await apiClient.dio.post(
+        path,
+        data: <String, dynamic>{},
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      return RoleBatchResult.fromJson(response.data as Map<String, dynamic>);
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<List<AssignableTrainingVersion>> allAssignableTrainingVersions({
+    CancelToken? cancelToken,
+    int pageSize = 50,
+    int maxPages = 50,
+  }) async {
+    final items = <AssignableTrainingVersion>[];
+    final seenIds = <int>{};
+    var pageNumber = 1;
+    var hasMore = true;
+    var expectedCount = 0;
+    while (hasMore && pageNumber <= maxPages) {
+      final page = await assignableTrainingVersions(
+        page: pageNumber,
+        pageSize: pageSize,
+        cancelToken: cancelToken,
+      );
+      expectedCount = page.count;
+      hasMore = page.hasMore;
+      if (page.items.isEmpty) {
+        if (hasMore) {
+          throw _incompleteChoicesError('published training versions');
+        }
+        break;
+      }
+      var newCount = 0;
+      for (final item in page.items) {
+        if (seenIds.add(item.id)) {
+          items.add(item);
+          newCount++;
+        }
+      }
+      if (newCount == 0) {
+        if (hasMore) {
+          throw _incompleteChoicesError('published training versions');
+        }
+        break;
+      }
+      pageNumber++;
+    }
+    if (hasMore || items.length < expectedCount) {
+      throw _incompleteChoicesError('published training versions');
+    }
+    return items;
+  }
+
+  Future<List<AssignableTrainingVersion>> allPublishedVersionsFromDiscovery({
+    CancelToken? cancelToken,
+    int pageSize = 50,
+    int maxPages = 50,
+  }) async {
+    final items = <AssignableTrainingVersion>[];
+    final seenRawIds = <int>{};
+    var pageNumber = 1;
+    var hasMore = true;
+    var expectedCount = 0;
+    while (hasMore && pageNumber <= maxPages) {
+      final page = await allTrainingVersions(
+        page: pageNumber,
+        pageSize: pageSize,
+        cancelToken: cancelToken,
+      );
+      expectedCount = page.count;
+      hasMore = page.hasMore;
+      if (page.items.isEmpty) {
+        if (hasMore) {
+          throw _incompleteChoicesError('published training versions');
+        }
+        break;
+      }
+      var newRawCount = 0;
+      for (final item in page.items) {
+        if (seenRawIds.add(item.id)) {
+          newRawCount++;
+          if (item.status.toUpperCase() == 'PUBLISHED') {
+            items.add(
+              AssignableTrainingVersion(
+                id: item.id,
+                trainingId: item.trainingId,
+                trainingCode: '',
+                trainingTitle: item.trainingTitle ?? '',
+                versionNumber: item.versionNumber,
+                title: item.title,
+                status: item.status,
+              ),
+            );
+          }
+        }
+      }
+      if (newRawCount == 0) {
+        if (hasMore) {
+          throw _incompleteChoicesError('published training versions');
+        }
+        break;
+      }
+      pageNumber++;
+    }
+    if (hasMore || seenRawIds.length < expectedCount) {
+      throw _incompleteChoicesError('published training versions');
+    }
+    return items;
+  }
+
+  Future<List<AssignableTrainingVersion>> allPublishedTrainingVersions({
+    required bool canViewVersionsPermission,
+    required bool canAssignTrainingPermission,
+    CancelToken? cancelToken,
+  }) async {
+    if (canViewVersionsPermission) {
+      return allPublishedVersionsFromDiscovery(cancelToken: cancelToken);
+    }
+    if (canAssignTrainingPermission) {
+      return allAssignableTrainingVersions(cancelToken: cancelToken);
+    }
+    throw ApiError(
+      message: 'Viewing published training versions requires training version view permissions (training.view_trainingversion) or assignment authority.',
+      statusCode: 403,
+    );
+  }
+
+  Future<ManagementPage<RoleRequirementOption>> roleRequirementCreationOptions({
+    required RoleRequirementOptionKind kind,
+    int page = 1,
+    int? pageSize,
+    CancelToken? cancelToken,
+  }) {
+    if (page <= 0) throw ArgumentError.value(page, 'page');
+    if (pageSize != null && (pageSize <= 0 || pageSize > 100)) {
+      throw ArgumentError.value(pageSize, 'pageSize');
+    }
+    return _get(
+      'role-requirements/creation-options/',
+      (json) => ManagementPage.fromJson(json, RoleRequirementOption.fromJson),
+      page: page,
+      pageSize: pageSize,
+      additionalQueryParameters: {'kind': kind.queryParam},
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<List<RoleRequirementOption>> allRoleRequirementCreationOptions({
+    required RoleRequirementOptionKind kind,
+    CancelToken? cancelToken,
+    int pageSize = 50,
+    int maxPages = 50,
+  }) async {
+    final items = <RoleRequirementOption>[];
+    final seenIds = <int>{};
+    var pageNumber = 1;
+    var hasMore = true;
+    var expectedCount = 0;
+    while (hasMore && pageNumber <= maxPages) {
+      final page = await roleRequirementCreationOptions(
+        kind: kind,
+        page: pageNumber,
+        pageSize: pageSize,
+        cancelToken: cancelToken,
+      );
+      expectedCount = page.count;
+      hasMore = page.hasMore;
+      if (page.items.isEmpty) {
+        if (hasMore) {
+          throw _incompleteChoicesError('${kind.label} options');
+        }
+        break;
+      }
+      for (final item in page.items) {
+        if (!seenIds.add(item.id)) {
+          throw _incompleteChoicesError('${kind.label} options');
+        }
+        items.add(item);
+      }
+      pageNumber++;
+    }
+    if (hasMore || items.length < expectedCount) {
+      throw _incompleteChoicesError('${kind.label} options');
+    }
+    return items;
+  }
 }

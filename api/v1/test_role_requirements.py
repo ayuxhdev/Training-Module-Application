@@ -1,24 +1,35 @@
 """JWT role requirement and batch APIs against isolated, rolled-back fixtures."""
 
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
+from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, models, transaction
+from django.test import SimpleTestCase
+from django.urls import resolve
 from django.utils import timezone
-from rest_framework.test import APIClient
+from rest_framework.request import Request
+from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from api.capabilities import mobile_capabilities
+from assessments.models import Assessment, AssessmentQuestion
 from audit.models import AuditLog
 from config.model_test_utils import CurriculumTestCase
 from notifications.models import Notification
 from organization.models import Employee, JobRole
-from training.models import RoleTrainingRequirement, TrainingAssignment
+from training.models import Module, Lesson, RoleTrainingRequirement, Training, TrainingAssignment, TrainingVersion
+
+from .role_requirement_serializers import RequirementCreateSerializer, RequirementCreationOptionsQuerySerializer
+from .role_requirement_services import save_requirement
+from .role_requirement_views import RequirementCreationOptionsView
 
 
 class RoleRequirementAPITests(CurriculumTestCase):
     url = "/api/v1/management/role-requirements/"
+    options_url = url + "creation-options/"
 
     def setUp(self):
         self.client = APIClient()
@@ -40,6 +51,18 @@ class RoleRequirementAPITests(CurriculumTestCase):
 
     def payload(self, **values):
         return {"job_role_id": self.other_role.pk, "training_version_id": self.version.pk, **values}
+
+    def published_option_version(self, number):
+        version = TrainingVersion.objects.create(
+            training=self.training, version_number=number, title=f"Safety v{number}", created_by=self.user,
+        )
+        module = Module.objects.create(training_version=version, title="Read", position=1)
+        Lesson.objects.create(module=module, title="Read", position=1, content_type="TEXT", body="Instructions")
+        final = Assessment.objects.create(training_version=version, kind="FINAL", title="Final")
+        AssessmentQuestion.objects.create(assessment=final, question_revision=self.revision, position=1)
+        version.status, version.published_at, version.published_by = "PUBLISHED", timezone.now(), self.user
+        version.save()
+        return version
 
     def recipient(self, code, **values):
         return Employee.objects.create(employee_code=code, display_name=code, department=self.department,
@@ -77,6 +100,210 @@ class RoleRequirementAPITests(CurriculumTestCase):
         self.assertEqual(event.actor_id, self.actor.pk)
         self.assertEqual(event.after_data["job_role_id"], self.other_role.pk)
         self.assertEqual(self.client.post(self.batch, {}, format="json").status_code, 403)
+
+    def test_add_only_options_are_minimal_read_only_and_do_not_grant_generic_access(self):
+        self.grant("add_roletrainingrequirement")
+        for kind in ("job_roles", "training_versions"):
+            response = self.client.get(self.options_url, {"kind": kind})
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(set(response.data), {"count", "next", "previous", "results"})
+            self.assertGreater(response.data["count"], 0)
+            for option in response.data["results"]:
+                self.assertEqual(set(option), {"id", "label"})
+                self.assertIsInstance(option["id"], int)
+                self.assertIsInstance(option["label"], str)
+        for url in ("/api/v1/management/job-roles/", "/api/v1/management/versions/",
+                    "/api/v1/management/training-versions/", self.url):
+            self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.client.head(self.options_url, {"kind": "job_roles"}).status_code, 200)
+        self.assertEqual(self.client.post(self.options_url, {}, format="json").status_code, 405)
+        self.assertEqual(RoleTrainingRequirement.objects.count(), 1)
+        self.assertEqual(TrainingAssignment.objects.count(), 1)
+        self.assertFalse(AuditLog.objects.exists())
+        self.assertFalse(Notification.objects.exists())
+
+    def test_reference_view_permissions_do_not_change_creation_options(self):
+        self.grant("add_roletrainingrequirement", "view_trainingversion")
+        expected = self.client.get(self.options_url, {"kind": "job_roles"}).data
+        self.actor.user_permissions.add(Permission.objects.get(
+            content_type__app_label="organization", codename="view_jobrole",
+        ))
+        self.assertEqual(self.client.get(self.options_url, {"kind": "job_roles"}).data, expected)
+        self.assertEqual(self.client.get("/api/v1/management/job-roles/").status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/management/versions/").status_code, 200)
+
+    def test_options_deny_manager_employee_and_read_only_then_honor_mixed_role_grant(self):
+        manager = get_user_model().objects.create_user(username="options-manager")
+        manager.groups.add(Group.objects.get(name="Manager"))
+        self.recipient("OPTIONS-MANAGER", user=manager)
+        for user in (manager, self.employee_user):
+            self.grant(user=user)
+            self.assertEqual(self.client.get(self.options_url, {"kind": "job_roles"}).status_code, 403)
+        self.grant("view_roletrainingrequirement", "view_trainingversion")
+        self.assertEqual(self.client.get(self.options_url, {"kind": "job_roles"}).status_code, 403)
+        manager.groups.add(Group.objects.get(name="Employee"))
+        self.grant("add_roletrainingrequirement", user=manager)
+        self.assertEqual(self.client.get(self.options_url, {"kind": "job_roles"}).status_code, 200)
+        self.assertEqual(self.client.post(self.batch, {}, format="json").status_code, 403)
+
+    def test_options_deny_anonymous_inactive_user_and_inactive_linked_employee(self):
+        self.assertEqual(self.client.get(self.options_url, {"kind": "job_roles"}).status_code, 401)
+        self.grant("add_roletrainingrequirement")
+        self.actor.is_active = False
+        self.actor.save()
+        self.assertEqual(self.client.get(self.options_url, {"kind": "job_roles"}).status_code, 401)
+        self.actor.is_active = True
+        self.actor.save()
+        self.recipient("OPTIONS-DISABLED", user=self.actor, is_active=False, deactivation_reason="Fixture")
+        # Exercise linked-Employee eligibility independently of the User flag.
+        get_user_model().objects.filter(pk=self.actor.pk).update(is_active=True)
+        self.assertEqual(self.client.get(self.options_url, {"kind": "job_roles"}).status_code, 403)
+
+    def test_options_filter_lifecycle_but_include_inactive_catalog(self):
+        self.grant("add_roletrainingrequirement")
+        inactive = JobRole.objects.create(code="INACTIVE-OPTION", name="Hidden role", is_active=False)
+        draft = self.new_version()
+        retired = self.published_option_version(3)
+        retired.status = "RETIRED"
+        retired.save()
+        self.training.is_active = False
+        self.training.save()
+        roles = self.client.get(self.options_url, {"kind": "job_roles"}).data["results"]
+        self.assertEqual({row["id"] for row in roles}, {self.role.pk, self.other_role.pk})
+        self.assertNotIn(inactive.pk, {row["id"] for row in roles})
+        versions = self.client.get(self.options_url, {"kind": "training_versions"}).data["results"]
+        self.assertEqual(versions, [{
+            "id": self.version.pk,
+            "label": f"{self.training.catalog_title} — {self.version.title} (v1)",
+        }])
+        self.assertNotIn(draft.pk, {row["id"] for row in versions})
+        self.assertNotIn(retired.pk, {row["id"] for row in versions})
+        self.assertEqual(self.client.post(self.url, self.payload(), format="json").status_code, 201)
+
+    def test_options_validate_kind_and_pagination_with_structured_errors(self):
+        self.grant("add_roletrainingrequirement")
+        for query, field in (({}, "kind"), ({"kind": "employees"}, "kind"),
+                             ({"kind": ""}, "kind"), ({"kind": "job_roles", "page": 0}, "page"),
+                             ({"kind": "job_roles", "page": "no"}, "page"),
+                             ({"kind": "job_roles", "page_size": 0}, "page_size"),
+                             ({"kind": "job_roles", "page_size": 101}, "page_size"),
+                             ({"kind": "job_roles", "page_size": "no"}, "page_size")):
+            with self.subTest(query=query):
+                response = self.client.get(self.options_url, query)
+                self.assertEqual(response.status_code, 400, response.data)
+                self.assertIn(field, response.data["error"]["fields"])
+        self.assertEqual(self.client.get(self.options_url, {"kind": "job_roles", "page": 999}).status_code, 404)
+
+    def test_job_role_options_are_completely_paginated_with_name_ties(self):
+        self.grant("add_roletrainingrequirement")
+        for number in range(21):
+            JobRole.objects.create(code=f"OPTION-{number:02}", name="Same name")
+        expected = list(JobRole.objects.filter(is_active=True).order_by("name", "pk").values_list("pk", flat=True))
+        first = self.client.get(self.options_url, {"kind": "job_roles"})
+        self.assertEqual(first.data["count"], len(expected))
+        self.assertEqual(len(first.data["results"]), 20)
+        self.assertIsNone(first.data["previous"])
+        second = self.client.get(first.data["next"])
+        self.assertEqual(second.status_code, 200)
+        self.assertIsNone(second.data["next"])
+        self.assertIsNotNone(second.data["previous"])
+        options = first.data["results"] + second.data["results"]
+        self.assertEqual([row["id"] for row in options], expected)
+        expected_labels = {
+            role.pk: f"{role.code} — {role.name}"
+            for role in JobRole.objects.filter(is_active=True)
+        }
+        self.assertEqual({row["id"]: row["label"] for row in options}, expected_labels)
+        self.assertEqual(len({row["label"] for row in options}), len(options))
+        for option in options:
+            self.assertEqual(set(option), {"id", "label"})
+        maximum = self.client.get(self.options_url, {"kind": "job_roles", "page_size": 100})
+        self.assertEqual(len(maximum.data["results"]), len(expected))
+
+    def test_version_options_paginate_in_version_order(self):
+        self.grant("add_roletrainingrequirement")
+        later = self.published_option_version(3)
+        earlier = self.published_option_version(2)
+        response = self.client.get(self.options_url, {"kind": "training_versions", "page_size": 1})
+        found = []
+        while True:
+            self.assertEqual(response.status_code, 200)
+            found.extend(row["id"] for row in response.data["results"])
+            if response.data["next"] is None:
+                break
+            response = self.client.get(response.data["next"])
+        self.assertEqual(found, [self.version.pk, earlier.pk, later.pk])
+
+    def test_options_allow_empty_eligible_result_sets(self):
+        self.grant("add_roletrainingrequirement")
+        self.version.status = "RETIRED"
+        self.version.save()
+        response = self.client.get(self.options_url, {"kind": "training_versions"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"count": 0, "next": None, "previous": None, "results": []})
+
+    def test_post_rechecks_permission_revoked_after_request_entry(self):
+        self.grant("add_roletrainingrequirement")
+        original = RequirementCreateSerializer.is_valid
+
+        def revoke_after_entry(serializer, *args, **kwargs):
+            valid = original(serializer, *args, **kwargs)
+            self.actor.user_permissions.remove(Permission.objects.get(
+                content_type__app_label="training", codename="add_roletrainingrequirement",
+            ))
+            return valid
+
+        with patch.object(RequirementCreateSerializer, "is_valid", revoke_after_entry):
+            response = self.client.post(self.url, self.payload(), format="json")
+        self.assertEqual(response.status_code, 403, response.data)
+        self.assertEqual(RoleTrainingRequirement.objects.count(), 1)
+        self.assertFalse(AuditLog.objects.exists())
+
+    def test_post_rechecks_actor_and_linked_employee_after_request_entry(self):
+        self.grant("add_roletrainingrequirement")
+        employee = self.recipient("OPTIONS-CREATOR", user=self.actor)
+        original = RequirementCreateSerializer.is_valid
+        for disable_employee in (False, True):
+            with self.subTest(disable_employee=disable_employee):
+                get_user_model().objects.filter(pk=self.actor.pk).update(is_active=True)
+                Employee.objects.filter(pk=employee.pk).update(is_active=True, deactivated_at=None, deactivation_reason="")
+
+                def disable_after_entry(serializer, *args, **kwargs):
+                    valid = original(serializer, *args, **kwargs)
+                    if disable_employee:
+                        Employee.objects.filter(pk=employee.pk).update(
+                            is_active=False, deactivated_at=timezone.now(), deactivation_reason="Fixture",
+                        )
+                        self.assertTrue(get_user_model().objects.get(pk=self.actor.pk).is_active)
+                    else:
+                        get_user_model().objects.filter(pk=self.actor.pk).update(is_active=False)
+                    return valid
+
+                with patch.object(RequirementCreateSerializer, "is_valid", disable_after_entry):
+                    response = self.client.post(self.url, self.payload(), format="json")
+                self.assertEqual(response.status_code, 403, response.data)
+                if disable_employee:
+                    employee.refresh_from_db()
+                    self.assertFalse(employee.is_active)
+                    self.assertIsNotNone(employee.deactivated_at)
+                    self.assertTrue(get_user_model().objects.get(pk=self.actor.pk).is_active)
+        self.assertEqual(RoleTrainingRequirement.objects.count(), 1)
+        self.assertFalse(AuditLog.objects.exists())
+
+    def test_post_revalidates_references_after_successful_options_lookup(self):
+        self.grant("add_roletrainingrequirement")
+        self.assertEqual(self.client.get(self.options_url, {"kind": "job_roles"}).status_code, 200)
+        self.assertEqual(self.client.get(self.options_url, {"kind": "training_versions"}).status_code, 200)
+        self.other_role.is_active = False
+        self.other_role.save()
+        self.assertEqual(self.client.post(self.url, self.payload(), format="json").status_code, 400)
+        self.other_role.is_active = True
+        self.other_role.save()
+        self.version.status = "RETIRED"
+        self.version.save()
+        self.assertEqual(self.client.post(self.url, self.payload(), format="json").status_code, 400)
+        self.assertEqual(RoleTrainingRequirement.objects.count(), 1)
+        self.assertFalse(AuditLog.objects.exists())
 
     def test_change_only_preserves_references_and_records_exact_changes(self):
         self.grant("change_roletrainingrequirement")
@@ -346,3 +573,141 @@ class RoleRequirementAPITests(CurriculumTestCase):
             response = self.client.post(self.url, self.payload(), format="json")
         self.assertEqual(response.status_code, 409, response.data)
         self.assertEqual(RoleTrainingRequirement.objects.count(), 1)
+
+
+class RequirementCreationOptionsContractTests(SimpleTestCase):
+    """No database: real DRF permission/serialization paths and lazy query contracts."""
+
+    url = "/api/v1/management/role-requirements/creation-options/"
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.user = self.actor({"training.add_roletrainingrequirement"})
+
+    def actor(self, permissions, *, active=True, employee=None):
+        groups = Mock()
+        groups.filter.return_value.exists.return_value = False
+        return SimpleNamespace(
+            pk=123, is_authenticated=True, is_active=active, employee=employee,
+            groups=groups, has_perm=lambda permission: permission in permissions,
+        )
+
+    def request(self, query, *, user=None):
+        request = self.factory.get(self.url, query)
+        force_authenticate(request, user=user or self.user)
+        return request
+
+    def test_query_requires_kind_and_validates_pagination(self):
+        for values in ({}, {"kind": "employees"}, {"kind": ""},
+                       {"kind": "job_roles", "page": 0}, {"kind": "job_roles", "page": "bad"},
+                       {"kind": "job_roles", "page_size": 0}, {"kind": "job_roles", "page_size": 101},
+                       {"kind": "job_roles", "page_size": "bad"}):
+            with self.subTest(values=values):
+                self.assertFalse(RequirementCreationOptionsQuerySerializer(data=values).is_valid())
+        for kind in ("job_roles", "training_versions"):
+            serializer = RequirementCreationOptionsQuerySerializer(data={"kind": kind, "page": "1", "page_size": "100"})
+            self.assertTrue(serializer.is_valid(), serializer.errors)
+            self.assertEqual(serializer.validated_data, {"kind": kind, "page": 1, "page_size": 100})
+
+    def test_invalid_query_uses_real_structured_api_error_without_database(self):
+        response = RequirementCreationOptionsView.as_view()(self.request({"kind": "employees"}))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("kind", response.data["error"]["fields"])
+
+    def test_add_only_can_read_paginated_minimal_job_role_labels(self):
+        roles = [JobRole(id=number, code=f"ROLE-{number}", name="Same name", description="PRIVATE") for number in range(1, 24)]
+        with patch.object(RequirementCreationOptionsView, "get_queryset", return_value=roles):
+            first = RequirementCreationOptionsView.as_view()(self.request({"kind": "job_roles"}))
+            second = RequirementCreationOptionsView.as_view()(self.request({"kind": "job_roles", "page": 2}))
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(set(first.data), {"count", "next", "previous", "results"})
+        self.assertEqual(first.data["count"], 23)
+        self.assertEqual(len(first.data["results"]), 20)
+        self.assertIsNotNone(first.data["next"])
+        self.assertIsNone(second.data["next"])
+        self.assertEqual([row["id"] for row in first.data["results"] + second.data["results"]], list(range(1, 24)))
+        options = first.data["results"] + second.data["results"]
+        self.assertEqual(options, [{"id": number, "label": f"ROLE-{number} — Same name"} for number in range(1, 24)])
+        self.assertEqual(len({row["label"] for row in options}), 23)
+        self.assertNotIn("PRIVATE", str(first.data))
+
+    def test_version_label_has_only_identifying_fields(self):
+        version = TrainingVersion(
+            id=8, training=Training(id=2, catalog_title="Safety", description="PRIVATE COURSE"),
+            title="Safety v2", version_number=2, description="PRIVATE VERSION", status="PUBLISHED",
+        )
+        with patch.object(RequirementCreationOptionsView, "get_queryset", return_value=[version]):
+            response = RequirementCreationOptionsView.as_view()(self.request({"kind": "training_versions"}))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["results"], [{"id": 8, "label": "Safety — Safety v2 (v2)"}])
+        self.assertNotIn("PRIVATE", str(response.data))
+
+    def test_denial_precedes_query_for_missing_permission_or_ineligible_account(self):
+        actors = [self.actor(set()), self.actor({"training.view_roletrainingrequirement"}),
+                  self.actor({"training.add_trainingassignment"}),
+                  self.actor({"training.add_roletrainingrequirement"}, active=False),
+                  self.actor({"training.add_roletrainingrequirement"}, employee=SimpleNamespace(is_active=False))]
+        for actor in actors:
+            with self.subTest(actor=actor):
+                with patch.object(RequirementCreationOptionsView, "get_queryset") as query:
+                    response = RequirementCreationOptionsView.as_view()(self.request({"kind": "job_roles"}, user=actor))
+                self.assertEqual(response.status_code, 403)
+                query.assert_not_called()
+
+    def test_anonymous_denied_before_query(self):
+        with patch.object(RequirementCreationOptionsView, "get_queryset") as query:
+            response = RequirementCreationOptionsView.as_view()(self.factory.get(self.url, {"kind": "job_roles"}))
+        self.assertEqual(response.status_code, 401)
+        query.assert_not_called()
+
+    def test_generic_reference_permissions_are_not_expanded(self):
+        from .assignment_management_views import AssignableTrainingVersionListView
+        from .management_views import JobRoleReferenceView
+        from .training_management_views import TrainingVersionDiscoveryView
+
+        for view in (JobRoleReferenceView, TrainingVersionDiscoveryView, AssignableTrainingVersionListView):
+            with self.subTest(view=view.__name__):
+                with patch.object(view, "get_queryset") as query:
+                    response = view.as_view()(self.request({}))
+                self.assertEqual(response.status_code, 403)
+                query.assert_not_called()
+
+    def test_querysets_match_post_eligibility_without_evaluating_database(self):
+        for kind, expected_filters, expected_order in (
+            ("job_roles", {"is_active": True}, ("name", "pk")),
+            ("training_versions", {"status": "PUBLISHED"},
+             ("training__catalog_title", "training_id", "version_number", "pk")),
+        ):
+            with self.subTest(kind=kind):
+                view = RequirementCreationOptionsView()
+                view.request = Request(self.factory.get(self.url, {"kind": kind}))
+                queryset = view.get_queryset()
+                self.assertEqual({item.lhs.target.name: item.rhs for item in queryset.query.where.children}, expected_filters)
+                self.assertEqual(queryset.query.order_by, expected_order)
+                if kind == "job_roles":
+                    fields, deferred = queryset.query.deferred_loading
+                    self.assertFalse(deferred)
+                    self.assertIn("code", fields)
+
+    def test_route_resolves_to_dedicated_view(self):
+        self.assertIs(resolve(self.url).func.view_class, RequirementCreationOptionsView)
+
+    def test_post_rechecks_fresh_actor_after_reference_locks_before_form_or_audit(self):
+        for fresh_actor in (None, self.actor(set()),
+                            self.actor({"training.add_roletrainingrequirement"}, active=False),
+                            self.actor({"training.add_roletrainingrequirement"}, employee=SimpleNamespace(is_active=False))):
+            with self.subTest(fresh_actor=fresh_actor):
+                with patch("api.v1.role_requirement_services.get_object_or_404") as roots, \
+                     patch("api.v1.role_requirement_services.get_user_model") as user_model, \
+                     patch("api.v1.role_requirement_services.RoleTrainingRequirementCreateForm") as form, \
+                     patch("api.v1.role_requirement_services.record_event") as audit:
+                    def fresh_after_locks():
+                        self.assertEqual(roots.call_count, 2)
+                        return fresh_actor
+
+                    user_model.return_value.objects.select_for_update.return_value.filter.return_value.first.side_effect = fresh_after_locks
+                    # Exercise the service body only; atomic locking itself needs MySQL.
+                    with self.assertRaises(PermissionDenied):
+                        save_requirement.__wrapped__(self.user, {"job_role_id": 3, "training_version_id": 8})
+                    form.assert_not_called()
+                    audit.assert_not_called()

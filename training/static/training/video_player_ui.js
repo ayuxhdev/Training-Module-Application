@@ -40,12 +40,17 @@
       stage.style.setProperty("--video-puck-top", `${center}px`);
     }
   }
-  function reveal() {
-    player.classList.add("is-controls-visible");
+  function scheduleFade() {
     window.clearTimeout(fade);
+    fade = undefined;
     if (!video.paused) fade = window.setTimeout(() => {
+      fade = undefined;
       if (!scrubbing && !player.matches(":focus-within")) player.classList.remove("is-controls-visible");
     }, 4000);
+  }
+  function reveal() {
+    player.classList.add("is-controls-visible");
+    scheduleFade();
   }
   function format(seconds) {
     const total = Math.max(0, Math.floor(seconds || 0));
@@ -129,6 +134,10 @@
   for (const event of ["waiting", "stalled", "loadstart"]) video.addEventListener(event, () => { buffering.hidden = false; reveal(); });
   for (const event of ["playing", "canplay", "pause", "ended", "error"]) video.addEventListener(event, () => { buffering.hidden = true; });
   for (const event of ["pointermove", "pointerdown", "focusin"]) player.addEventListener(event, reveal);
+  player.addEventListener("focusout", (event) => {
+    if (event && event.relatedTarget && player.contains(event.relatedTarget)) return;
+    if (!video.paused && !fade) scheduleFade();
+  });
   player.addEventListener("keydown", (event) => {
     reveal();
     measureLayout();

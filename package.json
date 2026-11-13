@@ -1,5 +1,8 @@
 {
   "private": true,
+  "devDependencies": {
+    "playwright": "1.65.0"
+  },
   "scripts": {
     "test": "node --test accounts/appearance.test.js accounts/shell.test.js accounts/password_toggle.test.js training/playback.test.js training/video_player_ui.test.js assessments/timer.test.js"
   }

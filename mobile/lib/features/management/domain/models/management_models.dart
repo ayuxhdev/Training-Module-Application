@@ -881,3 +881,217 @@ class ManagedQuestionRevisionDetail {
             const [],
       );
 }
+
+class RoleTrainingRequirement {
+  final int id;
+  final int jobRoleId;
+  final String jobRoleCode;
+  final String jobRoleName;
+  final int trainingVersionId;
+  final int trainingId;
+  final String trainingTitle;
+  final String versionTitle;
+  final int versionNumber;
+  final String versionStatus;
+  final int dueInDays;
+  final bool isActive;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const RoleTrainingRequirement({
+    required this.id,
+    required this.jobRoleId,
+    required this.jobRoleCode,
+    required this.jobRoleName,
+    required this.trainingVersionId,
+    required this.trainingId,
+    required this.trainingTitle,
+    required this.versionTitle,
+    required this.versionNumber,
+    required this.versionStatus,
+    required this.dueInDays,
+    required this.isActive,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  bool get isPublished => versionStatus.toUpperCase() == 'PUBLISHED';
+  bool get isRetired => versionStatus.toUpperCase() == 'RETIRED';
+
+  factory RoleTrainingRequirement.fromJson(Map<String, dynamic> json) {
+    final id = json['id'];
+    if (id is! int || id <= 0) {
+      throw const FormatException('Missing or invalid requirement id.');
+    }
+    final jobRoleId = json['job_role_id'];
+    if (jobRoleId is! int || jobRoleId <= 0) {
+      throw const FormatException('Missing or invalid job_role_id.');
+    }
+    final jobRoleCode = json['job_role_code'];
+    if (jobRoleCode is! String) {
+      throw const FormatException('Missing or invalid job_role_code.');
+    }
+    final jobRoleName = json['job_role_name'];
+    if (jobRoleName is! String) {
+      throw const FormatException('Missing or invalid job_role_name.');
+    }
+    final trainingVersionId = json['training_version_id'];
+    if (trainingVersionId is! int || trainingVersionId <= 0) {
+      throw const FormatException('Missing or invalid training_version_id.');
+    }
+    final trainingId = json['training_id'];
+    if (trainingId is! int || trainingId <= 0) {
+      throw const FormatException('Missing or invalid training_id.');
+    }
+    final trainingTitle = json['training_title'];
+    if (trainingTitle is! String) {
+      throw const FormatException('Missing or invalid training_title.');
+    }
+    final versionTitle = json['version_title'];
+    if (versionTitle is! String) {
+      throw const FormatException('Missing or invalid version_title.');
+    }
+    final versionNumber = json['version_number'];
+    if (versionNumber is! int || versionNumber <= 0) {
+      throw const FormatException('Missing or invalid version_number.');
+    }
+    final versionStatus = json['version_status'];
+    if (versionStatus is! String || versionStatus.trim().isEmpty) {
+      throw const FormatException('Missing or invalid version_status.');
+    }
+    final dueInDays = json['due_in_days'];
+    if (dueInDays is! int || dueInDays < 0) {
+      throw const FormatException('Missing or invalid due_in_days.');
+    }
+    final isActive = json['is_active'];
+    if (isActive is! bool) {
+      throw const FormatException('Missing or invalid is_active.');
+    }
+    final createdAtStr = json['created_at'];
+    if (createdAtStr is! String) {
+      throw const FormatException('Missing or invalid created_at.');
+    }
+    final updatedAtStr = json['updated_at'];
+    if (updatedAtStr is! String) {
+      throw const FormatException('Missing or invalid updated_at.');
+    }
+
+    final createdAt = DateTime.tryParse(createdAtStr);
+    if (createdAt == null) {
+      throw const FormatException('Invalid created_at timestamp.');
+    }
+    final updatedAt = DateTime.tryParse(updatedAtStr);
+    if (updatedAt == null) {
+      throw const FormatException('Invalid updated_at timestamp.');
+    }
+
+    return RoleTrainingRequirement(
+      id: id,
+      jobRoleId: jobRoleId,
+      jobRoleCode: jobRoleCode,
+      jobRoleName: jobRoleName,
+      trainingVersionId: trainingVersionId,
+      trainingId: trainingId,
+      trainingTitle: trainingTitle,
+      versionTitle: versionTitle,
+      versionNumber: versionNumber,
+      versionStatus: versionStatus,
+      dueInDays: dueInDays,
+      isActive: isActive,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    );
+  }
+}
+
+class RoleBatchResult {
+  final int roleRequirementId;
+  final int jobRoleId;
+  final int trainingVersionId;
+  final int createdCount;
+  final int skippedCount;
+
+  const RoleBatchResult({
+    required this.roleRequirementId,
+    required this.jobRoleId,
+    required this.trainingVersionId,
+    required this.createdCount,
+    required this.skippedCount,
+  });
+
+  int get totalTargets => createdCount + skippedCount;
+
+  factory RoleBatchResult.fromJson(Map<String, dynamic> json) {
+    final roleRequirementId = json['role_requirement_id'] ?? json['id'];
+    if (roleRequirementId is! int || roleRequirementId <= 0) {
+      throw const FormatException('Missing or invalid role_requirement_id.');
+    }
+    final jobRoleId = json['job_role_id'];
+    if (jobRoleId is! int || jobRoleId <= 0) {
+      throw const FormatException('Missing or invalid job_role_id.');
+    }
+    final trainingVersionId = json['training_version_id'];
+    if (trainingVersionId is! int || trainingVersionId <= 0) {
+      throw const FormatException('Missing or invalid training_version_id.');
+    }
+    final createdCount = json['created_count'];
+    if (createdCount is! int || createdCount < 0) {
+      throw const FormatException('Missing or invalid created_count.');
+    }
+    final skippedCount = json['skipped_count'];
+    if (skippedCount is! int || skippedCount < 0) {
+      throw const FormatException('Missing or invalid skipped_count.');
+    }
+
+    return RoleBatchResult(
+      roleRequirementId: roleRequirementId,
+      jobRoleId: jobRoleId,
+      trainingVersionId: trainingVersionId,
+      createdCount: createdCount,
+      skippedCount: skippedCount,
+    );
+  }
+}
+
+enum RoleRequirementOptionKind {
+  jobRoles('job_roles', 'job role'),
+  trainingVersions('training_versions', 'training version');
+
+  final String queryParam;
+  final String label;
+
+  const RoleRequirementOptionKind(this.queryParam, this.label);
+}
+
+class RoleRequirementOption {
+  final int id;
+  final String label;
+
+  const RoleRequirementOption({required this.id, required this.label});
+
+  factory RoleRequirementOption.fromJson(Map<String, dynamic> json) {
+    final id = json['id'];
+    if (id is! int || id <= 0) {
+      throw const FormatException('Missing or invalid option id.');
+    }
+    final label = json['label'];
+    if (label is! String || label.trim().isEmpty) {
+      throw const FormatException('Missing or invalid option label.');
+    }
+    return RoleRequirementOption(id: id, label: label.trim());
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RoleRequirementOption &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          label == other.label;
+
+  @override
+  int get hashCode => Object.hash(id, label);
+
+  @override
+  String toString() => 'RoleRequirementOption(id: $id, label: $label)';
+}
