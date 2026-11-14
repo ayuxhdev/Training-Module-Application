@@ -24,13 +24,13 @@ and six mobile usability fixes are preserved as separate work.
 |---|---|---|
 | 1 | Identity, effective capabilities, role-aware navigation and account isolation | Implemented locally; automated validation passed; Android runtime QA pending |
 | 2 | Read-only company/team dashboards, scoped employee directory and reference lists | Implemented locally; automated validation passed; Android runtime QA pending |
-| 3 | Employee, Department and Job Role management | Planned |
-| 4 | Management assignments, manual creation, requirements and role-based batches | Planned |
-| 5 | Catalog, version lifecycle, Draft modules and TEXT authoring | Planned |
-| 6 | Validated Draft VIDEO upload/replacement and server metadata | Planned |
-| 7 | Question bank, frozen revisions and assessment authoring | Planned |
-| 8 | Management certificates/revocation, scoped reports and audit viewing | Planned |
-| 9 | Three-role cross-system, concurrency, accessibility and device acceptance | Planned |
+| 3 | Employee, Department and Job Role management | Implemented locally; full cross-system integration and release acceptance unverified |
+| 4 | Management assignments, manual creation, requirements and role-based batches | Implemented locally; full cross-system integration and release acceptance unverified |
+| 5 | Catalog, version lifecycle, Draft modules and TEXT authoring | Implemented locally; full cross-system integration and release acceptance unverified |
+| 6 | Validated Draft VIDEO upload/replacement and server metadata | Implemented locally; full cross-system integration and release acceptance unverified |
+| 7 | Question bank, frozen revisions and assessment authoring | Implemented locally; full cross-system integration and release acceptance unverified |
+| 8 | Management certificates/revocation, scoped reports and audit viewing | Django APIs and Flutter certificate/report/audit implementations exist locally and remain uncommitted. Focused automated checks are separate from pending disposable-MySQL integration, real-device acceptance, commit/push and CI verification. |
+| 9 | Three-role cross-system, concurrency, accessibility and device acceptance | Open; cross-system concurrency, accessibility and device acceptance remain pending |
 
 Each batch requires permission/IDOR negatives, account-switch coverage and relevant
 web/mobile regression checks. Existing learner APIs remain personal. New management
@@ -51,21 +51,29 @@ Flutter analysis was clean. The dedicated test schema was retained with its role
 bootstrap verified. These were separate checkpoints, not a full Django-suite or
 device acceptance result. The APK was built and installed, but emulator system
 responsiveness and host memory prevented login-screen/role runtime verification.
-Batches 3–9 remain planned; no management mutations are included in Batch 2.
+Batches 3–8 have local implementation, but that is not release acceptance. Batch 8
+report/audit viewing code is implemented locally; backend integration, real-device
+acceptance and Batch 9 cross-system acceptance remain open.
 
-The sections below retain historical milestone status and sequencing decisions;
-their employee-first descriptions are historical context for this approved expansion.
+The sections below retain historical milestone scope, validation records and
+sequencing decisions. Historical test results are not current validation of later
+uncommitted changes.
 
-M0-M18 are complete, committed and pushed. M18 checkpoint **88a4cda** has green
-CI per user confirmation; historical validation remains recorded below.
+M0–M15 are historically implemented. M16 secure video is implemented, with final
+acceptance still open. M17 management-certificate work is present in uncommitted
+Django and Flutter changes and awaits real MySQL integration verification. M18
+notification/resilience functionality substantially exists, but its full closure
+is not established by this checkpoint. The prior M18 checkpoint **88a4cda** and
+user-reported green CI remain historical evidence, not proof that the current
+uncommitted work is integrated or release-ready.
 
 The current milestone is **M19: Android Release Candidate - IN PROGRESS**.
 The core integration journey passed; final release acceptance remains open.
 Current Flutter fixes and this checkpoint remain uncommitted.
 
-**Agreed sequencing adjustment:** bring M22 design forward after this M19
-checkpoint, then resume final M19 QA. The milestone list retains scope ownership;
-neither M19 nor M22 is complete. M20/M21/M23 obligations remain unchanged.
+**Agreed sequencing adjustment:** M22 design work was brought forward after the
+M19 integration checkpoint. M19, M20, M21, M22 and M23 remain open; the core
+integration journey does not close their remaining gates.
 
 The project follows an Android-first development strategy:
 
@@ -75,22 +83,38 @@ iOS is intentionally outside the current Android V1 completion target. It will b
 
 ---
 
+### Evidence status definitions
+
+These are separate evidence dimensions, not interchangeable milestone labels:
+
+- **IMPLEMENTED** — the feature exists in source; it may still be uncommitted.
+- **AUTOMATED TESTED** — the relevant automated tests were actually run and passed;
+  identify the test scope and run rather than inferring this from implementation.
+- **INTEGRATION VERIFIED** — dependent components and the data store were exercised
+  together in the intended environment.
+- **MANUAL QA PASSED** — the stated manual/device/browser acceptance scenarios were
+  completed and passed.
+- **RELEASE APPROVED** — the authorized release gate and production approval passed.
+
+An uncommitted implementation, a focused test, or a historical green CI run does
+not by itself establish integration verification, manual QA, or release approval.
+
 ## Roadmap
 
 | Milestone | Phase | Status | Notes |
 |---|---|---|---|
-| M0–M12 | Core Django Training Platform | Complete | Core Django training platform, training workflows, assignments, secure playback, assessments, certificates, dashboards, audit logging, security foundations, and web portal completed. |
-| M13 | Mobile API Foundation & Versioning | Complete | Versioned API foundation established under `/api/v1/`, including authentication, employee-scoped APIs, assignments, learning progress, playback sessions, protected media delivery, and ownership/authorization enforcement. |
-| M14 | Flutter / Android Foundation | Complete | Flutter Android application foundation completed, including project structure, API/client architecture, secure authentication/session handling, navigation, application shell, reusable UI foundation, dashboard, profile, environment configuration, and Android build integration. |
-| M15 | Employee App Core | Complete | Employee dashboard/profile integration, assignments, assignment detail, curriculum navigation, lesson navigation, text lesson completion, learning progress, previous/next navigation, and end-to-end learning-flow integration completed. |
-| M16 | Learning + Secure Video | Complete | Protected tracked playback and completed-assignment read-only replay, server-authoritative progress, lifecycle recovery, protected media and Android screen-capture protection implemented and runtime-verified. |
-| M17 | Assessment + Certificates | Complete | Assessment/certificate APIs, Flutter data/state/screens, navigation and system themes completed and pushed at `afdadb4`; CI green per user confirmation. The missing revoked-certificate runtime fixture remains a recorded QA limitation. |
-| M18 | Notifications + Resilience | Complete | Learner recovery, all four in-app notification events, employee-owned APIs, Flutter Notification Center and deadline reminders implemented. Core populated Android QA passed; specialized live-QA limitations remain recorded. Production rollout/scheduling belongs to M20. Committed/pushed at `88a4cda`; CI green per user confirmation. |
+| M0–M12 | Core Django Training Platform | Implemented (historical) | Core platform and web workflows are historical implementation; this status does not recertify the current worktree. |
+| M13 | Mobile API Foundation & Versioning | Implemented (historical) | Versioned API foundation and server-side authorization were established; later integration remains subject to current validation. |
+| M14 | Flutter / Android Foundation | Implemented (historical) | Flutter Android foundation was established; this is not current release approval. |
+| M15 | Employee App Core | Implemented (historical) | Employee learning-flow foundation was implemented; historical validation remains in the milestone record. |
+| M16 | Learning + Secure Video | Implemented; final acceptance pending | Protected tracked playback and completed-assignment read-only replay are implemented. Final acceptance is not complete. |
+| M17 | Assessment + Certificates | Historical core implemented; management-certificate extension implemented locally | Current Django and Flutter management-certificate changes are uncommitted. Real MySQL integration verification is pending; no release readiness is claimed. |
+| M18 | Notifications + Resilience | Substantially implemented; closure pending | Prior checkpoint and user-reported CI are historical. Consolidated acceptance and operational closure remain open. |
 | M19 | Android Release Candidate | In progress | Feature freeze and comprehensive security, architecture, data, playback, performance, device, UX, and regression validation, followed by pilot testing and release preparation. |
 | M20 | Production + Deployment Hardening | In progress | Application production profile, preflight/health diagnostics, safe logging, backup verification tooling and persisted reminder cutoff implemented. Infrastructure activation, HTTPS/media serving and isolated restore rehearsal remain pending; see docs/M20_OPERATIONS.md. |
-| M21 | Final Bug Hunt + Security + Repository Review | Planned | Final cross-system defect hunt, security review, permission/IDOR review, dependency review, repository hygiene, documentation verification, and release-blocker elimination. |
-| M22 | Final Readability + Refactor + Garden’s Need Visual Polish | Planned | Targeted maintainability improvements, removal of unnecessary technical debt, final UI/UX refinement, animation, interaction polish, accessibility refinement, and Garden’s Need visual identity integration. |
-| M23 | Final Acceptance + Android V1 Release | Planned | Final acceptance testing, release gate verification, production approval, Android V1 release, post-release verification, and final project checkpoint. |
+| M21 | Final Bug Hunt + Security + Repository Review | Open; not closed | Final cross-system defect hunt, security review, permission/IDOR review, dependency review, repository hygiene, documentation verification, and release-blocker elimination remain pending. Strict-concurrency CI integration is unresolved; website certificate-audit atomicity remains an open item. |
+| M22 | Final Readability + Refactor + Garden’s Need Visual Polish | Work in progress; not closed | Some design/readability work has been completed, but the milestone and its acceptance gates remain open. |
+| M23 | Final Acceptance + Android V1 Release | Not closed | Final acceptance, production approval and Android V1 release have not been approved. |
 
 ---
 
@@ -320,7 +344,8 @@ persist the operator-selected activation timestamp in deployment configuration a
 supply that same value to hourly invocations; never replace it with each run's time.
 No cutoff date, scheduler, background thread, retention cleanup or backfill is
 installed here. These deployment dependencies do not add M18 feature requirements.
-M18 implementation is complete and uncommitted; final acceptance/review is pending.
+M18 notification/resilience functionality is substantially implemented; final
+acceptance/review and operational closure remain pending.
 
 ## Final implementation and acceptance checkpoint
 
@@ -689,15 +714,23 @@ Project-agent instructions, coding-agent workflow, model preferences, tool-speci
 
 ---
 
-# Current Next Step
+# Current Checkpoint
 
-**M18: Notifications + Resilience**
+M19–M23 remain open; no Android V1 release is approved. Before closing the
+release-readiness work, preserve the following explicit gaps:
 
-Prepare the consolidated M18 review. Safely reproducible lifecycle checks and core
-populated-notification QA are complete; preserve the specialized live-QA limitations
-recorded in `docs/TASKS.md`. M20 owns the fixed activation cutoff, hourly reminder
-scheduling, monitoring and deployment health checks. Preserve M16/M17 security rules.
-M18 implementation is complete but uncommitted; no push, CI or release is implied.
+- M16 final acceptance is pending.
+- M17 management-certificate changes need real MySQL integration verification.
+- M18 notification/resilience acceptance and operational closure are incomplete.
+- Android assignment-report and audit-log viewing are implemented locally;
+  disposable-MySQL integration and real-device acceptance remain pending.
+- Website certificate-audit atomicity is implemented locally; real MySQL
+  transaction/concurrency verification remains pending.
+- Strict-concurrency CI integration is unresolved.
+- Final security review and production deployment/approval remain pending.
+
+Historical milestone test counts and CI records are not evidence that these current
+gaps or uncommitted changes have passed validation.
 
 ---
 

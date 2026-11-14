@@ -26,8 +26,10 @@ login, optional Employee context, protected personal navigation/providers and
 Team/Management account-access overviews. Batch 2 is also implemented locally:
 read-only company/team dashboards, employee directory/detail and Department/Job
 Role reference lists, with authenticated APIs and native Flutter navigation.
-Management mutations remain future work. Manager reporting hierarchy, existing permissions,
-personal learning security and appearance persistence remain unchanged.
+Management mutations are partly implemented locally; integration, automated
+verification and acceptance are not implied. Manager reporting hierarchy,
+existing permissions, personal learning security and appearance persistence
+remain unchanged.
 
 Historical Batch 1 validation: **234/234 Django/API and role-scoping tests on isolated
 MySQL**, **72/72 focused Flutter tests**, **518/518 full Flutter tests**; Flutter
@@ -46,41 +48,42 @@ blocked verification. Both batches remain uncommitted.
 The final combined web/mobile regression gate is separate from these implementation
 checkpoints and remains pending; they do not establish release readiness.
 
-The approved nine-batch sequence is recorded in `docs/ROADMAP.md`. Batches 3-9
-remain planned and require separate authorization before implementation.
+The approved nine-batch sequence is recorded in `docs/ROADMAP.md`. Batches 3-8
+have local implementation, but integration and release acceptance remain open.
+Android assignment-report and audit-log viewing code now exists in the Django
+APIs and Flutter screens/providers/repository. Disposable-MySQL integration,
+real-device acceptance and Batch 9 cross-system acceptance remain pending.
+Focused automated tests do not establish those gates, commit/push or current CI.
 
 Current milestone:
 
 ```text
-M19 - Android Release Candidate (IN PROGRESS; core integration checkpoint passed)
+M19 - Android Release Candidate (IN PROGRESS; release acceptance remains open)
 ```
 
-Completed milestones:
+Historical implementation checkpoints:
 
 ```text
-M0–M13 - Core Platform + Mobile API Foundation
-M14    - Flutter / Android Foundation
-M15    - Employee App Core
-M16    - Learning + Secure Video
-M17    - Assessment + Certificates (afdadb4; pushed/CI green per user confirmation)
-M18    - Notifications + Resilience (88a4cda; pushed/CI green per user confirmation)
+M0–M15 - Implemented historically
+M16    - Secure video implemented; final acceptance pending
+M17    - Core assessment/certificate work historically implemented; management
+         certificate API and Flutter changes are currently uncommitted and await
+         real MySQL integration verification
+M18    - Notification/resilience functionality substantially exists; closure pending
+M19–M23 - Not fully closed; see the canonical roadmap and open gates below
 ```
 
 Current application state:
 
 ```text
-Backend/Web platform: Complete
-Mobile API foundation: Complete
-Flutter/Android foundation: Complete
-Employee learning foundation: Complete
-Secure video learning and read-only replay: Complete
-Assessment and certificate APIs: Implemented and foundation-verified
-Flutter assessments and certificates: Data/state, screens and navigation implemented
-App-level Light/Dark themes: Implemented; follow system preference
-Android M17 QA: Core flows passed; revoked-certificate case blocked by missing fixture
+Implemented: historical M0-M15; M16 secure video; substantial M17-M18 functionality
+Automated tested: only the scopes recorded beside their historical test runs
+Integration verified: management certificate API/MySQL integration is pending
+Manual QA passed: core journey checkpoints are recorded; final acceptance is pending
+Release approved: No
 ```
 
-Historical M15 automated baseline (retained for reference):
+Historical M15 automated baseline (retained for reference; not the current total):
 
 ```text
 Django/MySQL: 348 tests passing
@@ -102,23 +105,25 @@ GitHub Actions CI: passing
 
 The application remains pre-release.
 
+Current verification caveat: this worktree includes uncommitted API and Flutter
+changes. No current full-suite result is asserted here. The experimental strict
+concurrency guard is not integrated into CI, and real MySQL verification of the
+management-certificate changes remains pending.
+
 ---
 
 # 3. Milestone Overview
 
 ```text
-M0–M12 - Core Django Training Platform       COMPLETE
-M13    - Mobile API Foundation & Versioning   COMPLETE
-M14    - Flutter / Android Foundation         COMPLETE
-M15    - Employee App Core                    COMPLETE
-M16    - Learning + Secure Video              COMPLETE
-M17    - Assessment + Certificates             COMPLETE
-M18    - Notifications + Resilience            COMPLETE
-M19    - Android Release Candidate             IN PROGRESS
-M20    - Production + Deployment Hardening     IN PROGRESS
-M21    - Final Bug Hunt + Security Review      PLANNED
-M22    - Readability + Refactor + Visual Polish PLANNED
-M23    - Final Acceptance + Android V1 Release PLANNED
+M0–M15 - Core platform and mobile foundation   IMPLEMENTED HISTORICALLY
+M16    - Learning + Secure Video               IMPLEMENTED; ACCEPTANCE OPEN
+M17    - Assessment + Certificates              LOCAL EXTENSION; MYSQL CHECK OPEN
+M18    - Notifications + Resilience              SUBSTANTIAL; CLOSURE OPEN
+M19    - Android Release Candidate              IN PROGRESS
+M20    - Production + Deployment Hardening      IN PROGRESS
+M21    - Final Bug Hunt + Security Review       OPEN
+M22    - Readability + Refactor + Visual Polish IN PROGRESS; NOT CLOSED
+M23    - Final Acceptance + Android V1 Release  OPEN; NOT APPROVED
 ```
 
 ---
@@ -161,7 +166,7 @@ These milestones are historical and should not be reopened unless a genuine regr
 Status:
 
 ```text
-COMPLETE
+COMPLETE (HISTORICAL)
 ```
 
 ## Completed
@@ -392,7 +397,7 @@ M15 is complete.
 Status:
 
 ```text
-COMPLETE
+IMPLEMENTED; FINAL ACCEPTANCE PENDING
 ```
 
 Primary goal:
@@ -583,7 +588,8 @@ Risk-based testing should include:
 Status:
 
 ```text
-COMPLETE — committed at afdadb4; pushed/CI green per user confirmation
+CORE M17 IMPLEMENTATION HISTORICALLY COMPLETED; CURRENT MANAGEMENT-CERTIFICATE
+EXTENSION IS UNCOMMITTED AND AWAITS REAL MYSQL INTEGRATION VERIFICATION
 ```
 
 ## Phase 1: secure mobile assessment API foundation
@@ -668,7 +674,7 @@ The backend remains authoritative for:
 Status:
 
 ```text
-IMPLEMENTATION COMPLETE — final lifecycle acceptance and consolidated review
+SUBSTANTIALLY IMPLEMENTED — FINAL ACCEPTANCE AND CONSOLIDATED CLOSURE PENDING
 ```
 
 ## Tasks
@@ -889,10 +895,10 @@ remain pending. M19 stays **IN PROGRESS**; the core journey does not satisfy eve
 release gate. Current Flutter fixes and this checkpoint remain uncommitted; no new
 CI result is claimed.
 
-**Agreed revised sequence:** bring M22 design forward after this M19 checkpoint,
-then resume final M19 QA against the resulting application. Neither milestone is
-complete. This does not authorize unrelated refactoring or remove M20/M21/M23
-obligations.
+**Agreed revised sequence:** M22 design work was brought forward after this M19
+checkpoint, then final M19 QA resumes against the resulting application. Neither
+milestone is closed. This does not authorize unrelated refactoring or remove
+M20/M21/M23 obligations.
 
 ## Tasks
 
@@ -1026,13 +1032,13 @@ Only genuine defects or justified maintainability problems should be fixed.
 
 # 14. M22 - Readability + Refactor + Garden's Need Visual Polish
 
-By user agreement, bring M22 design forward after the M19 Phase 2B checkpoint,
-then resume final M19 QA. M22 remains planned, not complete.
+By user agreement, M22 design work was brought forward after the M19 Phase 2B
+checkpoint, then final M19 QA resumes. M22 is in progress, not complete.
 
 Status:
 
 ```text
-PLANNED
+IN PROGRESS; NOT CLOSED
 ```
 
 ## Maintainability
@@ -1321,9 +1327,9 @@ Tests should protect meaningful behavior.
 
 ---
 
-# 23. Current Validation Baseline
+# 23. Historical M15 Validation Record
 
-The current verified baseline is:
+The M15 historical validation record was:
 
 ```text
 Django/MySQL tests: 348 passing
@@ -1331,7 +1337,7 @@ Flutter tests: 81 passing
 JavaScript playback tests: 3 passing
 ```
 
-Additional checks:
+Additional checks recorded with that historical run:
 
 ```text
 Django check: passing
@@ -1369,24 +1375,22 @@ Do not claim work is complete until its exit criteria have been satisfied.
 
 ---
 
-# 25. Current Next Action
+# 25. Current Checkpoint and Open Gates
 
-The next development milestone is:
-
-```text
-M17 - Assessment + Certificates
-```
-
-Immediate priorities:
+M19–M23 remain open; no Android V1 release is approved. The current cross-milestone
+gates are:
 
 ```text
-1. Review the verified Phase 1 assessment API foundation.
-2. Integrate Flutter assessment overview and start/resume.
-3. Integrate answering, submission, results, retries and history.
-4. Add certificate access/display using existing issuance and ownership rules.
-5. Run focused mobile/security regressions and M17 runtime QA.
+1. Complete final M16 secure-video acceptance.
+2. Verify uncommitted M17 management-certificate changes against disposable MySQL.
+3. Close M18 acceptance and operational evidence.
+4. Verify implemented Android assignment-report/audit APIs and Flutter integration
+   against disposable MySQL, then complete real-device acceptance.
+5. Verify the implemented website certificate-audit atomicity on disposable MySQL.
+6. Integrate the experimental strict-concurrency guard into CI.
+7. Complete final security review and production deployment/approval.
 ```
 
-No M18, M19, M20, M21, M22, or M23 implementation should begin merely because those milestones are documented.
-
-The project should progress sequentially through the roadmap, with each milestone passing its exit criteria before the next milestone becomes active.
+Do not treat implementation, automated tests, integration verification, manual QA
+or release approval as equivalent. Preserve milestone-specific historical results
+as evidence for the scope and date where they were actually obtained.
