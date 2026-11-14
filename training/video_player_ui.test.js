@@ -684,7 +684,10 @@ test("browser geometry, focus, first-click Pause and faded pointer targets", { s
   await page.getByRole("button", { name: "Exit fullscreen" }).click();
   await page.waitForFunction(() => !document.fullscreenElement);
   // Real hit testing and mouse clicks, using only a synthetic media state.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.setViewportSize({ width: 768, height: 900 });
+  assert.match(await page.evaluate(() =>
+    getComputedStyle(document.querySelector(".video-player-controls")).transitionDuration), /0\.22s/);
   await page.evaluate(() => {
     document.getElementById("start-video").hidden = true;
     for (const control of document.querySelectorAll("[data-playback-control]")) control.disabled = false;
@@ -697,14 +700,17 @@ test("browser geometry, focus, first-click Pause and faded pointer targets", { s
   await page.getByRole("button", { name: "Play video" }).click();
   await page.locator("#outside").click();
   await page.mouse.move(0, 0);
-  await page.waitForTimeout(4100);
-  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector(".video-player-controls")).opacity), "0");
+  await page.waitForFunction(() =>
+    getComputedStyle(document.querySelector(".video-player-controls")).opacity === "0", null,
+    { timeout: 6000 });
   assert.equal(await page.evaluate(() => {
     const r = document.getElementById("video-timeline").getBoundingClientRect();
     return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2).id;
   }), "lesson-video", "hidden timeline must not intercept pointers");
   const surface = await page.locator("video").boundingBox();
   await page.mouse.move(surface.x + surface.width / 2, surface.y + surface.height / 2);
+  await page.waitForFunction(() =>
+    getComputedStyle(document.querySelector(".video-player-controls")).opacity === "1");
   await page.getByRole("button", { name: "Pause video" }).click();
   assert.equal(await page.evaluate(() => document.querySelector("video").paused), true);
   await page.locator("#video-play-pause").focus();
@@ -713,6 +719,7 @@ test("browser geometry, focus, first-click Pause and faded pointer targets", { s
     outline: getComputedStyle(document.activeElement).outlineStyle }));
   assert.equal(focus.label, "Enter fullscreen");
   assert.equal(focus.outline, "solid");
+  await page.emulateMedia({ reducedMotion: "reduce" });
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector(".video-player-controls")).transitionDuration), "0s");
   // Exercise both production scripts through real native range/button input.
   // All media/session behavior below is mocked and cannot touch QA progress.
@@ -728,7 +735,10 @@ test("browser geometry, focus, first-click Pause and faded pointer targets", { s
     video.dataset.startUrl = "/qa/sessions/start/";
     video.dataset.durationSeconds = "100";
     let paused = true, position = 0, source = "", ended = false, session = 0;
-    window.qaState = { resume: 20, completed: false, positions: [], calls: [], pauseClicks: 0 };
+    window.qaState = {
+      resume: 20, completed: false, positions: [], calls: [], pauseClicks: 0,
+      deferNextProgress: false, resolveDeferredProgress: null,
+    };
     document.getElementById("video-play-pause").addEventListener("click", () => window.qaState.pauseClicks++);
     Object.defineProperties(video, {
       duration: { get: () => 100 }, videoWidth: { get: () => 1080 }, videoHeight: { get: () => 1920 },
@@ -748,6 +758,20 @@ test("browser geometry, focus, first-click Pause and faded pointer targets", { s
       const body = options.body ? JSON.parse(options.body) : {};
       window.qaState.calls.push({ url, body });
       if (body.position !== undefined) window.qaState.resume = body.position;
+      if (url.endsWith("/progress/") && window.qaState.deferNextProgress) {
+        window.qaState.deferNextProgress = false;
+        return new Promise((resolve) => {
+          window.qaState.resolveDeferredProgress = () => {
+            window.qaState.resolveDeferredProgress = null;
+            resolve({ ok: true, json: async () => ({
+              resume_position: 60,
+              progress_percent: 60,
+              watched_ranges: [[0, 60]],
+              completed: false,
+            }) });
+          };
+        });
+      }
       return { ok: true, json: async () => ({
         session_id: url.endsWith("/start/") ? ++session : null,
         resume_position: window.qaState.resume,
@@ -778,6 +802,15 @@ test("browser geometry, focus, first-click Pause and faded pointer targets", { s
   await learner.getByRole("button", { name: "Pause video" }).click();
   await learner.waitForFunction(() => document.getElementById("playback-status").textContent.startsWith("Paused."), null, { timeout: 5000 });
   assert.equal(await learner.evaluate(() => window.qaState.pauseClicks), 1, "timeline blur must preserve the first Pause click");
+  await learner.waitForFunction(() => !document.getElementById("start-video").hidden);
+  assert.equal(await learner.getByRole("button", { name: "Resume video" }).count(), 1);
+  const resumeLayout = await learner.evaluate(() => ({
+    label: document.getElementById("video-start-label").textContent,
+    labelBottom: document.getElementById("video-start-label").getBoundingClientRect().bottom,
+    deckTop: document.querySelector(".video-controls-deck").getBoundingClientRect().top,
+  }));
+  assert.equal(resumeLayout.label, "Resume video");
+  assert(resumeLayout.labelBottom + 5 < resumeLayout.deckTop, "Resume label must clear the control deck at 390px");
   // The fresh server response now represents an already completed endpoint.
   await learner.evaluate(() => { window.qaState.completed = true; window.qaState.resume = 99.8; });
   await learner.getByRole("button", { name: "Resume video" }).click();
@@ -787,6 +820,34 @@ test("browser geometry, focus, first-click Pause and faded pointer targets", { s
   assert.equal(await learner.locator("#lesson-completion").textContent(), "Completed");
   assert.equal(await learner.evaluate(() => window.qaState.calls.filter((call) => call.url.endsWith("/start/")).at(-1).body.position), 0);
   await learner.getByRole("button", { name: "Pause video" }).click();
+  await learner.waitForFunction(() => document.getElementById("playback-status").textContent.startsWith("Paused."));
+  await learner.getByRole("button", { name: "Start video" }).click();
+  await learner.waitForFunction(() => !document.querySelector("video").paused);
+  await learner.evaluate(() => {
+    window.qaState.deferNextProgress = true;
+    document.getElementById("lesson-video").dispatchEvent(
+      new CustomEvent("video-seek-request", { detail: { position: 40 }, cancelable: true }),
+    );
+  });
+  await learner.waitForFunction(() => typeof window.qaState.resolveDeferredProgress === "function");
+  const progressRequestsBeforeClose = await learner.evaluate(() =>
+    window.qaState.calls.filter((call) => call.url.endsWith("/progress/")).length);
+  await learner.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  await learner.evaluate(async () => {
+    window.qaState.resolveDeferredProgress();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  const lateResponseState = await learner.evaluate(() => ({
+    progressRequests: window.qaState.calls.filter((call) => call.url.endsWith("/progress/")).length,
+    progress: document.getElementById("lesson-progress").value,
+    completion: document.getElementById("lesson-completion").textContent,
+  }));
+  assert.equal(lateResponseState.progressRequests, progressRequestsBeforeClose,
+    "a response for a closed session must not trigger another seek request");
+  assert.equal(lateResponseState.progress, 99.45,
+    "a stale response must not overwrite confirmed progress");
+  assert.equal(lateResponseState.completion, "Completed",
+    "a stale response must not clear completed state");
   // Exercise the dedicated read-only replay route UI in the browser.
   const replayPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   replayPage.on("pageerror", (error) => errors.push(error.message));
