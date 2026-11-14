@@ -5,10 +5,32 @@ import 'package:training_app/core/network/dio_client.dart';
 import 'package:training_app/core/providers/core_providers.dart';
 import 'package:training_app/features/management/data/services/video_file_picker.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
+import 'package:training_app/features/management/presentation/models/assignment_report_view_data.dart';
+import 'package:training_app/features/management/presentation/models/audit_log_view_data.dart';
 
 final managementRepositoryProvider = Provider<ManagementRepository>(
   (ref) => ManagementRepository(ref.watch(apiClientProvider)),
 );
+
+/// Keeps fully enumerated choices usable when other collections fail to load.
+/// The failure remains explicit; truncated collections are never exposed.
+class FilterOptionsLoadFailure<T> extends ApiError {
+  final T completeOptions;
+  final Map<String, ApiError> failures;
+
+  Set<String> get unavailableCollections => failures.keys.toSet();
+
+  FilterOptionsLoadFailure({
+    required this.completeOptions,
+    required Map<String, ApiError> failures,
+    required ApiError cause,
+  }) : failures = Map.unmodifiable(failures),
+       super(
+         message: cause.message,
+         code: cause.code,
+         statusCode: cause.statusCode,
+       );
+}
 
 class ManagementRepository {
   final ApiClient apiClient;
@@ -2036,5 +2058,532 @@ class ManagementRepository {
       throw _incompleteChoicesError('${kind.label} options');
     }
     return items;
+  }
+
+  Future<ManagementPage<ManagedCertificate>> certificates({
+    int page = 1,
+    int? pageSize,
+    String? search,
+    bool? isRevoked,
+    CancelToken? cancelToken,
+  }) {
+    final normalizedSearch = search?.trim();
+    return _get(
+      'certificates/',
+      (json) => ManagementPage.fromJson(json, ManagedCertificate.fromJson),
+      page: page,
+      pageSize: pageSize,
+      additionalQueryParameters: {
+        'search': ?(normalizedSearch?.isNotEmpty == true
+            ? normalizedSearch
+            : null),
+        'is_revoked': ?isRevoked,
+      },
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ManagedCertificateDetail> certificateDetail(
+    int certificateId, {
+    CancelToken? cancelToken,
+  }) {
+    if (certificateId <= 0) {
+      throw ArgumentError.value(certificateId, 'certificateId');
+    }
+    return _get(
+      'certificates/$certificateId/',
+      ManagedCertificateDetail.fromJson,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<CertificateRevocationResult> revokeCertificate(
+    int certificateId,
+    String reason, {
+    CancelToken? cancelToken,
+  }) async {
+    if (certificateId <= 0) {
+      throw ArgumentError.value(certificateId, 'certificateId');
+    }
+    final normalizedReason = reason.trim();
+    if (normalizedReason.isEmpty || normalizedReason.length > 1000) {
+      throw ArgumentError.value(reason, 'reason');
+    }
+    final path = '/management/certificates/$certificateId/revoke/';
+    try {
+      final response = await apiClient.dio.post(
+        path,
+        data: {'reason': normalizedReason},
+        cancelToken: cancelToken,
+      );
+      if (cancelToken?.cancelError case final error?) throw error;
+      if (response.statusCode != 200) {
+        throw const FormatException(
+          'Certificate revocation returned an unexpected status.',
+        );
+      }
+      return CertificateRevocationResult.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (error) {
+      throw apiClient.mapExceptionToApiError(error);
+    }
+  }
+
+  Future<AssignmentReportPageViewData> assignmentReport({
+    required AssignmentReportFilterQuery query,
+    CancelToken? cancelToken,
+  }) {
+    final additional = <String, dynamic>{};
+    if (query.status != null && query.status!.trim().isNotEmpty) {
+      additional['status'] = query.status!.trim();
+    }
+    final deptId = int.tryParse(query.departmentId ?? '');
+    if (deptId != null && deptId > 0) additional['department'] = deptId;
+    final roleId = int.tryParse(query.jobRoleId ?? '');
+    if (roleId != null && roleId > 0) additional['job_role'] = roleId;
+    final trainingId = int.tryParse(query.trainingId ?? '');
+    if (trainingId != null && trainingId > 0) {
+      additional['training'] = trainingId;
+    }
+    final versionId = int.tryParse(query.trainingVersionId ?? '');
+    if (versionId != null && versionId > 0) {
+      additional['training_version'] = versionId;
+    }
+    if (query.overdueOnly == true) {
+      additional['overdue_only'] = true;
+    }
+
+    return _get(
+      'reports/assignments/',
+      (json) => AssignmentReportPageViewData.fromJson(
+        json,
+        page: query.page,
+        pageSize: query.pageSize,
+      ),
+      page: query.page,
+      pageSize: query.pageSize,
+      additionalQueryParameters: additional.isEmpty ? null : additional,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<AssignmentReportFilterOptionsViewData> assignmentReportFilterOptions({
+    CancelToken? cancelToken,
+  }) async {
+    final initial = await _get(
+      'reports/assignments/filters/',
+      (json) => json,
+      additionalQueryParameters: {'page_size': 100},
+      cancelToken: cancelToken,
+    );
+
+    final statuses =
+        (initial['statuses'] as List<dynamic>?)
+            ?.map((item) {
+              final map = item as Map<String, dynamic>;
+              return ReportFilterOption(
+                value: (map['value'] as String?)?.trim() ?? '',
+                label: (map['label'] as String?)?.trim() ?? '',
+              );
+            })
+            .where((opt) => opt.value.isNotEmpty)
+            .toList() ??
+        const [];
+
+    final departments = <ReportFilterOption>[];
+    for (final item in (initial['departments'] as List<dynamic>? ?? const [])) {
+      final map = item as Map<String, dynamic>;
+      final id = map['id'];
+      if (id != null) {
+        departments.add(
+          ReportFilterOption(
+            value: '$id',
+            label: (map['label'] as String?)?.trim() ?? '',
+          ),
+        );
+      }
+    }
+
+    final jobRoles = <ReportFilterOption>[];
+    for (final item in (initial['job_roles'] as List<dynamic>? ?? const [])) {
+      final map = item as Map<String, dynamic>;
+      final id = map['id'];
+      if (id != null) {
+        jobRoles.add(
+          ReportFilterOption(
+            value: '$id',
+            label: (map['label'] as String?)?.trim() ?? '',
+          ),
+        );
+      }
+    }
+
+    final trainings = <ReportFilterOption>[];
+    for (final item in (initial['trainings'] as List<dynamic>? ?? const [])) {
+      final map = item as Map<String, dynamic>;
+      final id = map['id'];
+      if (id != null) {
+        trainings.add(
+          ReportFilterOption(
+            value: '$id',
+            label: (map['label'] as String?)?.trim() ?? '',
+          ),
+        );
+      }
+    }
+
+    final trainingVersions = <ReportVersionFilterOption>[];
+    for (final item
+        in (initial['training_versions'] as List<dynamic>? ?? const [])) {
+      final map = item as Map<String, dynamic>;
+      final id = map['id'] as int? ?? 0;
+      if (id > 0) {
+        trainingVersions.add(
+          ReportVersionFilterOption(
+            id: id,
+            trainingId: map['training_id'] as int? ?? 0,
+            versionNumber: map['version_number'] as int? ?? 1,
+            title:
+                (map['title'] as String?)?.trim() ??
+                (map['label'] as String?)?.trim() ??
+                '',
+          ),
+        );
+      }
+    }
+
+    final pagination =
+        initial['pagination'] as Map<String, dynamic>? ?? const {};
+
+    Future<void> continueCollection(
+      String kind,
+      void Function(Map<String, dynamic> row) addRow,
+    ) async {
+      final collMeta = pagination[kind] as Map<String, dynamic>?;
+      final initialRows = initial[kind] as List<dynamic>? ?? const [];
+      final seenIds = initialRows
+          .map((row) => (row as Map<String, dynamic>)['id'])
+          .toSet();
+      final expectedCount = collMeta?['count'] as int? ?? initialRows.length;
+      var next = collMeta?['next'];
+      final seenContinuations = <Object>{};
+      if (seenIds.length != initialRows.length ||
+          (next != null && initialRows.isEmpty)) {
+        throw _incompleteChoicesError('$kind filter options');
+      }
+
+      var pageNumber = 2;
+      const maxPages = 10;
+      while (next != null && pageNumber <= maxPages) {
+        if (!seenContinuations.add(next)) {
+          throw _incompleteChoicesError('$kind filter options');
+        }
+        final pageJson = await _get(
+          'reports/assignments/filters/',
+          (json) => json,
+          additionalQueryParameters: {
+            'kind': kind,
+            'page': pageNumber,
+            'page_size': 100,
+          },
+          cancelToken: cancelToken,
+        );
+        final rows = pageJson[kind] as List<dynamic>? ?? const [];
+        if (rows.isEmpty) throw _incompleteChoicesError('$kind filter options');
+        for (final r in rows) {
+          if (!seenIds.add((r as Map<String, dynamic>)['id'])) {
+            throw _incompleteChoicesError('$kind filter options');
+          }
+          addRow(r);
+        }
+        final pageMeta = pageJson['pagination']?[kind] as Map<String, dynamic>?;
+        next = pageMeta?['next'];
+        pageNumber++;
+      }
+      if (next != null || seenIds.length < expectedCount) {
+        throw _incompleteChoicesError('$kind filter options');
+      }
+    }
+
+    final failures = <String, ApiError>{};
+    Future<void> loadCollection(
+      String kind,
+      List<dynamic> choices,
+      void Function(Map<String, dynamic>) addRow,
+    ) async {
+      try {
+        await continueCollection(kind, addRow);
+      } on ApiError catch (error) {
+        if (cancelToken?.isCancelled == true ||
+            error.statusCode == 401 ||
+            error.statusCode == 403 ||
+            error.code == 'cancelled') {
+          rethrow;
+        }
+        choices.clear();
+        failures[kind] = error;
+      }
+    }
+
+    await loadCollection('departments', departments, (map) {
+      final id = map['id'];
+      if (id != null) {
+        departments.add(
+          ReportFilterOption(
+            value: '$id',
+            label: (map['label'] as String?)?.trim() ?? '',
+          ),
+        );
+      }
+    });
+
+    await loadCollection('job_roles', jobRoles, (map) {
+      final id = map['id'];
+      if (id != null) {
+        jobRoles.add(
+          ReportFilterOption(
+            value: '$id',
+            label: (map['label'] as String?)?.trim() ?? '',
+          ),
+        );
+      }
+    });
+
+    await loadCollection('trainings', trainings, (map) {
+      final id = map['id'];
+      if (id != null) {
+        trainings.add(
+          ReportFilterOption(
+            value: '$id',
+            label: (map['label'] as String?)?.trim() ?? '',
+          ),
+        );
+      }
+    });
+
+    await loadCollection('training_versions', trainingVersions, (map) {
+      final id = map['id'] as int? ?? 0;
+      if (id > 0) {
+        trainingVersions.add(
+          ReportVersionFilterOption(
+            id: id,
+            trainingId: map['training_id'] as int? ?? 0,
+            versionNumber: map['version_number'] as int? ?? 1,
+            title:
+                (map['title'] as String?)?.trim() ??
+                (map['label'] as String?)?.trim() ??
+                '',
+          ),
+        );
+      }
+    });
+
+    final options = AssignmentReportFilterOptionsViewData(
+      departments: departments,
+      jobRoles: jobRoles,
+      trainings: trainings,
+      trainingVersions: trainingVersions,
+      statuses: statuses.isNotEmpty
+          ? statuses
+          : const [
+              ReportFilterOption(value: 'ASSIGNED', label: 'Assigned'),
+              ReportFilterOption(value: 'IN_PROGRESS', label: 'In progress'),
+              ReportFilterOption(value: 'COMPLETED', label: 'Completed'),
+              ReportFilterOption(value: 'CANCELLED', label: 'Cancelled'),
+            ],
+    );
+    if (failures.isNotEmpty) {
+      throw FilterOptionsLoadFailure(
+        completeOptions: options,
+        failures: failures,
+        cause: failures.values.first,
+      );
+    }
+    return options;
+  }
+
+  Future<AuditLogPageViewData> auditLogs({
+    required AuditLogFilterQuery query,
+    CancelToken? cancelToken,
+  }) {
+    if (query.startDate != null && query.endDate != null) {
+      final start = DateTime(
+        query.startDate!.year,
+        query.startDate!.month,
+        query.startDate!.day,
+      );
+      final end = DateTime(
+        query.endDate!.year,
+        query.endDate!.month,
+        query.endDate!.day,
+      );
+      if (start.isAfter(end)) {
+        throw ArgumentError('End date must not precede start date.');
+      }
+    }
+
+    final additional = <String, dynamic>{};
+    if (query.actorId != null && query.actorId! > 0) {
+      additional['actor'] = query.actorId;
+    }
+    if (query.action != null && query.action!.trim().isNotEmpty) {
+      additional['action'] = query.action!.trim();
+    }
+    if (query.targetType != null && query.targetType!.trim().isNotEmpty) {
+      additional['target_type'] = query.targetType!.trim();
+    }
+    if (query.startDate != null) {
+      additional['start_date'] =
+          '${query.startDate!.year.toString().padLeft(4, '0')}-${query.startDate!.month.toString().padLeft(2, '0')}-${query.startDate!.day.toString().padLeft(2, '0')}';
+    }
+    if (query.endDate != null) {
+      additional['end_date'] =
+          '${query.endDate!.year.toString().padLeft(4, '0')}-${query.endDate!.month.toString().padLeft(2, '0')}-${query.endDate!.day.toString().padLeft(2, '0')}';
+    }
+
+    return _get(
+      'audit-logs/',
+      (json) => AuditLogPageViewData.fromJson(
+        json,
+        page: query.page,
+        pageSize: query.pageSize,
+      ),
+      page: query.page,
+      pageSize: query.pageSize,
+      additionalQueryParameters: additional.isEmpty ? null : additional,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<AuditLogEntryViewData> auditLogDetail(
+    int id, {
+    CancelToken? cancelToken,
+  }) {
+    if (id <= 0) throw ArgumentError.value(id, 'id');
+    return _get(
+      'audit-logs/$id/',
+      AuditLogEntryViewData.fromJson,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<AuditLogFilterOptionsViewData> auditLogFilterOptions({
+    CancelToken? cancelToken,
+  }) async {
+    final initial = await _get(
+      'audit-logs/filters/',
+      (json) => json,
+      additionalQueryParameters: {'page_size': 100},
+      cancelToken: cancelToken,
+    );
+
+    final actors = <AuditFilterActorOption>[];
+    for (final item in (initial['actors'] as List<dynamic>? ?? const [])) {
+      final map = item as Map<String, dynamic>;
+      final id = map['id'] as int? ?? 0;
+      if (id > 0) {
+        actors.add(
+          AuditFilterActorOption(
+            id: id,
+            username: (map['username'] as String?)?.trim() ?? '',
+            displayName: (map['display_name'] as String?)?.trim() ?? '',
+          ),
+        );
+      }
+    }
+
+    final entityTypes = <AuditFilterEntityOption>[];
+    for (final item
+        in (initial['entity_types'] as List<dynamic>? ?? const [])) {
+      final map = item as Map<String, dynamic>;
+      final value = (map['value'] as String?)?.trim() ?? '';
+      if (value.isNotEmpty) {
+        entityTypes.add(
+          AuditFilterEntityOption(
+            value: value,
+            label: (map['label'] as String?)?.trim() ?? '',
+          ),
+        );
+      }
+    }
+
+    try {
+      final pagination =
+          initial['pagination'] as Map<String, dynamic>? ?? const {};
+      final actorMeta = pagination['actors'] as Map<String, dynamic>?;
+      final seenIds = actors.map((actor) => actor.id).toSet();
+      final expectedCount = actorMeta?['count'] as int? ?? actors.length;
+      var next = actorMeta?['next'];
+      if (seenIds.length != actors.length || (next != null && actors.isEmpty)) {
+        throw _incompleteChoicesError('audit actor options');
+      }
+      if (next != null) {
+        var pageNumber = 2;
+        const maxPages = 10;
+        final seenContinuations = <Object>{};
+        while (next != null && pageNumber <= maxPages) {
+          if (!seenContinuations.add(next)) {
+            throw _incompleteChoicesError('audit actor options');
+          }
+          final pageJson = await _get(
+            'audit-logs/filters/',
+            (json) => json,
+            additionalQueryParameters: {
+              'kind': 'actors',
+              'page': pageNumber,
+              'page_size': 100,
+            },
+            cancelToken: cancelToken,
+          );
+          final rows = pageJson['actors'] as List<dynamic>? ?? const [];
+          if (rows.isEmpty) {
+            throw _incompleteChoicesError('audit actor options');
+          }
+          for (final r in rows) {
+            final map = r as Map<String, dynamic>;
+            final id = map['id'] as int? ?? 0;
+            if (id > 0) {
+              if (!seenIds.add(id)) {
+                throw _incompleteChoicesError('audit actor options');
+              }
+              actors.add(
+                AuditFilterActorOption(
+                  id: id,
+                  username: (map['username'] as String?)?.trim() ?? '',
+                  displayName: (map['display_name'] as String?)?.trim() ?? '',
+                ),
+              );
+            }
+          }
+          final pageMeta =
+              pageJson['pagination']?['actors'] as Map<String, dynamic>?;
+          next = pageMeta?['next'];
+          pageNumber++;
+        }
+      }
+      if (next != null || seenIds.length < expectedCount) {
+        throw _incompleteChoicesError('audit actor options');
+      }
+    } on ApiError catch (error) {
+      if (cancelToken?.isCancelled == true ||
+          error.statusCode == 401 ||
+          error.statusCode == 403 ||
+          error.code == 'cancelled') {
+        rethrow;
+      }
+      throw FilterOptionsLoadFailure(
+        completeOptions: AuditLogFilterOptionsViewData(
+          entityTypes: entityTypes,
+        ),
+        failures: {'actors': error},
+        cause: error,
+      );
+    }
+
+    return AuditLogFilterOptionsViewData(
+      actors: actors,
+      entityTypes: entityTypes,
+    );
   }
 }

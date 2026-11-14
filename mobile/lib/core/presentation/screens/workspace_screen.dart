@@ -38,8 +38,7 @@ class WorkspaceScreen extends ConsumerWidget {
                   leading: Icon(Icons.business_outlined),
                   title: Text('Management access'),
                   subtitle: Text(
-                    'Create/edit Departments and Job Roles when permitted. '
-                    'Other management workflows are unavailable.',
+                    'Manage organization records, training, and compliance.',
                   ),
                 ),
               ),
@@ -85,6 +84,51 @@ class WorkspaceScreen extends ConsumerWidget {
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push('/workspace/training'),
+                ),
+              ),
+            ),
+          if (canViewCertificates(identity))
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.workspace_premium_outlined),
+                  title: const Text('Certificates'),
+                  subtitle: const Text(
+                    'Company-wide issued and revoked certificates.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/workspace/certificates'),
+                ),
+              ),
+            ),
+          if (canViewAssignmentReports(identity))
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.analytics_outlined),
+                  title: const Text('Assignment reports'),
+                  subtitle: const Text(
+                    'Track employee training status and completion history.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/workspace/reports/assignments'),
+                ),
+              ),
+            ),
+          if (canViewAuditLogs(identity))
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.history_outlined),
+                  title: const Text('Audit log'),
+                  subtitle: const Text(
+                    'Immutable company audit history and recorded events.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/workspace/audit-log'),
                 ),
               ),
             ),
