@@ -4,8 +4,10 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Event, local
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth.models import Permission
 from django.db import connection, models
+from django.test import tag
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -13,15 +15,16 @@ from assessments.models import Assessment, AssessmentQuestion, Question, Questio
 from audit.models import AuditLog
 from notifications.models import Notification
 from organization.models import Employee
+from config.role_requirement_test_config import require_verified_database
 from training.models import Lesson, Module, RoleTrainingRequirement, Training, TrainingAssignment, TrainingVersion
 
 from .test_m21_concurrency import MySQLConcurrencyFixtures
 
 
+@tag("role_requirement_isolated_mysql")
 class RoleRequirementConcurrencyTests(MySQLConcurrencyFixtures):
     def setUp(self):
-        # Stronger than the shared prefix guard: only the approved isolated DB.
-        self.assertEqual(connection.settings_dict["NAME"], "test_gardens_training")
+        require_verified_database(connection, settings)
         super().setUp()
         self.ids = {}
         self.actor = self.create_user("global")
@@ -73,10 +76,8 @@ class RoleRequirementConcurrencyTests(MySQLConcurrencyFixtures):
         self.actor.user_permissions.clear()
 
     def request(self, action):
-        self.assertEqual(connection.settings_dict["NAME"], "test_gardens_training")
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT DATABASE()")
-            self.assertEqual(cursor.fetchone(), ("test_gardens_training",))
+        # Executed inside every worker, before any API request or fixture write.
+        require_verified_database(connection, settings)
         client = APIClient()
         client.force_authenticate(self.actor)
         if action == "batch":

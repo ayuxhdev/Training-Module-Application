@@ -78,14 +78,22 @@ jobs:
       - name: Test QA settings with optimization
         run: python -O -B -m unittest config.test_qa_settings
 
+      - name: Test disposable MySQL safeguards without database access
+        run: python -B -m unittest config.test_role_requirement_test_harness
+
+      - name: Test disposable MySQL safeguards with optimization
+        run: python -O -B -m unittest config.test_role_requirement_test_harness
+
       - name: Run Django system check
         run: python manage.py check
 
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
 
-      - name: Run full MySQL test suite
-        run: python manage.py test
+      # Only these six tagged scenarios move to the required isolated job below.
+      # All other tests, including flush-based tests, stay on this disposable service.
+      - name: Run ordinary MySQL test suite
+        run: python manage.py test --exclude-tag=role_requirement_isolated_mysql
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -135,3 +143,162 @@ jobs:
       - name: Build Android debug APK
         working-directory: mobile
         run: flutter build apk --debug --dart-define=API_BASE_URL=https://training.example.com
+
+  role-requirement-mysql:
+    name: Role requirement isolated MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Configure required reviewers on this environment before its first execution.
+    environment: disposable-mysql-tests
+    steps:
+      - name: Require owner approval for disposable CI provisioning
+        env:
+          DISPOSABLE_MYSQL_APPROVAL: ${{ vars.DISPOSABLE_MYSQL_APPROVAL }}
+        run: |
+          if [ "$DISPOSABLE_MYSQL_APPROVAL" != approved-disposable-ci-only ]; then
+            echo "::error::Owner must approve disposable CI infrastructure before provisioning."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install MySQL build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y default-libmysqlclient-dev pkg-config build-essential
+
+      - name: Install project dependencies
+        run: pip install -r requirements.txt
+
+      - name: Prepare private disposable CI identity
+        shell: bash
+        run: |
+          python -B - <<'PY'
+          from datetime import datetime, timezone
+          import os
+          from pathlib import Path
+          import secrets
+          import tempfile
+          from uuid import uuid4
+
+          owner = uuid4().hex
+          database = f"test_gn_rr_{datetime.now(timezone.utc):%Y%m%d}_{owner}"
+          password, root_password, key = (secrets.token_urlsafe(64) for _ in range(3))
+          for value in (password, root_password, key):
+              print(f"::add-mask::{value}")
+          media = Path(tempfile.gettempdir()).resolve() / f"gn-rr-media-{owner}"
+          media.mkdir(mode=0o700)
+          private = Path(tempfile.mkdtemp(prefix="gn-rr-bootstrap-", dir=os.environ["RUNNER_TEMP"]))
+          root_file, admin_file = private / "root-password", private / "admin.cnf"
+          for path, value in (
+              (root_file, root_password),
+              (admin_file, f"[client]\nuser=root\npassword={root_password}\nprotocol=socket\n"),
+          ):
+              with path.open("x", encoding="utf-8") as stream:
+                  stream.write(value)
+              path.chmod(0o600)
+          values = {
+              "RR_CI_CONTAINER": f"gn-rr-{owner}",
+              "RR_CI_ROOT_FILE": str(root_file), "RR_CI_ADMIN_FILE": str(admin_file),
+              "RR_TEST_DATABASE": database, "RR_TEST_APPROVED_DATABASE": database,
+              "RR_TEST_OWNER": owner, "RR_TEST_EXCLUSIVE_OWNER": owner,
+              "RR_TEST_HOST": "127.0.0.1", "RR_TEST_PORT": "3308",
+              "RR_TEST_USER": f"gn_rr_{owner[:16]}",
+              "RR_TEST_ACCOUNT": f"gn_rr_{owner[:16]}@127.0.0.1",
+              "RR_TEST_PASSWORD": password, "RR_TEST_SECRET_KEY": key,
+              "RR_TEST_MEDIA_ROOT": str(media), "RR_TEST_ISOLATION": "read committed",
+              "RR_TEST_ALLOW_CREATE": "create-new-disposable-schema",
+          }
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              for name, value in values.items():
+                  stream.write(f"{name}={value}\n")
+          PY
+
+      - name: Start a new loopback-only MySQL 8 container
+        shell: bash
+        run: |
+          # Host networking preserves both TCP and @@port=3308 and loopback account identity.
+          # No existing data directory or database service is mounted or reused.
+          docker run --detach --name "$RR_CI_CONTAINER" --network host \
+            --mount "type=bind,src=$RR_CI_ROOT_FILE,dst=/run/rr-root-password,readonly" \
+            --mount "type=bind,src=$RR_CI_ADMIN_FILE,dst=/run/rr-admin.cnf,readonly" \
+            --env MYSQL_ROOT_PASSWORD_FILE=/run/rr-root-password \
+            mysql:8.0 --port=3308 --bind-address=127.0.0.1 --mysqlx=OFF \
+            --skip-name-resolve=ON --transaction-isolation=READ-COMMITTED \
+            --default-storage-engine=InnoDB --event-scheduler=OFF --partial-revokes=OFF
+
+      - name: Provision only the exact-schema test account and pin server identity
+        shell: bash
+        run: |
+          python -B - <<'PY'
+          import os
+          import re
+          import subprocess
+          import time
+
+          command = ["docker", "exec", "-i", os.environ["RR_CI_CONTAINER"], "mysql",
+                     "--defaults-file=/run/rr-admin.cnf", "--batch", "--skip-column-names"]
+
+          def query(sql):
+              result = subprocess.run(command, input=sql, text=True, capture_output=True, timeout=10)
+              if result.returncode:
+                  raise RuntimeError("Disposable MySQL bootstrap failed; credentials and SQL are not logged.")
+              return result.stdout.strip()
+
+          for attempt in range(60):
+              try:
+                  if query("SELECT @@port;") == "3308":
+                      break
+              except (RuntimeError, subprocess.TimeoutExpired):
+                  pass
+              time.sleep(2)
+          else:
+              raise RuntimeError("Disposable MySQL did not become ready on internal port 3308.")
+
+          uuid, hostname, port = query("SELECT @@server_uuid, @@hostname, @@port;").split("\t")
+          if port != "3308":
+              raise RuntimeError("Unexpected disposable server port.")
+          user, database, password = (os.environ[name] for name in (
+              "RR_TEST_USER", "RR_TEST_DATABASE", "RR_TEST_PASSWORD"))
+          if not (re.fullmatch(r"gn_rr_[0-9a-f]{16}", user)
+                  and re.fullmatch(r"test_gn_rr_\d{8}_[0-9a-f]{32}", database)
+                  and re.fullmatch(r"[A-Za-z0-9_-]+", password)):
+              raise RuntimeError("Invalid generated disposable identity.")
+          # Literal underscores are escaped: grants must not match other schemas.
+          scope = database.replace("_", r"\_")
+          query(f"CREATE USER '{user}'@'127.0.0.1' IDENTIFIED BY '{password}';\n"
+                f"GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES "
+                f"ON `{scope}`.* TO '{user}'@'127.0.0.1';")
+          # No schema is created here; only the guarded runner may create it after preflight.
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              stream.write(f"RR_TEST_SERVER_UUID={uuid}\nRR_TEST_SERVER_HOSTNAME={hostname}\n")
+          PY
+
+      - name: Run complete isolated role-requirement checkpoint
+        run: >-
+          python -B manage.py test
+          api.v1.test_role_requirements api.v1.test_role_requirement_concurrency
+          --settings=config.role_requirement_test_settings
+          --testrunner=config.role_requirement_test_runner.RoleRequirementTestRunner
+          --keepdb --noinput --parallel=1
+
+  required-checks:
+    name: Required CI checks
+    runs-on: ubuntu-latest
+    needs: [test, role-requirement-mysql]
+    if: ${{ always() }}
+    steps:
+      - name: Require both ordinary and isolated jobs to succeed
+        env:
+          ORDINARY_RESULT: ${{ needs.test.result }}
+          ISOLATED_RESULT: ${{ needs['role-requirement-mysql'].result }}
+        run: |
+          test "$ORDINARY_RESULT" = success
+          test "$ISOLATED_RESULT" = success
