@@ -52,6 +52,9 @@ class EmptyDashboardTests(TestCase):
 		response = client.get("/reports/assignments/?status=COMPLETED")
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(len(response.context["assignments"]), 0)
+		self.assertEqual(response.context["paginator"].count, 0)
+		self.assertEqual(response.context["page_obj"].number, 1)
+		self.assertNotContains(response, 'aria-label="Assignment report pages"')
 
 
 class ReportingTests(CurriculumTestCase):
@@ -93,6 +96,69 @@ class ReportingTests(CurriculumTestCase):
 		if status == TrainingAssignment.Status.CANCELLED:
 			values.update(cancelled_at=timezone.now(), cancellation_reason="Cancelled")
 		return TrainingAssignment.objects.create(**values)
+
+	def test_assignment_report_renders_a_single_page_result_count(self):
+		client = self.client_for(self.group_user("report-one-page", "Training Coordinator"))
+		response = client.get("/reports/assignments/")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.context["paginator"].count, 1)
+		self.assertEqual(response.context["page_obj"].number, 1)
+		self.assertEqual(len(response.context["assignments"]), 1)
+		self.assertContains(response, "Showing 1-1 of 1 assignments.")
+		self.assertNotContains(response, 'aria-label="Assignment report pages"')
+
+	def test_assignment_report_paginates_all_rows_and_preserves_filters_and_order(self):
+		client = self.client_for(self.group_user("report-many-pages", "Training Coordinator"))
+		assignment_ids = []
+		for number in range(201):
+			employee = self.make_employee(f"PAGE-{number:03}", f"Page employee {number}")
+			assignment = self.make_assignment(
+				employee,
+				due_at=timezone.now() - timedelta(days=1),
+			)
+			assignment_ids.append(assignment.pk)
+
+		filter_query = f"training={self.training.pk}&overdue_only=on"
+		url = f"/reports/assignments/?{filter_query}&page=1"
+		first_page = client.get(url)
+		self.assertEqual(first_page.status_code, 200)
+		self.assertEqual(first_page.context["paginator"].count, 201)
+		self.assertEqual(first_page.context["paginator"].per_page, 50)
+		self.assertEqual(first_page.context["page_obj"].number, 1)
+		self.assertEqual(len(first_page.context["assignments"]), 50)
+		self.assertEqual(first_page.context["page_query"], filter_query)
+		self.assertContains(first_page, "Showing 1-50 of 201 assignments.")
+		self.assertContains(
+			first_page,
+			f'href="?training={self.training.pk}&amp;overdue_only=on&amp;page=2"',
+		)
+
+		displayed_ids = []
+		last_page = None
+		for number in range(1, first_page.context["paginator"].num_pages + 1):
+			response = client.get(f"/reports/assignments/?{filter_query}&page={number}")
+			self.assertEqual(response.status_code, 200)
+			displayed_ids.extend(row.pk for row in response.context["assignments"])
+			last_page = response
+		self.assertEqual(len(displayed_ids), 201)
+		self.assertEqual(len(set(displayed_ids)), 201)
+		expected_ids = list(
+			TrainingAssignment.objects.filter(pk__in=assignment_ids)
+			.order_by("-assigned_at", "pk")
+			.values_list("pk", flat=True)
+		)
+		self.assertEqual(displayed_ids, expected_ids)
+		self.assertEqual(last_page.context["page_obj"].number, 5)
+		self.assertEqual(len(last_page.context["assignments"]), 1)
+		self.assertContains(last_page, "Showing 201-201 of 201 assignments.")
+		self.assertNotContains(last_page, 'rel="next" aria-label="Next page"')
+
+		for page, expected_number in (("not-a-page", 1), ("-1", 5), ("999", 5)):
+			with self.subTest(page=page):
+				response = client.get(f"/reports/assignments/?{filter_query}&page={page}")
+				self.assertEqual(response.status_code, 200)
+				self.assertEqual(response.context["page_obj"].number, expected_number)
 
 	def test_administrator_and_coordinator_see_company_metrics(self):
 		self.finish_attempt(self.quiz, correct=False)
@@ -250,8 +316,9 @@ class ReportingTests(CurriculumTestCase):
 		))
 		self.assertNotContains(response, outsider.display_name)
 
-		report = client.get(f"/reports/assignments/?training={self.training.pk}")
+		report = client.get(f"/reports/assignments/?training={self.training.pk}&page=1")
 		self.assertEqual(report.status_code, 200)
+		self.assertEqual(report.context["page_obj"].paginator.count, 2)
 		self.assertContains(report, child.display_name)
 		self.assertContains(report, grandchild.display_name)
 		self.assertNotContains(report, outsider.display_name)
@@ -317,7 +384,7 @@ class ReportingTests(CurriculumTestCase):
 			for attempt in response.context["recent_attempts"]
 		))
 		self.assertNotContains(response, outsider.display_name)
-		self.assertEqual(client.get("/reports/assignments/").status_code, 403)
+		self.assertEqual(client.get("/reports/assignments/?page=-1").status_code, 403)
 
 	def test_employee_dashboard_marks_overdue_actions_without_duplicate_rows(self):
 		Group.objects.get(name="Employee").user_set.add(self.employee_user)

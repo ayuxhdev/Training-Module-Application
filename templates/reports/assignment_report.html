@@ -125,6 +125,28 @@
       <h2 id="assignment-report-results-heading">Assignment results</h2>
       <p>Employee, training, timeline and completion information for assignments in scope.</p>
     </header>
+    {% if paginator.count %}
+      <p class="muted">Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ paginator.count }} assignments.</p>
+    {% else %}
+      <p class="muted">Showing 0 assignments.</p>
+    {% endif %}
+    {% if page_obj.has_other_pages %}
+      <nav class="catalog-form-actions" aria-label="Assignment report pages">
+        {% if page_obj.has_previous %}
+          <a class="btn btn-secondary" rel="prev" aria-label="Previous page"
+             href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+        {% else %}
+          <span class="btn btn-secondary" aria-disabled="true">Previous</span>
+        {% endif %}
+        <span class="muted">Page {{ page_obj.number }} of {{ paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+          <a class="btn btn-secondary" rel="next" aria-label="Next page"
+             href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+        {% else %}
+          <span class="btn btn-secondary" aria-disabled="true">Next</span>
+        {% endif %}
+      </nav>
+    {% endif %}
     <p class="management-scroll-hint" id="report-table-help">Scroll horizontally to view all columns. Keyboard: focus this table region and use the arrow keys.</p>
     <div class="table-scroll catalog-table-scroll management-table-region" role="region" aria-label="Assignment report results" aria-describedby="report-table-help" tabindex="0">
       <table class="catalog-table assignment-report-table">

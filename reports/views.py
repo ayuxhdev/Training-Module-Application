@@ -1,5 +1,6 @@
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
 from django.db.models import BooleanField, Case, Value, When
 from django.shortcuts import render
 from django.utils import timezone
@@ -20,6 +21,8 @@ from .queries import (
 	published_training_count,
 	recent_attempts,
 )
+
+ASSIGNMENT_REPORT_PAGE_SIZE = 50
 
 
 def _assignment_rows(queryset, as_of=None):
@@ -128,8 +131,15 @@ def assignment_report(request):
 			output_field=BooleanField(),
 		),
 	).order_by("-assigned_at", "pk")
+	paginator = Paginator(assignments, ASSIGNMENT_REPORT_PAGE_SIZE)
+	page_obj = paginator.get_page(request.GET.get("page"))
+	page_query = request.GET.copy()
+	page_query.pop("page", None)
 	return render(request, "reports/assignment_report.html", {
 		"filter_form": filter_form,
-		"assignments": assignments,
+		"assignments": page_obj.object_list,
+		"page_obj": page_obj,
+		"paginator": paginator,
+		"page_query": page_query.urlencode(),
 		"role": role,
 	}, status=200 if valid else 400)

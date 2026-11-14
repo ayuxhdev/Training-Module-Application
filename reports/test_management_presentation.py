@@ -1,10 +1,11 @@
 """Batch 5 presentation checks. No database setup, writes, or bootstrap required."""
 
-from datetime import date
+from datetime import date, datetime, timezone as datetime_timezone
 from html.parser import HTMLParser
 from types import SimpleNamespace
 
 from django.contrib.auth.models import AnonymousUser
+from django.core.paginator import Paginator
 from django.forms.utils import ErrorDict
 from django.template.loader import render_to_string
 from django.test import RequestFactory, SimpleTestCase
@@ -213,14 +214,64 @@ class ManagementPresentationTests(SimpleTestCase):
 
     def test_report_keeps_all_columns_filters_and_scroll_description(self):
         form = AssignmentReportFilterForm(assignment_queryset=TrainingAssignment.objects.none())
-        html = self.render("reports/assignment_report.html", role="manager", assignments=[], filter_form=form)
+        paginator = Paginator([], 50)
+        page_obj = paginator.get_page(None)
+        html = self.render(
+            "reports/assignment_report.html", role="manager", assignments=[],
+            filter_form=form, paginator=paginator, page_obj=page_obj, page_query="",
+        )
         self.assertEqual(html.count('scope="col"'), 11)
         self.assertIn('method="get"', html)
         self.assertIn("Apply filters", html)
         self.assertIn("Clear filters", html)
+        self.assertIn("Showing 0 assignments.", html)
         self.assertIn('aria-describedby="report-table-help"', html)
         self.assertNotIn('id="report-table-help" aria-hidden="true"', html)
         self.assertEqual([field["name"] for field in Controls(html).fields], list(form.fields))
+
+    def test_assignment_report_pagination_links_preserve_filters_and_are_accessible(self):
+        form = AssignmentReportFilterForm(assignment_queryset=TrainingAssignment.objects.none())
+        rows = [
+            SimpleNamespace(
+                employee=SimpleNamespace(display_name=f"Employee {number}"),
+                department_at_assignment=SimpleNamespace(name="Operations"),
+                job_role_at_assignment=SimpleNamespace(name="Operator"),
+                training_version=SimpleNamespace(
+                    training=SimpleNamespace(catalog_title="Safety"),
+                    title="Safety", version_number=1,
+                ),
+                assigned_at=datetime(2026, 1, 1, tzinfo=datetime_timezone.utc),
+                due_at=None,
+                status="ASSIGNED",
+                get_status_display=lambda: "Assigned",
+                is_overdue=False,
+                completed_at=None,
+                certificate=None,
+            )
+            for number in range(51)
+        ]
+        paginator = Paginator(rows, 50)
+        def render_page(page_number):
+            page_obj = paginator.get_page(page_number)
+            return self.render(
+                "reports/assignment_report.html", role="manager",
+                assignments=page_obj.object_list, filter_form=form, paginator=paginator,
+                page_obj=page_obj, page_query="status=ASSIGNED&department=3",
+            )
+
+        html = render_page("2")
+        self.assertIn("Showing 51-51 of 51 assignments.", html)
+        self.assertIn("Page 2 of 2", html)
+        self.assertIn(
+            'href="?status=ASSIGNED&amp;department=3&amp;page=1"',
+            html,
+        )
+        self.assertIn('rel="prev" aria-label="Previous page"', html)
+        self.assertIn('aria-disabled="true">Next</span>', html)
+
+        first_page_html = render_page("1")
+        self.assertIn('rel="next" aria-label="Next page"', first_page_html)
+        self.assertIn('aria-disabled="true">Previous</span>', first_page_html)
 
     def test_deactivation_reason_validation_and_presentation_are_preserved(self):
         for reason in ("", " " * 3, "x" * 1001):
