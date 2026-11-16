@@ -24,20 +24,22 @@ The backend is authoritative for security-sensitive state and business rules.
 
 Current major state:
 
-- M0-M12: complete
-- M13: Mobile API Foundation + Versioning, complete
-- M14: Flutter / Android Foundation, complete
-- M15: Employee App Core, complete
-- M16: Learning + Secure Video, next
-- M17-M23: planned
+- M0-M15: historically implemented; prior records remain scoped to their original runs
+- M16: secure video implemented; final acceptance is pending
+- M17: management-certificate API and Flutter changes are uncommitted; real MySQL
+  integration verification is pending
+- M18: notification/resilience functionality substantially exists; closure is pending
+- M19-M23: not fully closed; see `docs/ROADMAP.md` for current gates
 
-Current validation baseline:
+Historical M15 validation baseline (not a current full-suite total):
 
 - Django/MySQL: 348 tests
 - Flutter: 81 tests
 - JavaScript playback: 3 tests
 
-Do not assume these numbers remain unchanged after future work. Use the current repository output as authoritative.
+These counts must not be presented as current validation. Use actual current
+repository output for any new test claim. The experimental strict-concurrency
+guard is not integrated into CI.
 
 ## Agent Operating Rules
 
@@ -528,7 +530,8 @@ Do not introduce local-only completion claims that can later overwrite authorita
 
 ## UI Direction
 
-The final Garden's Need visual system is intentionally not locked during the current functional milestones.
+The final Garden's Need visual system was intentionally not locked during earlier
+functional milestones. M22 is now in progress, while final M19 acceptance remains open.
 
 Do not prematurely hard-code a final:
 
@@ -538,13 +541,16 @@ Do not prematurely hard-code a final:
 - typography system
 - interaction language
 
-The mobile application should remain clean, usable, and consistent during M14-M21.
+The mobile application should remain clean, usable, and consistent throughout the
+remaining release work.
 
-Major Garden's Need visual polish, animation, and interaction refinement belong to the dedicated M22 readability/refactor/visual-polish milestone.
+Major Garden's Need visual polish, animation, and interaction refinement belong
+to M22, which is active but not closed.
 
-When M22 begins, UI/UX direction should be reviewed deliberately before implementation.
+During M22, review UI/UX direction deliberately before further implementation.
 
-Functionality and correctness take priority over decorative polish during earlier milestones.
+Functionality and correctness take priority over decorative polish in remaining
+release-readiness work.
 
 ## Testing Rules
 
@@ -759,9 +765,9 @@ Use:
 
 Do not create abstractions merely to reduce line count.
 
-Deep readability refactoring is intentionally planned for M22.
-
-Until then, make local readability improvements only when they directly support the current task.
+Deep readability refactoring belongs to M22; the milestone is in progress but not
+closed. Outside M22 scope, make local readability improvements only when they
+directly support the current task.
 
 ## Documentation Rules
 
@@ -824,22 +830,24 @@ Future scope must remain clearly separated from implemented V1 functionality.
 
 ## Current Roadmap
 
-Current milestone:
+Current checkpoint:
 
 ```text
-M16 - Learning + Secure Video
+M19 - Android Release Candidate; final acceptance remains open
 ```
 
-Remaining major milestones:
+Open release-readiness gates include:
 
 ```text
-M17 - Assessment + Certificates
-M18 - Notifications + Resilience
-M19 - Android Release Candidate
-M20 - Production + Deployment Hardening
-M21 - Final Bug Hunt + Security + Repository Review
-M22 - Readability + Refactor + Garden's Need Visual Polish
-M23 - Final Acceptance + Android V1 Release
+M16 - Final secure-video acceptance
+M17 - Management-certificate MySQL integration verification
+M18 - Consolidated notification/resilience closure
+M19 - Android release-candidate validation
+M20 - Production infrastructure and restore verification
+M21 - Final security/repository review; strict-concurrency CI and website
+       certificate-audit atomicity remain unresolved
+M22 - Visual/readability work and milestone closure
+M23 - Final acceptance and release approval
 ```
 
 Do not skip milestone scope without an explicit decision.

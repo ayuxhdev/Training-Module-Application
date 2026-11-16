@@ -29,6 +29,11 @@ from .management_views import (
     JobRoleReferenceUpdateView, JobRoleReferenceView, ManagementDashboardView,
 )
 from .certificate_views import CertificateDetailView, CertificateListView
+from .certificate_management_views import (
+    CertificateManagementDetailView, CertificateManagementListView, CertificateRevocationView,
+)
+from .assignment_report_views import AssignmentReportFiltersView, AssignmentReportView
+from .management_audit_views import AuditLogDetailView, AuditLogFiltersView, AuditLogListView
 from .notification_views import (
     NotificationListView,
     NotificationReadAllView,
@@ -103,6 +108,14 @@ urlpatterns = [
     path("notifications/unread-count/", NotificationUnreadCountView.as_view(), name="notification-unread-count"),
     path("notifications/read-all/", NotificationReadAllView.as_view(), name="notification-read-all"),
     path("notifications/<int:notification_id>/read/", NotificationReadView.as_view(), name="notification-read"),
+    path("management/certificates/", CertificateManagementListView.as_view(), name="management-certificates"),
+    path("management/reports/assignments/", AssignmentReportView.as_view(), name="management-assignment-report"),
+    path("management/reports/assignments/filters/", AssignmentReportFiltersView.as_view(), name="management-assignment-report-filters"),
+    path("management/audit-logs/", AuditLogListView.as_view(), name="management-audit-logs"),
+    path("management/audit-logs/filters/", AuditLogFiltersView.as_view(), name="management-audit-log-filters"),
+    path("management/audit-logs/<int:pk>/", AuditLogDetailView.as_view(), name="management-audit-log-detail"),
+    path("management/certificates/<int:pk>/", CertificateManagementDetailView.as_view(), name="management-certificate-detail"),
+    path("management/certificates/<int:pk>/revoke/", CertificateRevocationView.as_view(), name="management-certificate-revoke"),
     path("certificates/", CertificateListView.as_view(), name="certificate-list"),
     path("certificates/<int:certificate_id>/", CertificateDetailView.as_view(), name="certificate-detail"),
     path("assignments/", AssignmentListView.as_view(), name="assignment-list"),

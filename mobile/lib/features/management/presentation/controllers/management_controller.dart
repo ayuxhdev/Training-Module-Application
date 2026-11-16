@@ -7,6 +7,8 @@ import 'package:training_app/features/auth/presentation/controllers/auth_control
 import 'package:training_app/features/management/data/repositories/management_repository.dart';
 import 'package:training_app/features/management/data/services/video_file_picker.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
+import 'package:training_app/features/management/presentation/models/assignment_report_view_data.dart';
+import 'package:training_app/features/management/presentation/models/audit_log_view_data.dart';
 
 bool canViewManagementDashboard(AuthenticatedIdentity identity) =>
     identity.capabilities.contains('company_dashboard') || identity.canViewTeam;
@@ -37,6 +39,23 @@ bool canCreateEmployee(AuthenticatedIdentity identity) =>
 bool canAssignTraining(AuthenticatedIdentity identity) =>
     identity.capabilities.contains('training.add_trainingassignment') ||
     identity.capabilities.contains('team_assignment');
+
+bool canViewCertificates(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('certifications.view_certificate');
+
+bool canViewAssignmentReports(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('assignment_report') ||
+    identity.capabilities.contains('company_dashboard') ||
+    identity.canViewTeam;
+
+bool canViewAuditLogs(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('audit.view_auditlog');
+
+bool canRevokeCertificate(AuthenticatedIdentity identity) =>
+    identity.capabilities.contains('certifications.change_certificate');
+
+bool canManageCertificates(AuthenticatedIdentity identity) =>
+    canViewCertificates(identity) || canRevokeCertificate(identity);
 
 bool canManageTraining(AuthenticatedIdentity identity) =>
     identity.canManageTraining ||
@@ -359,6 +378,77 @@ class EmployeeDeactivationMutationController {
 final employeeDeactivationMutationProvider =
     Provider<EmployeeDeactivationMutationController>(
       (ref) => EmployeeDeactivationMutationController(
+        repository: ref.watch(managementRepositoryProvider),
+        readAuth: () => ref.read(authControllerProvider),
+      ),
+    );
+
+class CertificateRevocationMutationController {
+  final ManagementRepository repository;
+  final AuthState Function() readAuth;
+
+  const CertificateRevocationMutationController({
+    required this.repository,
+    required this.readAuth,
+  });
+
+  Future<CertificateRevocationResult> revoke({
+    required int certificateId,
+    required String reason,
+    String? expectedAccount,
+    CancelToken? cancelToken,
+  }) async {
+    final initialAuth = readAuth();
+    if (expectedAccount != null &&
+        managementAccount(initialAuth) != expectedAccount) {
+      throw ApiError(
+        message:
+            'The account changed. Reopen the certificate before revoking it.',
+        statusCode: 403,
+      );
+    }
+    if (initialAuth is! AuthAuthenticated ||
+        !canRevokeCertificate(initialAuth.identity)) {
+      throw ApiError(
+        message: 'This account cannot revoke certificates.',
+        statusCode: 403,
+      );
+    }
+    final normalizedReason = reason.trim();
+    if (normalizedReason.isEmpty) {
+      throw ApiError(
+        message: 'A revocation reason is required.',
+        statusCode: 400,
+      );
+    }
+    if (normalizedReason.length > 1000) {
+      throw ApiError(
+        message: 'The revocation reason is too long (maximum 1000 characters).',
+        statusCode: 400,
+      );
+    }
+    final account = managementAccount(initialAuth);
+    final result = await repository.revokeCertificate(
+      certificateId,
+      normalizedReason,
+      cancelToken: cancelToken,
+    );
+    final currentAuth = readAuth();
+    if (managementAccount(currentAuth) != account ||
+        currentAuth is! AuthAuthenticated ||
+        !canRevokeCertificate(currentAuth.identity)) {
+      throw ApiError(
+        message: 'The account changed before revocation completed. Reopen the certificate to continue.',
+        statusCode: 403,
+      );
+    }
+    return result;
+  }
+}
+
+final certificateRevocationMutationProvider =
+    Provider<CertificateRevocationMutationController>(
+      (ref) => CertificateRevocationMutationController(
         repository: ref.watch(managementRepositoryProvider),
         readAuth: () => ref.read(authControllerProvider),
       ),
@@ -2015,4 +2105,81 @@ final roleRequirementDetailProvider = FutureProvider.autoDispose
       final cancelToken = _request(ref, canViewRoleRequirements);
       final repository = ref.watch(managementRepositoryProvider);
       return repository.roleRequirement(id, cancelToken: cancelToken);
+    }, retry: (_, _) => null);
+
+typedef CertificatePageRequest = ({
+  int page,
+  int? pageSize,
+  String? search,
+  bool? isRevoked,
+});
+
+final managedCertificatesProvider = FutureProvider.autoDispose
+    .family<ManagementPage<ManagedCertificate>, CertificatePageRequest>((
+      ref,
+      request,
+    ) {
+      final cancelToken = _request(ref, canViewCertificates);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.certificates(
+        page: request.page,
+        pageSize: request.pageSize,
+        search: request.search,
+        isRevoked: request.isRevoked,
+        cancelToken: cancelToken,
+      );
+    }, retry: (_, _) => null);
+
+final managedCertificateDetailProvider = FutureProvider.autoDispose
+    .family<ManagedCertificateDetail, int>((ref, id) {
+      if (id <= 0) {
+        throw ArgumentError.value(id, 'id');
+      }
+      final cancelToken = _request(ref, canViewCertificates);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.certificateDetail(id, cancelToken: cancelToken);
+    }, retry: (_, _) => null);
+
+final assignmentReportProvider = FutureProvider.autoDispose
+    .family<AssignmentReportPageViewData, AssignmentReportFilterQuery>((
+      ref,
+      query,
+    ) {
+      final cancelToken = _request(ref, canViewAssignmentReports);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.assignmentReport(
+        query: query,
+        cancelToken: cancelToken,
+      );
+    }, retry: (_, _) => null);
+
+final assignmentReportFilterOptionsProvider =
+    FutureProvider.autoDispose<AssignmentReportFilterOptionsViewData>((ref) {
+      final cancelToken = _request(ref, canViewAssignmentReports);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.assignmentReportFilterOptions(cancelToken: cancelToken);
+    }, retry: (_, _) => null);
+
+final auditLogsProvider = FutureProvider.autoDispose
+    .family<AuditLogPageViewData, AuditLogFilterQuery>((ref, query) {
+      final cancelToken = _request(ref, canViewAuditLogs);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.auditLogs(query: query, cancelToken: cancelToken);
+    }, retry: (_, _) => null);
+
+final auditLogDetailProvider = FutureProvider.autoDispose
+    .family<AuditLogEntryViewData, int>((ref, id) {
+      if (id <= 0) {
+        throw ArgumentError.value(id, 'id');
+      }
+      final cancelToken = _request(ref, canViewAuditLogs);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.auditLogDetail(id, cancelToken: cancelToken);
+    }, retry: (_, _) => null);
+
+final auditLogFilterOptionsProvider =
+    FutureProvider.autoDispose<AuditLogFilterOptionsViewData>((ref) {
+      final cancelToken = _request(ref, canViewAuditLogs);
+      final repository = ref.watch(managementRepositoryProvider);
+      return repository.auditLogFilterOptions(cancelToken: cancelToken);
     }, retry: (_, _) => null);

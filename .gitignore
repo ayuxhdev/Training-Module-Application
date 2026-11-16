@@ -9,6 +9,7 @@ media/
 staticfiles/
 /training/videos
 /mobile/devtools_options.yaml
+/node_modules/
 
 # Local QA-only files; keep QA settings source, tests, and sanitized templates trackable.
 **/.env.qa

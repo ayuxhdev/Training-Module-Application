@@ -33,6 +33,10 @@ import 'package:training_app/features/management/presentation/screens/question_d
 import 'package:training_app/features/management/presentation/screens/question_revision_form_screen.dart';
 import 'package:training_app/features/management/presentation/screens/question_revision_detail_screen.dart';
 import 'package:training_app/features/management/presentation/screens/role_requirements_screen.dart';
+import 'package:training_app/features/management/presentation/screens/managed_certificate_list_screen.dart';
+import 'package:training_app/features/management/presentation/screens/managed_certificate_detail_screen.dart';
+import 'package:training_app/features/management/presentation/screens/assignment_report_screen.dart';
+import 'package:training_app/features/management/presentation/screens/audit_log_screen.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/dashboard/presentation/screens/dashboard_screen.dart';
@@ -53,6 +57,18 @@ import 'package:training_app/features/notifications/presentation/screens/notific
 bool _canAccessWorkspacePath(String path, AuthenticatedIdentity identity) {
   if (path == '/workspace/dashboard') {
     return canViewManagementDashboard(identity);
+  }
+  if (path == '/workspace/certificates') {
+    return canViewCertificates(identity);
+  }
+  if (RegExp(r'^/workspace/certificates/[1-9][0-9]*$').hasMatch(path)) {
+    return canViewCertificates(identity);
+  }
+  if (path == '/workspace/reports/assignments') {
+    return canViewAssignmentReports(identity);
+  }
+  if (path == '/workspace/audit-log') {
+    return canViewAuditLogs(identity);
   }
   if (path == '/workspace/training') {
     return canManageTraining(identity);
@@ -809,6 +825,36 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 initialQuestion: extra is ManagedQuestion ? extra : null,
               );
             },
+          ),
+          GoRoute(
+            path: '/workspace/certificates',
+            builder: (_, _) => const ManagedCertificateListScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/certificates/:certificateId',
+            builder: (_, state) {
+              final id = int.tryParse(
+                state.pathParameters['certificateId'] ?? '',
+              );
+              if (id == null || id <= 0) {
+                return const Scaffold(
+                  body: ErrorView(message: 'Invalid certificate ID'),
+                );
+              }
+              final extra = state.extra;
+              return ManagedCertificateDetailScreen(
+                certificateId: id,
+                initialCertificate: extra is ManagedCertificate ? extra : null,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/workspace/reports/assignments',
+            builder: (_, _) => const AssignmentReportScreen(),
+          ),
+          GoRoute(
+            path: '/workspace/audit-log',
+            builder: (_, _) => const AuditLogScreen(),
           ),
           GoRoute(
             path: '/workspace/employees',
