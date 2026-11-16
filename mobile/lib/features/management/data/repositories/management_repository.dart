@@ -2314,15 +2314,18 @@ class ManagementRepository {
     ) async {
       try {
         await continueCollection(kind, addRow);
-      } on ApiError catch (error) {
-        if (cancelToken?.isCancelled == true ||
-            error.statusCode == 401 ||
-            error.statusCode == 403 ||
-            error.code == 'cancelled') {
-          rethrow;
+      } catch (error) {
+        if (cancelToken?.isCancelled == true) rethrow;
+        final apiError = error is ApiError
+            ? error
+            : apiClient.mapExceptionToApiError(error);
+        if (apiError.statusCode == 401 ||
+            apiError.statusCode == 403 ||
+            apiError.code == 'cancelled') {
+          throw apiError;
         }
         choices.clear();
-        failures[kind] = error;
+        failures[kind] = apiError;
       }
     }
 
@@ -2565,19 +2568,22 @@ class ManagementRepository {
       if (next != null || seenIds.length < expectedCount) {
         throw _incompleteChoicesError('audit actor options');
       }
-    } on ApiError catch (error) {
-      if (cancelToken?.isCancelled == true ||
-          error.statusCode == 401 ||
-          error.statusCode == 403 ||
-          error.code == 'cancelled') {
-        rethrow;
+    } catch (error) {
+      if (cancelToken?.isCancelled == true) rethrow;
+      final apiError = error is ApiError
+          ? error
+          : apiClient.mapExceptionToApiError(error);
+      if (apiError.statusCode == 401 ||
+          apiError.statusCode == 403 ||
+          apiError.code == 'cancelled') {
+        throw apiError;
       }
       throw FilterOptionsLoadFailure(
         completeOptions: AuditLogFilterOptionsViewData(
           entityTypes: entityTypes,
         ),
-        failures: {'actors': error},
-        cause: error,
+        failures: {'actors': apiError},
+        cause: apiError,
       );
     }
 

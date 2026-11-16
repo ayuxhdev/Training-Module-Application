@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'report_audit_json_parsers.dart';
+
 /// Presentation data for a single recorded field-level modification.
 @immutable
 class AuditFieldChangeViewData {
@@ -27,11 +29,14 @@ class AuditFieldChangeViewData {
       afterDisplay.trim().isNotEmpty ? afterDisplay : 'Not recorded';
 
   factory AuditFieldChangeViewData.fromJson(Map<String, dynamic> json) {
-    final field = (json['field'] as String?)?.trim() ?? '';
-    final fieldLabel = (json['field_label'] as String?)?.trim() ?? field;
-    final beforeDisplay = (json['before_display'] as String?)?.trim() ?? '';
-    final afterDisplay = (json['after_display'] as String?)?.trim() ?? '';
-    final captured = json['captured'] as bool? ?? true;
+    final field = TypedJsonReader.readRequiredString(json, 'field');
+    final fieldLabel =
+        TypedJsonReader.readOptionalString(json, 'field_label') ?? field;
+    final beforeDisplay =
+        TypedJsonReader.readOptionalString(json, 'before_display') ?? '';
+    final afterDisplay =
+        TypedJsonReader.readOptionalString(json, 'after_display') ?? '';
+    final captured = TypedJsonReader.readOptionalBool(json, 'captured') ?? true;
     return AuditFieldChangeViewData(
       field: field,
       fieldLabel: fieldLabel,
@@ -103,35 +108,50 @@ class AuditLogEntryViewData {
   bool get hasReason => reason != null && reason!.trim().isNotEmpty;
 
   factory AuditLogEntryViewData.fromJson(Map<String, dynamic> json) {
-    final id = json['id'];
-    if (id is! int || id <= 0) {
-      throw const FormatException('Invalid audit log entry id.');
-    }
-    final rawChanges = json['changes'] as List<dynamic>? ?? const [];
+    final id = TypedJsonReader.readRequiredInt(json, 'id', minValue: 1);
+    final occurredAt = TypedJsonReader.readRequiredDateTime(
+      json,
+      'occurred_at',
+    );
+    final action = TypedJsonReader.readRequiredString(
+      json,
+      'action',
+      allowEmpty: false,
+    );
+
+    final rawChanges = TypedJsonReader.readOptionalList(json, 'changes');
     final changes = rawChanges
-        .map((c) =>
-            AuditFieldChangeViewData.fromJson(c as Map<String, dynamic>))
+        .map(
+          (c) => AuditFieldChangeViewData.fromJson(
+            TypedJsonReader.readMap(c, 'audit change'),
+          ),
+        )
         .toList();
 
     return AuditLogEntryViewData(
       id: id,
-      occurredAt: json['occurred_at'] != null
-          ? DateTime.tryParse(json['occurred_at'] as String)
-          : null,
+      occurredAt: occurredAt,
       actorLabelSnapshot:
-          (json['actor_label_snapshot'] as String?)?.trim() ?? '',
-      actorId: json['actor_id'] as int?,
-      action: (json['action'] as String?)?.trim() ?? 'other',
+          TypedJsonReader.readOptionalString(json, 'actor_label_snapshot') ??
+          '',
+      actorId: TypedJsonReader.readOptionalInt(json, 'actor_id', minValue: 1),
+      action: action,
       actionLabel:
-          (json['action_label'] as String?)?.trim() ?? 'Other recorded action',
-      entityType: (json['entity_type'] as String?)?.trim() ?? 'other',
-      entityLabel: (json['entity_label'] as String?)?.trim() ?? 'Record',
-      entityId: (json['entity_id'] as String?)?.trim() ?? '',
-      recordSummary: json['record_summary'] as String?,
-      reason: json['reason'] as String?,
+          TypedJsonReader.readOptionalString(json, 'action_label') ?? action,
+      entityType:
+          TypedJsonReader.readOptionalString(json, 'entity_type') ?? 'other',
+      entityLabel:
+          TypedJsonReader.readOptionalString(json, 'entity_label') ?? 'Record',
+      entityId: TypedJsonReader.readOptionalString(json, 'entity_id') ?? '',
+      recordSummary: TypedJsonReader.readOptionalString(json, 'record_summary'),
+      reason: TypedJsonReader.readOptionalString(json, 'reason'),
       changes: changes,
-      detailKind: (json['detail_kind'] as String?)?.trim() ?? 'snapshot',
-      snapshotNotice: json['snapshot_notice'] as String?,
+      detailKind:
+          TypedJsonReader.readOptionalString(json, 'detail_kind') ?? 'snapshot',
+      snapshotNotice: TypedJsonReader.readOptionalString(
+        json,
+        'snapshot_notice',
+      ),
     );
   }
 }
@@ -149,8 +169,19 @@ class AuditFilterActorOption {
     required this.displayName,
   });
 
-  String get label =>
-      displayName.isNotEmpty ? '$displayName ($username)' : username;
+  String get label {
+    final cleanDisplay = displayName.trim();
+    final cleanUsername = username.trim();
+    if (cleanDisplay.isNotEmpty &&
+        cleanUsername.isNotEmpty &&
+        cleanDisplay != cleanUsername) {
+      return '$cleanDisplay ($cleanUsername)';
+    }
+    if (cleanDisplay.isNotEmpty) {
+      return cleanDisplay;
+    }
+    return cleanUsername;
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -169,10 +200,7 @@ class AuditFilterEntityOption {
   final String value;
   final String label;
 
-  const AuditFilterEntityOption({
-    required this.value,
-    required this.label,
-  });
+  const AuditFilterEntityOption({required this.value, required this.label});
 
   @override
   bool operator ==(Object other) =>
@@ -197,30 +225,25 @@ class AuditLogFilterOptionsViewData {
   });
 
   factory AuditLogFilterOptionsViewData.fromJson(Map<String, dynamic> json) {
-    final rawActors = json['actors'] as List<dynamic>? ?? const [];
-    final actors = rawActors
-        .map((a) {
-          final map = a as Map<String, dynamic>;
-          return AuditFilterActorOption(
-            id: map['id'] as int? ?? 0,
-            username: (map['username'] as String?)?.trim() ?? '',
-            displayName: (map['display_name'] as String?)?.trim() ?? '',
-          );
-        })
-        .where((a) => a.id > 0)
-        .toList();
+    final rawActors = TypedJsonReader.readOptionalList(json, 'actors');
+    final actors = rawActors.map((a) {
+      final map = TypedJsonReader.readMap(a, 'actor option');
+      return AuditFilterActorOption(
+        id: TypedJsonReader.readRequiredInt(map, 'id', minValue: 1),
+        username: TypedJsonReader.readOptionalString(map, 'username') ?? '',
+        displayName:
+            TypedJsonReader.readOptionalString(map, 'display_name') ?? '',
+      );
+    }).toList();
 
-    final rawEntities = json['entity_types'] as List<dynamic>? ?? const [];
-    final entityTypes = rawEntities
-        .map((e) {
-          final map = e as Map<String, dynamic>;
-          return AuditFilterEntityOption(
-            value: (map['value'] as String?)?.trim() ?? '',
-            label: (map['label'] as String?)?.trim() ?? '',
-          );
-        })
-        .where((e) => e.value.isNotEmpty)
-        .toList();
+    final rawEntities = TypedJsonReader.readOptionalList(json, 'entity_types');
+    final entityTypes = rawEntities.map((e) {
+      final map = TypedJsonReader.readMap(e, 'entity_type option');
+      return AuditFilterEntityOption(
+        value: TypedJsonReader.readRequiredString(map, 'value'),
+        label: TypedJsonReader.readRequiredString(map, 'label'),
+      );
+    }).toList();
 
     return AuditLogFilterOptionsViewData(
       actors: actors,
@@ -309,14 +332,14 @@ class AuditLogFilterQuery {
 
   @override
   int get hashCode => Object.hash(
-        actorId,
-        action,
-        startDate,
-        endDate,
-        targetType,
-        page,
-        pageSize,
-      );
+    actorId,
+    action,
+    startDate,
+    endDate,
+    targetType,
+    page,
+    pageSize,
+  );
 }
 
 /// Paginated audit log result page.
@@ -344,12 +367,16 @@ class AuditLogPageViewData {
     int pageSize = 20,
     int? resultLimit,
   }) {
-    final count = json['count'] as int? ?? 0;
+    final count =
+        TypedJsonReader.readOptionalInt(json, 'count', minValue: 0) ?? 0;
     final next = json['next'];
-    final rawResults = json['results'] as List<dynamic>? ?? const [];
+    final rawResults = TypedJsonReader.readOptionalList(json, 'results');
     final items = rawResults
-        .map((r) =>
-            AuditLogEntryViewData.fromJson(r as Map<String, dynamic>))
+        .map(
+          (r) => AuditLogEntryViewData.fromJson(
+            TypedJsonReader.readMap(r, 'audit result'),
+          ),
+        )
         .toList();
     return AuditLogPageViewData(
       items: items,

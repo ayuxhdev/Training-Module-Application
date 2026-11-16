@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'report_audit_json_parsers.dart';
+
 /// Presentation view data for a single item in the assignment report.
 @immutable
 class AssignmentReportItemViewData {
@@ -50,9 +52,8 @@ class AssignmentReportItemViewData {
   String get safeTrainingTitle =>
       trainingTitle.trim().isNotEmpty ? trainingTitle : 'Untitled training';
 
-  String get safeVersionTitle => versionTitle.trim().isNotEmpty
-      ? versionTitle
-      : 'Version $versionNumber';
+  String get safeVersionTitle =>
+      versionTitle.trim().isNotEmpty ? versionTitle : 'Version $versionNumber';
 
   bool get hasCertificate => certificateId != null && certificateId! > 0;
   bool get hasCertificateIndicator =>
@@ -60,34 +61,59 @@ class AssignmentReportItemViewData {
   bool get isCompleted => status.toUpperCase() == 'COMPLETED';
 
   factory AssignmentReportItemViewData.fromJson(Map<String, dynamic> json) {
-    final id = json['id'];
-    if (id is! int || id <= 0) {
-      throw const FormatException('Invalid assignment report id.');
-    }
+    const validStatuses = {'ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'};
+    final id = TypedJsonReader.readRequiredInt(json, 'id', minValue: 1);
+    final versionNumber = TypedJsonReader.readRequiredInt(
+      json,
+      'version_number',
+      minValue: 1,
+    );
+    final isOverdue = TypedJsonReader.readRequiredBool(json, 'is_overdue');
+    final assignedAt = TypedJsonReader.readOptionalDateTime(
+      json,
+      'assigned_at',
+    );
+    final status = TypedJsonReader.readEnumString(
+      json,
+      'status',
+      validStatuses,
+    );
+
     return AssignmentReportItemViewData(
       id: id,
-      employeeName: (json['employee_name'] as String?)?.trim() ?? '',
-      employeeCode: (json['employee_code'] as String?)?.trim() ?? '',
-      departmentName: (json['department_name'] as String?)?.trim() ?? '',
-      jobRoleName: (json['job_role_name'] as String?)?.trim() ?? '',
-      trainingTitle: (json['training_title'] as String?)?.trim() ?? '',
-      versionTitle: (json['version_title'] as String?)?.trim() ?? '',
-      versionNumber: json['version_number'] as int? ?? 1,
-      status: (json['status'] as String?)?.trim() ?? 'ASSIGNED',
-      statusDisplay: (json['status_display'] as String?)?.trim() ?? 'Assigned',
-      isOverdue: json['is_overdue'] as bool? ?? false,
-      assignedAt: json['assigned_at'] != null
-          ? DateTime.tryParse(json['assigned_at'] as String)
-          : null,
-      dueAt: json['due_at'] != null
-          ? DateTime.tryParse(json['due_at'] as String)
-          : null,
-      completedAt: json['completed_at'] != null
-          ? DateTime.tryParse(json['completed_at'] as String)
-          : null,
-      certificateId: json['certificate_id'] as int?,
-      certificateNumber: json['certificate_number'] as String?,
-      isCertificateRevoked: json['is_certificate_revoked'] as bool?,
+      employeeName:
+          TypedJsonReader.readOptionalString(json, 'employee_name') ?? '',
+      employeeCode:
+          TypedJsonReader.readOptionalString(json, 'employee_code') ?? '',
+      departmentName:
+          TypedJsonReader.readOptionalString(json, 'department_name') ?? '',
+      jobRoleName:
+          TypedJsonReader.readOptionalString(json, 'job_role_name') ?? '',
+      trainingTitle:
+          TypedJsonReader.readOptionalString(json, 'training_title') ?? '',
+      versionTitle:
+          TypedJsonReader.readOptionalString(json, 'version_title') ?? '',
+      versionNumber: versionNumber,
+      status: status,
+      statusDisplay:
+          TypedJsonReader.readOptionalString(json, 'status_display') ?? status,
+      isOverdue: isOverdue,
+      assignedAt: assignedAt,
+      dueAt: TypedJsonReader.readOptionalDateTime(json, 'due_at'),
+      completedAt: TypedJsonReader.readOptionalDateTime(json, 'completed_at'),
+      certificateId: TypedJsonReader.readOptionalInt(
+        json,
+        'certificate_id',
+        minValue: 1,
+      ),
+      certificateNumber: TypedJsonReader.readOptionalString(
+        json,
+        'certificate_number',
+      ),
+      isCertificateRevoked: TypedJsonReader.readOptionalBool(
+        json,
+        'is_certificate_revoked',
+      ),
     );
   }
 }
@@ -98,10 +124,7 @@ class ReportFilterOption {
   final String value;
   final String label;
 
-  const ReportFilterOption({
-    required this.value,
-    required this.label,
-  });
+  const ReportFilterOption({required this.value, required this.label});
 
   @override
   bool operator ==(Object other) =>
@@ -169,74 +192,90 @@ class AssignmentReportFilterOptionsViewData {
   factory AssignmentReportFilterOptionsViewData.fromJson(
     Map<String, dynamic> json,
   ) {
-    final statuses = (json['statuses'] as List<dynamic>?)
-            ?.map((item) {
-              final map = item as Map<String, dynamic>;
-              return ReportFilterOption(
-                value: (map['value'] as String?)?.trim() ?? '',
-                label: (map['label'] as String?)?.trim() ?? '',
-              );
-            })
-            .where((opt) => opt.value.isNotEmpty)
-            .toList() ??
-        const [
-          ReportFilterOption(value: 'ASSIGNED', label: 'Assigned'),
-          ReportFilterOption(value: 'IN_PROGRESS', label: 'In progress'),
-          ReportFilterOption(value: 'COMPLETED', label: 'Completed'),
-          ReportFilterOption(value: 'CANCELLED', label: 'Cancelled'),
-        ];
+    final rawStatuses = TypedJsonReader.readOptionalList(json, 'statuses');
+    final statuses = rawStatuses
+        .map((item) {
+          final map = TypedJsonReader.readMap(item, 'status option');
+          return ReportFilterOption(
+            value: TypedJsonReader.readRequiredString(map, 'value'),
+            label: TypedJsonReader.readRequiredString(map, 'label'),
+          );
+        })
+        .where((opt) => opt.value.isNotEmpty)
+        .toList();
 
-    final departments = (json['departments'] as List<dynamic>?)
-            ?.map((item) {
-              final map = item as Map<String, dynamic>;
-              return ReportFilterOption(
-                value: '${map['id']}',
-                label: (map['label'] as String?)?.trim() ?? '',
-              );
-            })
-            .where((opt) => opt.value.isNotEmpty && opt.value != 'null')
-            .toList() ??
-        const [];
+    final rawDepts = TypedJsonReader.readOptionalList(json, 'departments');
+    final departments = rawDepts
+        .map((item) {
+          final map = TypedJsonReader.readMap(item, 'department option');
+          final id = map['id'];
+          if (id == null) {
+            throw const FormatException('Missing department option id.');
+          }
+          return ReportFilterOption(
+            value: '$id',
+            label: TypedJsonReader.readRequiredString(map, 'label'),
+          );
+        })
+        .where((opt) => opt.value.isNotEmpty && opt.value != 'null')
+        .toList();
 
-    final jobRoles = (json['job_roles'] as List<dynamic>?)
-            ?.map((item) {
-              final map = item as Map<String, dynamic>;
-              return ReportFilterOption(
-                value: '${map['id']}',
-                label: (map['label'] as String?)?.trim() ?? '',
-              );
-            })
-            .where((opt) => opt.value.isNotEmpty && opt.value != 'null')
-            .toList() ??
-        const [];
+    final rawRoles = TypedJsonReader.readOptionalList(json, 'job_roles');
+    final jobRoles = rawRoles
+        .map((item) {
+          final map = TypedJsonReader.readMap(item, 'job_role option');
+          final id = map['id'];
+          if (id == null) {
+            throw const FormatException('Missing job_role option id.');
+          }
+          return ReportFilterOption(
+            value: '$id',
+            label: TypedJsonReader.readRequiredString(map, 'label'),
+          );
+        })
+        .where((opt) => opt.value.isNotEmpty && opt.value != 'null')
+        .toList();
 
-    final trainings = (json['trainings'] as List<dynamic>?)
-            ?.map((item) {
-              final map = item as Map<String, dynamic>;
-              return ReportFilterOption(
-                value: '${map['id']}',
-                label: (map['label'] as String?)?.trim() ?? '',
-              );
-            })
-            .where((opt) => opt.value.isNotEmpty && opt.value != 'null')
-            .toList() ??
-        const [];
+    final rawTrainings = TypedJsonReader.readOptionalList(json, 'trainings');
+    final trainings = rawTrainings
+        .map((item) {
+          final map = TypedJsonReader.readMap(item, 'training option');
+          final id = map['id'];
+          if (id == null) {
+            throw const FormatException('Missing training option id.');
+          }
+          return ReportFilterOption(
+            value: '$id',
+            label: TypedJsonReader.readRequiredString(map, 'label'),
+          );
+        })
+        .where((opt) => opt.value.isNotEmpty && opt.value != 'null')
+        .toList();
 
-    final trainingVersions = (json['training_versions'] as List<dynamic>?)
-            ?.map((item) {
-              final map = item as Map<String, dynamic>;
-              return ReportVersionFilterOption(
-                id: map['id'] as int? ?? 0,
-                trainingId: map['training_id'] as int? ?? 0,
-                versionNumber: map['version_number'] as int? ?? 1,
-                title: (map['title'] as String?)?.trim() ??
-                    (map['label'] as String?)?.trim() ??
-                    '',
-              );
-            })
-            .where((opt) => opt.id > 0)
-            .toList() ??
-        const [];
+    final rawVersions = TypedJsonReader.readOptionalList(
+      json,
+      'training_versions',
+    );
+    final trainingVersions = rawVersions.map((item) {
+      final map = TypedJsonReader.readMap(item, 'training_version option');
+      return ReportVersionFilterOption(
+        id: TypedJsonReader.readRequiredInt(map, 'id', minValue: 1),
+        trainingId: TypedJsonReader.readRequiredInt(
+          map,
+          'training_id',
+          minValue: 1,
+        ),
+        versionNumber: TypedJsonReader.readRequiredInt(
+          map,
+          'version_number',
+          minValue: 1,
+        ),
+        title:
+            TypedJsonReader.readOptionalString(map, 'title') ??
+            TypedJsonReader.readOptionalString(map, 'label') ??
+            '',
+      );
+    }).toList();
 
     return AssignmentReportFilterOptionsViewData(
       departments: departments,
@@ -298,11 +337,14 @@ class AssignmentReportFilterQuery {
   }) {
     return AssignmentReportFilterQuery(
       status: clearStatus ? null : (status ?? this.status),
-      departmentId: clearDepartment ? null : (departmentId ?? this.departmentId),
+      departmentId: clearDepartment
+          ? null
+          : (departmentId ?? this.departmentId),
       jobRoleId: clearJobRole ? null : (jobRoleId ?? this.jobRoleId),
       trainingId: clearTraining ? null : (trainingId ?? this.trainingId),
-      trainingVersionId:
-          clearTrainingVersion ? null : (trainingVersionId ?? this.trainingVersionId),
+      trainingVersionId: clearTrainingVersion
+          ? null
+          : (trainingVersionId ?? this.trainingVersionId),
       overdueOnly: clearOverdue ? null : (overdueOnly ?? this.overdueOnly),
       page: page ?? this.page,
       pageSize: pageSize ?? this.pageSize,
@@ -344,15 +386,15 @@ class AssignmentReportFilterQuery {
 
   @override
   int get hashCode => Object.hash(
-        status,
-        departmentId,
-        jobRoleId,
-        trainingId,
-        trainingVersionId,
-        overdueOnly,
-        page,
-        pageSize,
-      );
+    status,
+    departmentId,
+    jobRoleId,
+    trainingId,
+    trainingVersionId,
+    overdueOnly,
+    page,
+    pageSize,
+  );
 }
 
 /// Paginated report result page.
@@ -377,12 +419,16 @@ class AssignmentReportPageViewData {
     required int page,
     int pageSize = 20,
   }) {
-    final count = json['count'] as int? ?? 0;
+    final count =
+        TypedJsonReader.readOptionalInt(json, 'count', minValue: 0) ?? 0;
     final next = json['next'];
-    final rawResults = json['results'] as List<dynamic>? ?? const [];
+    final rawResults = TypedJsonReader.readOptionalList(json, 'results');
     final items = rawResults
-        .map((r) =>
-            AssignmentReportItemViewData.fromJson(r as Map<String, dynamic>))
+        .map(
+          (r) => AssignmentReportItemViewData.fromJson(
+            TypedJsonReader.readMap(r, 'report result'),
+          ),
+        )
         .toList();
     return AssignmentReportPageViewData(
       items: items,

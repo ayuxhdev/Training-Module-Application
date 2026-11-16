@@ -192,6 +192,46 @@ void main() {
       expect(item.certificateNumber, isNull);
     });
 
+    test('AssignmentReportItemViewData throws FormatException on malformed assigned_at', () {
+      final jsonMalformedString = {
+        'id': 5,
+        'employee_name': 'Bob Smith',
+        'employee_code': 'EMP005',
+        'department_name': 'Gardening',
+        'job_role_name': 'Horticulturist',
+        'training_title': 'Plant Care Basics',
+        'version_title': 'v1',
+        'version_number': 2,
+        'status': 'ASSIGNED',
+        'status_display': 'Assigned',
+        'is_overdue': true,
+        'assigned_at': 'not-a-date',
+      };
+      expect(
+        () => AssignmentReportItemViewData.fromJson(jsonMalformedString),
+        throwsFormatException,
+      );
+
+      final jsonMalformedType = {
+        'id': 5,
+        'employee_name': 'Bob Smith',
+        'employee_code': 'EMP005',
+        'department_name': 'Gardening',
+        'job_role_name': 'Horticulturist',
+        'training_title': 'Plant Care Basics',
+        'version_title': 'v1',
+        'version_number': 2,
+        'status': 'ASSIGNED',
+        'status_display': 'Assigned',
+        'is_overdue': true,
+        'assigned_at': 12345,
+      };
+      expect(
+        () => AssignmentReportItemViewData.fromJson(jsonMalformedType),
+        throwsFormatException,
+      );
+    });
+
     test(
       'AssignmentReportItemViewData throws FormatException on non-positive ID',
       () {

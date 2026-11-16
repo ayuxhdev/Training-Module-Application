@@ -84,6 +84,12 @@ AssignmentReportFilterOptionsViewData createSampleFilterOptions() {
         versionNumber: 2,
         title: 'Safety Standards v2',
       ),
+      ReportVersionFilterOption(
+        id: 301,
+        trainingId: 101,
+        versionNumber: 1,
+        title: 'Forklift Operation v1',
+      ),
     ],
   );
 }
@@ -381,6 +387,135 @@ void main() {
 
         // Training version dropdown is present because sample options has versions
         expect(find.text('Training version'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'course change on page 3 resets to page 1, clears incompatible version, updates choices, and retains independent filters',
+      (tester) async {
+        setTestViewport(tester);
+        final page = const AssignmentReportPageViewData(
+          items: [],
+          count: 60,
+          hasMore: true,
+          page: 3,
+        );
+        AssignmentReportFilterQuery? capturedQuery;
+
+        // Start on page 3 with independent filters and course 100 with version 201 selected
+        const initialQuery = AssignmentReportFilterQuery(
+          status: 'IN_PROGRESS',
+          departmentId: '1',
+          jobRoleId: '10',
+          overdueOnly: true,
+          trainingId: '100',
+          trainingVersionId: '201',
+          page: 3,
+        );
+
+        await tester.pumpWidget(
+          buildTestableScreen(
+            pageData: page,
+            currentQuery: initialQuery,
+            onQueryChanged: (q) => capturedQuery = q,
+          ),
+        );
+
+        // Open filter sheet
+        await tester.tap(find.byTooltip('Filter options'));
+        await tester.pumpAndSettle();
+
+        // Verify initial state: Safety Standards v1 (v1) is displayed
+        expect(find.text('Safety Standards v1 (v1)'), findsOneWidget);
+
+        // Change course to Forklift Handling (101)
+        await tester.tap(find.text('Greenhouse Safety Protocols'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Forklift Handling').last);
+        await tester.pumpAndSettle();
+
+        // The version dropdown should have reset to 'All versions'
+        expect(find.text('All versions'), findsOneWidget);
+
+        // Open the version dropdown to inspect available choices
+        await tester.tap(find.text('All versions'));
+        await tester.pumpAndSettle();
+
+        // Incompatible versions (Safety Standards v1 & v2) must NOT be choices
+        expect(find.text('Safety Standards v1 (v1)'), findsNothing);
+        expect(find.text('Safety Standards v2 (v2)'), findsNothing);
+
+        // Forklift Operation v1 (v1) MUST be available
+        expect(find.text('Forklift Operation v1 (v1)'), findsOneWidget);
+
+        // Select Forklift Operation v1 (301)
+        await tester.tap(find.text('Forklift Operation v1 (v1)').last);
+        await tester.pumpAndSettle();
+
+        // Apply filters
+        await tester.tap(find.text('Apply filters'));
+        await tester.pumpAndSettle();
+
+        // Verify emitted query
+        expect(capturedQuery, isNotNull);
+        expect(capturedQuery!.trainingId, equals('101'));
+        expect(capturedQuery!.trainingVersionId, equals('301'));
+        // Verify independent filters were preserved
+        expect(capturedQuery!.status, equals('IN_PROGRESS'));
+        expect(capturedQuery!.departmentId, equals('1'));
+        expect(capturedQuery!.jobRoleId, equals('10'));
+        expect(capturedQuery!.overdueOnly, isTrue);
+        expect(capturedQuery!.page, equals(1));
+      },
+    );
+
+    testWidgets(
+      'switching to All courses resets training version and retains other filters',
+      (tester) async {
+        setTestViewport(tester);
+        final page = const AssignmentReportPageViewData(
+          items: [],
+          count: 0,
+          hasMore: false,
+          page: 1,
+        );
+        AssignmentReportFilterQuery? capturedQuery;
+
+        const initialQuery = AssignmentReportFilterQuery(
+          status: 'COMPLETED',
+          departmentId: '2',
+          trainingId: '101',
+          trainingVersionId: '301',
+        );
+
+        await tester.pumpWidget(
+          buildTestableScreen(
+            pageData: page,
+            currentQuery: initialQuery,
+            onQueryChanged: (q) => capturedQuery = q,
+          ),
+        );
+
+        await tester.tap(find.byTooltip('Filter options'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Forklift Handling'), findsOneWidget);
+
+        // Switch to All courses
+        await tester.tap(find.text('Forklift Handling'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('All courses').last);
+        await tester.pumpAndSettle();
+
+        // Apply filters
+        await tester.tap(find.text('Apply filters'));
+        await tester.pumpAndSettle();
+
+        expect(capturedQuery, isNotNull);
+        expect(capturedQuery!.trainingId, isNull);
+        expect(capturedQuery!.trainingVersionId, isNull);
+        expect(capturedQuery!.status, equals('COMPLETED'));
+        expect(capturedQuery!.departmentId, equals('2'));
       },
     );
 
