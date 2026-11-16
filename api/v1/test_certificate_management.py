@@ -367,7 +367,17 @@ class CertificateManagementAPITests(CurriculumTestCase):
         self.actor.save()
         employee = Employee.objects.create(employee_code="CERT-DISABLED", display_name="Disabled",
             user=self.actor, department=self.department, job_role=self.role, date_joined=self.now.date())
-        Employee.objects.filter(pk=employee.pk).update(is_active=False, deactivated_at=timezone.now(), deactivation_reason="Fixture")
+        employee.is_active = False
+        employee.deactivation_reason = "Fixture"
+        employee.save()
+        self.actor.refresh_from_db()
+        self.assertFalse(self.actor.is_active)
+        # Re-enable only the test login to isolate inactive-Employee denial.
+        self.actor.is_active = True
+        self.actor.save(update_fields=["is_active"])
+        employee.refresh_from_db()
+        self.assertFalse(employee.is_active)
+        self.assertIsNotNone(employee.deactivated_at)
         self.login()
         self.assertEqual(self.client.get(self.list_url).status_code, 403)
         self.assertEqual(self.revoke().status_code, 403)
