@@ -18,9 +18,18 @@ class WorkspaceTestAuthController extends AuthController {
 
 void main() {
   Finder cardOf(String title) => find.ancestor(
-        of: find.widgetWithText(ListTile, title),
-        matching: find.byType(Card),
-      );
+    of: find.widgetWithText(ListTile, title),
+    matching: find.byType(Card),
+  );
+
+  void setSpacingViewport(WidgetTester tester) {
+    // Keep every authorized card available for adjacent-card measurements.
+    // The narrow-screen and large-text case uses its own viewport below.
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+  }
 
   Widget createSubject(
     AuthenticatedIdentity identity, {
@@ -58,29 +67,34 @@ void main() {
         },
       );
 
+      setSpacingViewport(tester);
       await tester.pumpWidget(createSubject(identity));
       await tester.pumpAndSettle();
 
       final managementCard = cardOf('Management access');
       final dashboardCard = cardOf('Company dashboard');
+      final reportCard = cardOf('Assignment reports');
       final employeeCard = cardOf('Employee directory');
       final departmentsCard = cardOf('Departments');
       final jobRolesCard = cardOf('Job roles');
 
       expect(managementCard, findsOneWidget);
       expect(dashboardCard, findsOneWidget);
+      expect(reportCard, findsOneWidget);
       expect(employeeCard, findsOneWidget);
       expect(departmentsCard, findsOneWidget);
       expect(jobRolesCard, findsOneWidget);
 
       final managementRect = tester.getRect(managementCard);
       final dashboardRect = tester.getRect(dashboardCard);
+      final reportRect = tester.getRect(reportCard);
       final employeeRect = tester.getRect(employeeCard);
       final departmentsRect = tester.getRect(departmentsCard);
       final jobRolesRect = tester.getRect(jobRolesCard);
 
       expect(dashboardRect.top - managementRect.bottom, AppSpacing.md);
-      expect(employeeRect.top - dashboardRect.bottom, AppSpacing.md);
+      expect(reportRect.top - dashboardRect.bottom, AppSpacing.md);
+      expect(employeeRect.top - reportRect.bottom, AppSpacing.md);
       expect(departmentsRect.top - employeeRect.bottom, AppSpacing.md);
       expect(jobRolesRect.top - departmentsRect.bottom, AppSpacing.md);
     },
@@ -101,29 +115,34 @@ void main() {
         },
       );
 
+      setSpacingViewport(tester);
       await tester.pumpWidget(createSubject(identity));
       await tester.pumpAndSettle();
 
       final teamCard = cardOf('Team access');
       final dashboardCard = cardOf('Team dashboard');
+      final reportCard = cardOf('Assignment reports');
       final employeeCard = cardOf('Employee directory');
       final departmentsCard = cardOf('Departments');
       final jobRolesCard = cardOf('Job roles');
 
       expect(teamCard, findsOneWidget);
       expect(dashboardCard, findsOneWidget);
+      expect(reportCard, findsOneWidget);
       expect(employeeCard, findsOneWidget);
       expect(departmentsCard, findsOneWidget);
       expect(jobRolesCard, findsOneWidget);
 
       final teamRect = tester.getRect(teamCard);
       final dashboardRect = tester.getRect(dashboardCard);
+      final reportRect = tester.getRect(reportCard);
       final employeeRect = tester.getRect(employeeCard);
       final departmentsRect = tester.getRect(departmentsCard);
       final jobRolesRect = tester.getRect(jobRolesCard);
 
       expect(dashboardRect.top - teamRect.bottom, AppSpacing.md);
-      expect(employeeRect.top - dashboardRect.bottom, AppSpacing.md);
+      expect(reportRect.top - dashboardRect.bottom, AppSpacing.md);
+      expect(employeeRect.top - reportRect.bottom, AppSpacing.md);
       expect(departmentsRect.top - employeeRect.bottom, AppSpacing.md);
       expect(jobRolesRect.top - departmentsRect.bottom, AppSpacing.md);
     },
@@ -145,6 +164,7 @@ void main() {
         },
       );
 
+      setSpacingViewport(tester);
       await tester.pumpWidget(createSubject(identity));
       await tester.pumpAndSettle();
 
@@ -181,19 +201,23 @@ void main() {
           },
         );
 
+        setSpacingViewport(tester);
         await tester.pumpWidget(createSubject(identity, theme: theme));
         await tester.pumpAndSettle();
 
         final managementCard = cardOf('Management access');
         final dashboardCard = cardOf('Company dashboard');
+        final reportCard = cardOf('Assignment reports');
         final employeeCard = cardOf('Employee directory');
 
         final managementRect = tester.getRect(managementCard);
         final dashboardRect = tester.getRect(dashboardCard);
+        final reportRect = tester.getRect(reportCard);
         final employeeRect = tester.getRect(employeeCard);
 
         expect(dashboardRect.top - managementRect.bottom, AppSpacing.md);
-        expect(employeeRect.top - dashboardRect.bottom, AppSpacing.md);
+        expect(reportRect.top - dashboardRect.bottom, AppSpacing.md);
+        expect(employeeRect.top - reportRect.bottom, AppSpacing.md);
       },
     );
   }
