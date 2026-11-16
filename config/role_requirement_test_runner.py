@@ -18,7 +18,7 @@ from django.test.runner import DiscoverRunner
 from django.test.utils import iter_test_cases
 
 from .role_requirement_test_config import (
-    UnsafeTestTarget, mark_verified, preflight, required,
+    UnsafeTestTarget, mark_verified, preflight, validate_execution_approval,
     validate_database, validate_settings, verify_identity,
 )
 
@@ -37,6 +37,15 @@ CONCURRENCY_METHODS = frozenset({
     "test_concurrent_requirement_creation_preserves_unique_pair",
 })
 CONCURRENCY_IDS = frozenset(f"{CONCURRENCY_CLASS}.{method}" for method in CONCURRENCY_METHODS)
+_active_runner = None
+
+
+def require_authorized_connection(connection):
+    runner = _active_runner
+    if runner is None or runner.config is not validate_settings(settings):
+        raise UnsafeTestTarget("Database access requires the active guarded runner.")
+    validate_execution_approval(os.environ, runner.config.owner)
+    runner.validate_connection(connection)
 
 
 class RoleRequirementTestRunner(DiscoverRunner):
@@ -44,10 +53,7 @@ class RoleRequirementTestRunner(DiscoverRunner):
         self.config = validate_settings(settings, setup=True)
         if self.parallel not in (0, 1) or not self.keepdb or self.interactive or self.debug_sql:
             raise UnsafeTestTarget("Use --keepdb --noinput --parallel=1; SQL debugging is forbidden.")
-        if required(os.environ, "RR_TEST_ALLOW_CREATE") != "create-new-disposable-schema":
-            raise UnsafeTestTarget("Explicit future schema-creation authorization is required.")
-        if required(os.environ, "RR_TEST_EXCLUSIVE_OWNER") != self.config.owner:
-            raise UnsafeTestTarget("An exclusive owner-approved test window is required.")
+        validate_execution_approval(os.environ, self.config.owner)
         if self.tags or self.exclude_tags or self.test_name_patterns:
             raise UnsafeTestTarget("Filtering this focused checkpoint is not supported.")
         if any(connection.connection is not None for connection in connections.all()):
@@ -59,6 +65,7 @@ class RoleRequirementTestRunner(DiscoverRunner):
         self.original_connect = BaseDatabaseWrapper.connect
         mark_verified(None)
         with ExitStack() as self.stack:
+            self.stack.enter_context(patch(__name__ + "._active_runner", self))
             # This affects only this private runner process, including its threads.
             self.stack.enter_context(patch.object(
                 BaseDatabaseWrapper, "connect",
@@ -103,11 +110,15 @@ class RoleRequirementTestRunner(DiscoverRunner):
             self.log("Required concurrency coverage: 6/6 passed without skips.")
         return failures
 
-    def connect_checked(self, connection):
+    def validate_connection(self, connection):
         maintenance = connection.alias == "__no_db__" and self.phase == "preflight"
         if not maintenance and (connection.alias != "default" or self.phase not in {"migrating", "running"}):
             raise UnsafeTestTarget("Database access outside the verified test lifecycle.")
         validate_database(self.config, connection.settings_dict, maintenance=maintenance)
+        return maintenance
+
+    def connect_checked(self, connection):
+        maintenance = self.validate_connection(connection)
         try:
             self.original_connect(connection)
             # Verify through the DB-API cursor before returning a usable connection.

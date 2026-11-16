@@ -13,6 +13,9 @@ from pathlib import Path
 import runpy
 import secrets
 import stat
+import subprocess
+import sys
+import textwrap
 import shutil
 import tempfile
 from types import SimpleNamespace
@@ -20,6 +23,8 @@ import unittest
 from unittest.mock import MagicMock, Mock, patch
 from uuid import uuid4
 
+from django.db.backends.base.base import BaseDatabaseWrapper
+from django.db.utils import ConnectionHandler
 from django.test import SimpleTestCase, TestCase, TransactionTestCase
 
 from .role_requirement_test_config import (
@@ -28,6 +33,9 @@ from .role_requirement_test_config import (
     validate_database, validate_settings, verify_grants, verify_identity,
 )
 from .role_requirement_test_runner import CONCURRENCY_IDS, RoleRequirementTestRunner, TEST_MODULES
+
+
+REAL_CONNECT = BaseDatabaseWrapper.connect
 
 
 class FakeCursor:
@@ -69,6 +77,43 @@ def grants(config, *, partial_revokes=False):
     schema = config.database if partial_revokes else config.database.replace("_", r"\_")
     return [(f"GRANT USAGE ON *.* TO {recipient}",),
             (f"GRANT {', '.join(sorted(REQUIRED_PRIVILEGES))} ON `{schema}`.* TO {recipient}",)]
+
+
+class DriverCursor(FakeCursor):
+    """DB-API fake below Django's real maintenance and initialization path."""
+
+    def __init__(self, config, database, calls, **changes):
+        super().__init__(config, **changes)
+        self.database = database
+        self.calls = calls
+
+    def fetchone(self):
+        sql = self.calls[-1][0]
+        if sql == IDENTITY_SQL:
+            return identity(self.config, self.database)
+        if sql.strip().startswith("SELECT VERSION()"):
+            return ("8.0.40", "STRICT_TRANS_TABLES", "InnoDB", 0, 0, True)
+        return super().fetchone()
+
+    def close(self):
+        pass
+
+
+class DriverConnection:
+    def __init__(self, config, database, **changes):
+        self.config, self.database, self.changes = config, database, changes
+        self.encoders = {}
+        self.calls = []
+        self.closed = False
+
+    def cursor(self):
+        return DriverCursor(self.config, self.database, self.calls, **self.changes)
+
+    def autocommit(self, enabled):
+        pass
+
+    def close(self):
+        self.closed = True
 
 
 class DisposableHarnessTests(unittest.TestCase):
@@ -145,13 +190,210 @@ class DisposableHarnessTests(unittest.TestCase):
         self.assertNotIn(self.config.secret_key, repr(self.config))
 
     def test_missing_configuration_does_not_fall_back_to_generic_db_environment(self):
-        required_keys = set(self.environment) - {"RR_TEST_ALLOW_CREATE", "RR_TEST_EXCLUSIVE_OWNER"}
+        required_keys = set(self.environment)
         for key in required_keys:
             with self.subTest(key=key):
                 values = {**self.environment, "DB_NAME": "gardens_training", "DB_USER": "root"}
                 del values[key]
                 with self.assertRaises(UnsafeTestTarget):
                     DisposableConfig.from_environment(values)
+
+    def test_backend_rejects_connections_without_active_runner_before_driver(self):
+        from .role_requirement_test_backend.base import DatabaseWrapper
+
+        connection = DatabaseWrapper(self.config.database_settings(), alias="default")
+        with patch("django.db.backends.mysql.base.DatabaseWrapper.get_new_connection") as driver, \
+             self.assertRaisesRegex(UnsafeTestTarget, "active guarded runner"):
+            connection.get_new_connection({})
+        driver.assert_not_called()
+
+    def test_backend_forbids_standard_creation_reuse_clone_and_deletion(self):
+        from .role_requirement_test_backend.base import DatabaseWrapper
+
+        connection = DatabaseWrapper(self.config.database_settings(), alias="default")
+        for keepdb in (False, True):
+            with self.subTest(keepdb=keepdb), \
+                 patch("django.db.backends.base.creation.BaseDatabaseCreation.create_test_db") as create, \
+                 self.assertRaisesRegex(UnsafeTestTarget, "guarded runner"):
+                connection.creation.create_test_db(keepdb=keepdb)
+            create.assert_not_called()
+        for method in ("clone_test_db", "destroy_test_db"):
+            with self.subTest(method=method), \
+                 patch("django.db.backends.base.creation.BaseDatabaseCreation." + method) as operation, \
+                 self.assertRaises(UnsafeTestTarget):
+                getattr(connection.creation, method)()
+            operation.assert_not_called()
+
+    def test_backend_checks_active_lifecycle_and_fresh_approval_before_driver(self):
+        from .role_requirement_test_backend.base import DatabaseWrapper
+
+        connection = DatabaseWrapper(self.config.database_settings(), alias="default")
+        runner = self.runner()
+        for phase in ("discovery", "preflight", "finished", "running"):
+            environment = dict(self.environment)
+            if phase == "running":
+                del environment["RR_TEST_ALLOW_CREATE"]
+            runner.phase = phase
+            with self.subTest(phase=phase), patch.dict(os.environ, environment, clear=True), \
+                 patch("config.role_requirement_test_runner._active_runner", runner), \
+                 patch("config.role_requirement_test_runner.settings", self.settings()), \
+                 patch("django.db.backends.mysql.base.DatabaseWrapper.get_new_connection") as driver, \
+                 self.assertRaises(UnsafeTestTarget):
+                connection.get_new_connection({})
+            driver.assert_not_called()
+        runner.phase = "running"
+        with patch.dict(os.environ, self.environment, clear=True), \
+             patch("config.role_requirement_test_runner._active_runner", runner), \
+             patch("config.role_requirement_test_runner.settings", self.settings()), \
+             patch("django.db.backends.mysql.base.DatabaseWrapper.get_new_connection", return_value="mock connection") as driver:
+            self.assertEqual(connection.get_new_connection({}), "mock connection")
+        driver.assert_called_once_with({})
+
+    def test_runner_override_and_missing_approvals_fail_closed_in_subprocess(self):
+        script = textwrap.dedent("""
+            import sys
+            from unittest.mock import patch
+            from config.role_requirement_test_config import UnsafeTestTarget
+            with patch('MySQLdb.connect', side_effect=AssertionError('Database forbidden')) as database, \
+                 patch('socket.socket.connect', side_effect=AssertionError('Network forbidden')) as network, \
+                 patch('django.db.backends.base.creation.BaseDatabaseCreation.create_test_db', side_effect=AssertionError('Schema operation forbidden')) as create, \
+                 patch('django.db.migrations.executor.MigrationExecutor.migrate', side_effect=AssertionError('Migration forbidden')) as migrate:
+                from django.core.management import execute_from_command_line
+                try:
+                    execute_from_command_line(['manage.py', 'test', 'api.v1.test_role_requirements',
+                        '--settings=config.role_requirement_test_settings',
+                        '--testrunner=django.test.runner.DiscoverRunner', '--noinput', '--verbosity=0', *sys.argv[1:]])
+                except UnsafeTestTarget as exc:
+                    if not ('guarded runner' in str(exc) or 'RR_TEST_' in str(exc)):
+                        raise
+                else:
+                    raise AssertionError('Runner override was not rejected')
+                for guard in (database, network, create, migrate):
+                    guard.assert_not_called()
+                print('Rejected before database, network, schema or migration access')
+        """)
+        cases = (
+            ((), None), (("--keepdb",), None), (("--keepdb", "--parallel=2"), None),
+            (("--keepdb",), "RR_TEST_ALLOW_CREATE"),
+            (("--keepdb",), "RR_TEST_EXCLUSIVE_OWNER"),
+        )
+        for arguments, missing in cases:
+            environment = {**os.environ, **self.environment}
+            environment.pop("DJANGO_SETTINGS_MODULE", None)
+            if missing:
+                del environment[missing]
+            with self.subTest(arguments=arguments, missing=missing):
+                result = subprocess.run(
+                    [sys.executable, "-B", "-c", script, *arguments], env=environment,
+                    cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=30,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("Rejected before database, network, schema or migration access", result.stdout)
+
+    def configure_standalone_django(self):
+        import django
+        from django.conf import settings
+
+        if not settings.configured:
+            with patch.dict(os.environ, self.environment, clear=True), \
+                 patch("dotenv.load_dotenv", side_effect=AssertionError("No .env access")):
+                values = runpy.run_module(PROFILE, run_name="config._rr_discovery_settings")
+            settings.configure(**{key: value for key, value in values.items() if key.isupper()})
+        django.setup()
+
+    def real_connection_runner(self, **driver_changes):
+        self.configure_standalone_django()
+        connections = ConnectionHandler({"default": self.config.database_settings()})
+        opened = []
+
+        def driver(**parameters):
+            self.assertEqual(parameters["host"], "127.0.0.1")
+            self.assertEqual(parameters["port"], 3308)
+            self.assertEqual(parameters["user"], self.config.user)
+            database = parameters.get("database")
+            self.assertIn(database, (None, self.config.database))
+            fake = DriverConnection(self.config, database, **driver_changes)
+            opened.append(fake)
+            return fake
+
+        self.enterContext(patch.dict(os.environ, self.environment, clear=True))
+        self.enterContext(patch("config.role_requirement_test_runner.settings", self.settings()))
+        self.enterContext(patch("config.role_requirement_test_runner.connections", connections))
+        self.enterContext(patch.object(BaseDatabaseWrapper, "connect", REAL_CONNECT))
+        self.enterContext(patch("django.db.backends.base.base.RAN_DB_VERSION_CHECK", set()))
+        driver_mock = self.enterContext(patch("MySQLdb.connect", side_effect=driver))
+        migrate = self.enterContext(patch("config.role_requirement_test_runner.call_command"))
+        self.addCleanup(connections.close_all)
+        return self.runner(), connections, opened, driver_mock, migrate
+
+    def test_real_maintenance_connection_initializes_before_create_and_migration(self):
+        runner, connections, opened, driver, migrate = self.real_connection_runner()
+
+        def checkpoint(instance, labels, **kwargs):
+            instance.setup_databases(aliases={"default": False}, serialized_aliases=set())
+            self.assertEqual([item.database for item in opened], [None, self.config.database])
+            maintenance = opened[0]
+            statements = [sql for sql, _ in maintenance.calls]
+            self.assertTrue(any("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED" in sql for sql in statements))
+            schema_lookup = next(i for i, sql in enumerate(statements) if "SCHEMATA" in sql)
+            schema_create = next(i for i, sql in enumerate(statements) if sql.startswith("CREATE DATABASE"))
+            self.assertLess(schema_lookup, schema_create)
+            self.assertEqual(sum(sql.startswith("CREATE DATABASE") for sql in statements), 1)
+            self.assertFalse(maintenance.closed, "Maintenance lock must remain held during the run")
+            migrate.assert_called_once_with("migrate", database="default", interactive=False, verbosity=0, run_syncdb=True)
+            self.assertTrue(any(sql == IDENTITY_SQL for sql, _ in opened[1].calls))
+            instance.teardown_databases(self.config.database)
+            return 0
+
+        with patch("django.test.runner.DiscoverRunner.run_tests", checkpoint):
+            self.assertEqual(runner.run_tests(), 0)
+        self.assertEqual(driver.call_count, 2)
+        self.assertTrue(all(item.closed for item in opened))
+        self.assertIsNone(connections["default"].connection)
+        from . import role_requirement_test_runner as module
+        self.assertIsNone(module._active_runner)
+
+    def test_real_nodb_cursor_without_active_runner_is_denied_before_driver(self):
+        runner, connections, opened, driver, migrate = self.real_connection_runner()
+        with self.assertRaisesRegex(UnsafeTestTarget, "active guarded runner"):
+            with connections["default"]._nodb_cursor():
+                self.fail("Unauthorized maintenance cursor was returned")
+        driver.assert_not_called()
+        migrate.assert_not_called()
+        self.assertEqual(opened, [])
+
+    def test_real_maintenance_rechecks_approval_before_driver(self):
+        for missing in ("RR_TEST_ALLOW_CREATE", "RR_TEST_EXCLUSIVE_OWNER"):
+            with self.subTest(missing=missing):
+                runner, _, opened, driver, migrate = self.real_connection_runner()
+
+                def checkpoint(instance, labels, **kwargs):
+                    # Lose approval after run_tests() validates it, before the
+                    # real maintenance connection reaches the backend gate.
+                    del os.environ[missing]
+                    return instance.setup_databases(aliases={"default": False}, serialized_aliases=set())
+
+                with patch("django.test.runner.DiscoverRunner.run_tests", checkpoint), \
+                     self.assertRaisesRegex(UnsafeTestTarget, "verification failed"):
+                    runner.run_tests()
+                driver.assert_not_called()
+                migrate.assert_not_called()
+                self.assertEqual(opened, [])
+
+    def test_real_maintenance_collision_never_creates_reuses_or_migrates(self):
+        runner, _, opened, driver, migrate = self.real_connection_runner(collision=True)
+
+        def checkpoint(instance, labels, **kwargs):
+            return instance.setup_databases(aliases={"default": False}, serialized_aliases=set())
+
+        with patch("django.test.runner.DiscoverRunner.run_tests", checkpoint), \
+             self.assertRaisesRegex(UnsafeTestTarget, "Schema collision"):
+            runner.run_tests()
+        driver.assert_called_once()
+        self.assertEqual(opened[0].database, None)
+        self.assertTrue(opened[0].closed)
+        self.assertFalse(any(sql.startswith(("CREATE", "DROP", "ALTER")) for sql, _ in opened[0].calls))
+        migrate.assert_not_called()
 
     def test_protected_and_non_guid_names_rejected(self):
         for name in (*PROTECTED_DATABASES, "test_other", "test_gn_rr_20261113_not-a-guid",
@@ -170,6 +412,7 @@ class DisposableHarnessTests(unittest.TestCase):
             "RR_TEST_USER": "root", "RR_TEST_ACCOUNT": self.config.user + "@%",
             "RR_TEST_ISOLATION": "repeatable read", "RR_TEST_PASSWORD": "",
             "RR_TEST_SECRET_KEY": "weak", "RR_TEST_OPTIONS": "redirect",
+            "RR_TEST_ALLOW_CREATE": "true", "RR_TEST_EXCLUSIVE_OWNER": uuid4().hex,
         }
         for key, value in bad_values.items():
             with self.subTest(key=key), self.assertRaises(UnsafeTestTarget):
@@ -347,17 +590,10 @@ class DisposableHarnessTests(unittest.TestCase):
     def test_real_discovery_excludes_exactly_six_and_dedicated_runner_includes_them(self):
         # Configure only synthetic settings when invoked via plain unittest.
         # An existing Django test invocation retains its own settings unchanged.
-        import django
-        from django.conf import settings
         from django.test.runner import DiscoverRunner
         from django.test.utils import iter_test_cases
 
-        if not settings.configured:
-            with patch.dict(os.environ, self.environment, clear=True), \
-                 patch("dotenv.load_dotenv", side_effect=AssertionError("No .env access")):
-                values = runpy.run_module(PROFILE, run_name="config._rr_discovery_settings")
-            settings.configure(**{key: value for key, value in values.items() if key.isupper()})
-        django.setup()
+        self.configure_standalone_django()
         options = dict(verbosity=0, enable_faulthandler=False)
         all_tests = DiscoverRunner(**options).build_suite(TEST_MODULES)
         ordinary = DiscoverRunner(exclude_tags={"role_requirement_isolated_mysql"}, **options).build_suite(TEST_MODULES)
@@ -389,7 +625,8 @@ class DisposableHarnessTests(unittest.TestCase):
     def test_python_311_grammar_and_actual_concurrency_method_contract(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("role_requirement_test_config.py", "role_requirement_test_runner.py",
-                     "role_requirement_test_settings.py"):
+                     "role_requirement_test_settings.py", "role_requirement_test_backend/base.py",
+                     "role_requirement_test_backend/__init__.py"):
             ast.parse((root / "config" / name).read_text(encoding="utf-8"), feature_version=(3, 11))
         tree = ast.parse((root / "api/v1/test_role_requirement_concurrency.py").read_text(encoding="utf-8"))
         case = next(node for node in tree.body if isinstance(node, ast.ClassDef)

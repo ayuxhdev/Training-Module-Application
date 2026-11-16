@@ -21,6 +21,7 @@ PROTECTED_DATABASES = frozenset({
 })
 RUNNER = "config.role_requirement_test_runner.RoleRequirementTestRunner"
 PROFILE = "config.role_requirement_test_settings"
+ENGINE = "config.role_requirement_test_backend"
 REQUIRED_PRIVILEGES = frozenset({
     "SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "INDEX", "REFERENCES",
 })
@@ -70,6 +71,7 @@ class DisposableConfig:
         owner = required(environment, "RR_TEST_OWNER")
         if owner != match[2] or required(environment, "RR_TEST_APPROVED_DATABASE") != database:
             raise UnsafeTestTarget("Explicit database approval and ownership must match.")
+        validate_execution_approval(environment, owner)
         if required(environment, "RR_TEST_HOST") != "127.0.0.1" or required(environment, "RR_TEST_PORT") != "3308":
             raise UnsafeTestTarget("Only the separately provisioned 127.0.0.1:3308 target is allowed.")
         server_uuid = required(environment, "RR_TEST_SERVER_UUID")
@@ -93,7 +95,7 @@ class DisposableConfig:
 
     def database_settings(self):
         return {
-            "ENGINE": "django.db.backends.mysql", "NAME": self.database,
+            "ENGINE": ENGINE, "NAME": self.database,
             "USER": self.user, "PASSWORD": self.password, "HOST": "127.0.0.1", "PORT": "3308",
             "OPTIONS": {"charset": "utf8mb4", "isolation_level": "read committed", "connect_timeout": 5},
             "ATOMIC_REQUESTS": False, "AUTOCOMMIT": True, "CONN_MAX_AGE": 0,
@@ -101,6 +103,13 @@ class DisposableConfig:
             "TEST": {"NAME": self.database, "CHARSET": "utf8mb4", "COLLATION": "utf8mb4_0900_ai_ci",
                      "MIGRATE": True, "MIRROR": None, "DEPENDENCIES": []},
         }
+
+
+def validate_execution_approval(environment, owner):
+    if required(environment, "RR_TEST_ALLOW_CREATE") != "create-new-disposable-schema":
+        raise UnsafeTestTarget("Explicit schema-creation authorization is required.")
+    if required(environment, "RR_TEST_EXCLUSIVE_OWNER") != owner:
+        raise UnsafeTestTarget("An exclusive owner-approved test window is required.")
 
 
 def validate_media(value, owner):

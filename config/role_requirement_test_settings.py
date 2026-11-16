@@ -2,6 +2,8 @@
 
 Execution additionally requires RR_TEST_ALLOW_CREATE=create-new-disposable-schema
 and RR_TEST_EXCLUSIVE_OWNER matching the owner GUID. Nothing is provisioned here.
+The configured test-only MySQL backend blocks replacement runners and direct
+database commands independently of the TEST_RUNNER default.
 """
 
 from datetime import timedelta
