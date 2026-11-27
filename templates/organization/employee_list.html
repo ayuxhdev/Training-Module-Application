@@ -1,13 +1,70 @@
 {% extends "base.html" %}
 {% block title %}Employees | Garden's Need Training{% endblock %}
 {% block content %}
-<div class="org-workspace">
+<div class="org-workspace management-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li><a href="{% url 'reports:dashboard' %}">Dashboard</a></li>
+      <li aria-current="page">Employees</li>
+    </ol>
+  </nav>
   <header class="page-header">
     <div class="page-header-main"><h1>Employees</h1><p class="muted">Employee profiles and reporting relationships</p></div>
-    {% if perms.organization.add_employee %}<a class="btn btn-primary" href="{% url 'organization:employee-create' %}">Add employee</a>{% endif %}
+    <div class="page-header-actions">
+      {% if shell_role and shell_role != 'employee' %}
+        <a class="btn btn-secondary" href="{% url 'training:assignment-list' %}">Team assignments</a>
+        <a class="btn btn-secondary" href="{% url 'reports:assignment-report' %}">Assignment report</a>
+      {% endif %}
+      {% if perms.organization.add_employee %}<a class="btn btn-primary" href="{% url 'organization:employee-create' %}">Add employee</a>{% endif %}
+    </div>
   </header>
   <section class="org-panel" aria-labelledby="employee-directory-heading">
-    <header class="org-panel-heading"><h2 id="employee-directory-heading">Employee directory</h2><p>Organization, reporting and employment status</p></header>
+    <header class="org-panel-heading">
+      <div class="management-section-copy">
+        <h2 id="employee-directory-heading">Employee directory</h2>
+        <p>Organization, reporting and employment status</p>
+      </div>
+    </header>
+    <form method="get" action="{% url 'organization:employee-list' %}" class="form-stack catalog-form" aria-label="Filter employee directory">
+      {% if filter_form.errors %}<p class="catalog-validation" role="alert">Please correct the highlighted filters.</p>{% endif %}
+      <div class="catalog-fields">
+        {% for field in filter_form %}
+          <div>
+            {{ field.label_tag }}
+            {{ field }}
+            {{ field.errors }}
+          </div>
+        {% endfor %}
+      </div>
+      <div class="catalog-form-actions">
+        <button class="btn btn-primary" type="submit">Apply filters</button>
+        <a class="btn btn-secondary" href="{% url 'organization:employee-list' %}">Clear filters</a>
+      </div>
+    </form>
+    <div class="management-results-bar">
+      {% if paginator.count %}
+        <p class="muted" aria-live="polite">Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ paginator.count }} employees.</p>
+      {% else %}
+        <p class="muted" aria-live="polite">Showing 0 employees.</p>
+      {% endif %}
+      {% if page_obj.has_other_pages %}
+        <nav class="record-actions" aria-label="Employee directory pages">
+          {% if page_obj.has_previous %}
+            <a class="btn btn-secondary" rel="prev" aria-label="Previous employee page"
+               href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+          {% else %}
+            <span class="btn btn-secondary" aria-disabled="true">Previous</span>
+          {% endif %}
+          <span class="muted" aria-current="page">Page {{ page_obj.number }} of {{ paginator.num_pages }}</span>
+          {% if page_obj.has_next %}
+            <a class="btn btn-secondary" rel="next" aria-label="Next employee page"
+               href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+          {% else %}
+            <span class="btn btn-secondary" aria-disabled="true">Next</span>
+          {% endif %}
+        </nav>
+      {% endif %}
+    </div>
     <p class="management-scroll-hint" id="employee-table-help">Scroll horizontally if needed. Keyboard: focus this table region and use the arrow keys.</p>
     <div class="table-scroll org-table-scroll management-table-region" role="region" aria-label="Employees" aria-describedby="employee-table-help" tabindex="0">
       <table class="org-table">
@@ -26,7 +83,7 @@
             </div></td>
           </tr>
         {% empty %}
-          <tr><td class="org-table-empty" colspan="6">No employees available.</td></tr>
+          <tr><td class="org-table-empty" colspan="6">No employees match the current filters.</td></tr>
         {% endfor %}
         </tbody>
       </table>

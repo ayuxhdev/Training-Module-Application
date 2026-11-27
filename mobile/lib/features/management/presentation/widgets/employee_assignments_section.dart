@@ -209,7 +209,7 @@ class _EmployeeAssignmentsSectionState
                                   ),
                                   const SizedBox(width: 6),
                                   Text(
-                                    'Deadline: ${localDateLabel(assignment.dueAt!)}',
+                                    'Deadline: ${assignmentDeadlineLabel(assignment.dueAt!)}',
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: assignment.isOverdue
                                           ? colors.error

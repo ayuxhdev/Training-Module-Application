@@ -6,6 +6,7 @@ from unittest import skipUnless
 from unittest.mock import patch
 from uuid import uuid4
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
@@ -13,18 +14,22 @@ from django.db import close_old_connections, connection, models
 from django.test import SimpleTestCase
 
 from audit.models import AuditLog
+from config.role_requirement_test_config import ENGINE, require_verified_database
 from organization.models import Department, Employee, JobRole
 
 from . import system_admin_services as services
 
 
-@skipUnless(connection.vendor == "mysql", "MySQL row-lock concurrency tests require MySQL.")
+@skipUnless(
+    settings.DATABASES.get("default", {}).get("ENGINE") == ENGINE
+    and hasattr(settings, "INTEGRATION_TEST_CONFIG"),
+    "Requires the explicitly approved guarded MySQL integration profile.",
+)
 class SystemAccountLinkConcurrencyTests(SimpleTestCase):
     databases = {"default"}
 
     def setUp(self):
-        self.assertEqual(connection.vendor, "mysql")
-        self.assertEqual(connection.settings_dict["NAME"], "test_gardens_training")
+        require_verified_database(connection, settings)
         self.assertTrue(connection.get_autocommit())
         self.marker = "st2-" + uuid4().hex[:16]
         self.user_ids = []
@@ -60,7 +65,7 @@ class SystemAccountLinkConcurrencyTests(SimpleTestCase):
     def cleanup_fixtures(self):
         # Delete only this test's exact newly committed records. Never flush,
         # reset sequences, touch role bootstrap or remove existing QA records.
-        self.assertEqual(connection.settings_dict["NAME"], "test_gardens_training")
+        require_verified_database(connection, settings)
         created = get_user_model().objects.filter(username=self.marker + "-created").values_list("pk", flat=True)
         self.user_ids.extend(created)
         for model, filters in (
@@ -97,7 +102,7 @@ class SystemAccountLinkConcurrencyTests(SimpleTestCase):
             thread.role = role
             close_old_connections()
             try:
-                self.assertEqual(connection.settings_dict["NAME"], "test_gardens_training")
+                require_verified_database(connection, settings)
                 with connection.cursor() as cursor:
                     cursor.execute("SET SESSION innodb_lock_wait_timeout=10")
                 try:

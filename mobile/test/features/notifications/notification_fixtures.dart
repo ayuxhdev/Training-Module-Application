@@ -73,6 +73,8 @@ void stubNotifications(MockNotificationRepository repository) {
   when(
     () => repository.getPage(
       page: any(named: 'page'),
+      status: any(named: 'status'),
+      query: any(named: 'query'),
       cancelToken: any(named: 'cancelToken'),
     ),
   ).thenAnswer((_) async => noticePage());
@@ -87,4 +89,7 @@ void stubNotifications(MockNotificationRepository repository) {
       .thenAnswer((_) async => 1);
 }
 
-void registerNotificationFallbacks() => registerFallbackValue(CancelToken());
+void registerNotificationFallbacks() {
+  registerFallbackValue(CancelToken());
+  registerFallbackValue(NotificationReadFilter.all);
+}

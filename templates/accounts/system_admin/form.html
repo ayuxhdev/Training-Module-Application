@@ -4,8 +4,8 @@
 {% block system_content %}
 <section class="org-panel org-editor" aria-labelledby="account-operation-heading">
   <header class="org-panel-heading"><h2 id="account-operation-heading">{% if account %}{{ account.username }}{% else %}Account information{% endif %}</h2><p>Fields marked with an asterisk are required.</p></header>
-  <p class="muted">This center does not set passwords, deliver credentials, activate accounts or grant technical staff/Superuser access. Employee links cannot be replaced.</p>
   <form method="post" class="form-stack org-form">
+    <p class="muted">This center does not set passwords, deliver credentials, activate accounts or grant technical staff/Superuser access. Employee links cannot be replaced.</p>
     {% csrf_token %}
     {% if form.errors %}<p class="org-validation" role="alert">Please correct the errors below. Your entries have been preserved.</p>{% endif %}
     {{ form.non_field_errors }}

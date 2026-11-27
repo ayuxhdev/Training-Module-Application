@@ -1,4 +1,4 @@
-{% load static %}
+{% load static notification_tags %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Garden's Need Training{% endblock %}</title>
   <script src="{% static 'accounts/appearance.js' %}"></script>
+  <link rel="icon" type="image/x-icon" sizes="16x16 32x32 48x48" href="{% static 'accounts/brand/gardens_need_favicon.ico' %}">
   <link rel="stylesheet" href="{% static 'accounts/shell.css' %}">
 </head>
 <body>
@@ -14,19 +15,22 @@
   <div class="application-shell">
     <header class="app-topbar">
       <div class="topbar-brand-group">
-        <a class="site-brand" href="{% url 'reports:dashboard' %}">Garden's Need Training<span class="site-brand-caption">Training workspace</span></a>
+        <a class="site-brand" href="{% url 'reports:dashboard' %}">{% include "components/brand_logo.html" %}<span class="site-brand-caption">Training workspace</span></a>
         <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Toggle primary navigation" aria-controls="app-sidebar" aria-expanded="false">
           <span aria-hidden="true">Menu</span>
         </button>
       </div>
       <div class="account-controls">
         <span class="signed-in-user">Signed in as {% if user.get_full_name %}{{ user.get_full_name }}{% else %}{{ user.get_username }}{% endif %}</span>
-        <a class="btn btn-secondary" href="{% url 'accounts:profile' %}"{% if request.resolver_match.view_name == 'accounts:profile' %} aria-current="page"{% endif %}>Profile</a>
-        {% include "components/appearance_control.html" %}
-        <form method="post" action="{% url 'accounts:logout' %}">
-          {% csrf_token %}
-          <button class="btn btn-secondary" type="submit">Log out</button>
-        </form>
+        <div class="account-actions">
+          {% notification_bell %}
+          <a class="btn btn-secondary" href="{% url 'accounts:profile' %}"{% if request.resolver_match.view_name == 'accounts:profile' %} aria-current="page"{% endif %}>Profile</a>
+          {% include "components/appearance_control.html" %}
+          <form method="post" action="{% url 'accounts:logout' %}">
+            {% csrf_token %}
+            <button class="btn btn-secondary" type="submit">Log out</button>
+          </form>
+        </div>
       </div>
     </header>
 
@@ -37,8 +41,8 @@
             <h2 id="nav-workspace-heading" class="nav-section-heading">Workspace</h2>
             <ul>
               <li><a class="nav-link{% if current_route == 'dashboard' %} is-active{% endif %}" href="{% url 'reports:dashboard' %}"{% if current_route == 'dashboard' %} aria-current="page"{% endif %}>{% include "components/nav_icon.html" with icon="dashboard" %}Dashboard</a></li>
-              {% if shell_role == 'employee' %}
-                <li><a class="nav-link{% if current_route == 'assignment-list' or current_route == 'assignment-detail' or current_route == 'learner-overview' or current_route == 'attempt-start' or current_route == 'attempt-detail' or current_route == 'attempt-submit' %} is-active{% endif %}" href="{% url 'training:assignment-list' %}"{% if current_route == 'assignment-list' or current_route == 'assignment-detail' or current_route == 'learner-overview' or current_route == 'attempt-start' or current_route == 'attempt-detail' or current_route == 'attempt-submit' %} aria-current="page"{% endif %}>{% include "components/nav_icon.html" with icon="assignment" %}My training</a></li>
+              {% if shell_role and user.is_active and user.employee.is_active %}
+                <li><a class="nav-link{% if current_route == 'assignment-list' and personal_assignments or current_route == 'assignment-detail' and can_learn or current_route == 'learner-overview' or current_route == 'attempt-start' or current_route == 'attempt-detail' or current_route == 'attempt-submit' %} is-active{% endif %}" href="{% url 'training:assignment-list' %}{% if shell_role != 'employee' %}?scope=mine{% endif %}"{% if current_route == 'assignment-list' and personal_assignments or current_route == 'assignment-detail' and can_learn or current_route == 'learner-overview' or current_route == 'attempt-start' or current_route == 'attempt-detail' or current_route == 'attempt-submit' %} aria-current="page"{% endif %}>{% include "components/nav_icon.html" with icon="assignment" %}My training</a></li>
               {% endif %}
               {% if shell_can_view_certificates %}
                 <li><a class="nav-link{% if current_route == 'certificate-list' or current_route == 'certificate-detail' or current_route == 'certificate-revoke' %} is-active{% endif %}" href="{% url 'certifications:certificate-list' %}"{% if current_route == 'certificate-list' or current_route == 'certificate-detail' or current_route == 'certificate-revoke' %} aria-current="page"{% endif %}>{% include "components/nav_icon.html" with icon="certificate" %}Certificates</a></li>
@@ -60,7 +64,7 @@
                   <li><a class="nav-link{% if current_route == 'job-role-list' or current_route == 'job-role-create' or current_route == 'job-role-update' %} is-active{% endif %}" href="{% url 'organization:job-role-list' %}"{% if current_route == 'job-role-list' or current_route == 'job-role-create' or current_route == 'job-role-update' %} aria-current="page"{% endif %}>{% include "components/nav_icon.html" with icon="roles" %}Job roles</a></li>
                 {% endif %}
                 {% if shell_role and shell_role != 'employee' %}
-                  <li><a class="nav-link{% if current_route == 'assignment-list' or current_route == 'assignment-create' or current_route == 'role-assignment-create' or current_route == 'role-requirement-list' or current_route == 'role-requirement-create' or current_route == 'role-requirement-update' or current_route == 'assignment-detail' %} is-active{% endif %}" href="{% url 'training:assignment-list' %}"{% if current_route == 'assignment-list' or current_route == 'assignment-create' or current_route == 'role-assignment-create' or current_route == 'role-requirement-list' or current_route == 'role-requirement-create' or current_route == 'role-requirement-update' or current_route == 'assignment-detail' %} aria-current="page"{% endif %}>{% include "components/nav_icon.html" with icon="assignment" %}Assignments</a></li>
+                  <li><a class="nav-link{% if current_route == 'assignment-list' and not personal_assignments or current_route == 'assignment-create' or current_route == 'role-assignment-create' or current_route == 'role-requirement-list' or current_route == 'role-requirement-create' or current_route == 'role-requirement-update' or current_route == 'assignment-detail' and not can_learn %} is-active{% endif %}" href="{% url 'training:assignment-list' %}"{% if current_route == 'assignment-list' and not personal_assignments or current_route == 'assignment-create' or current_route == 'role-assignment-create' or current_route == 'role-requirement-list' or current_route == 'role-requirement-create' or current_route == 'role-requirement-update' or current_route == 'assignment-detail' and not can_learn %} aria-current="page"{% endif %}>{% include "components/nav_icon.html" with icon="assignment" %}Assignments</a></li>
                 {% endif %}
               </ul>
             </section>
@@ -110,7 +114,7 @@
     <div class="app-main">
 {% else %}
   <header class="site-header">
-    <a class="site-brand" href="{% url 'accounts:login' %}">Garden's Need Training</a>
+    <a class="site-brand" href="{% url 'accounts:login' %}">{% include "components/brand_logo.html" %}</a>
     {% include "components/appearance_control.html" %}
   </header>
 {% endif %}

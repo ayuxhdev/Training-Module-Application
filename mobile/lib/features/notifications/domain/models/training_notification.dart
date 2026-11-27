@@ -1,5 +1,37 @@
 enum NotificationType { assigned, approaching, overdue, completed }
 
+enum NotificationReadFilter {
+  all,
+  unread,
+  read;
+
+  String get label => switch (this) {
+    NotificationReadFilter.all => 'All',
+    NotificationReadFilter.unread => 'Unread',
+    NotificationReadFilter.read => 'Read',
+  };
+}
+
+List<TrainingNotification> filterTrainingNotifications(
+  List<TrainingNotification> items, {
+  NotificationReadFilter filter = NotificationReadFilter.all,
+  String query = '',
+}) {
+  final trimmed = query.trim().toLowerCase();
+  return items.where((item) {
+    if (filter == NotificationReadFilter.unread && item.isRead) return false;
+    if (filter == NotificationReadFilter.read && !item.isRead) return false;
+    if (trimmed.isNotEmpty) {
+      final title = item.title.toLowerCase();
+      final message = item.message.toLowerCase();
+      if (!title.contains(trimmed) && !message.contains(trimmed)) {
+        return false;
+      }
+    }
+    return true;
+  }).toList();
+}
+
 int notificationInteger(Object? value, {int minimum = 0}) {
   if (value is! int || value < minimum) {
     throw const FormatException('Invalid notification integer.');

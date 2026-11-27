@@ -10,6 +10,9 @@ import 'package:training_app/core/presentation/formatters/date_labels.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:training_app/features/certificates/domain/models/certificate_print_data.dart';
+import 'package:training_app/features/certificates/presentation/widgets/certificate_print_section.dart';
+import 'package:training_app/features/management/data/repositories/management_repository.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 
@@ -261,9 +264,16 @@ class _ManagedCertificateDetailScreenState
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
-                const CinematicNotice(
-                  message: "Need a printed copy? Sign in to the Garden's Need website, open this certificate and choose Print certificate.",
-                  icon: Icons.info_outline,
+                CertificatePrintSection(
+                  refresh: (requests) async =>
+                      CertificatePrintData.fromManagedCertificateDetail(
+                        await ref
+                            .read(managementRepositoryProvider)
+                            .certificateDetail(cert.id, cancelToken: requests),
+                      ),
+                  printData: CertificatePrintData.fromManagedCertificateDetail(
+                    cert,
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 if (!cert.isRevoked && canRevokeCertificate(identity))

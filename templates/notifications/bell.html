@@ -1,0 +1,6 @@
+{% if notifications_available %}
+<a class="btn btn-secondary" href="{% url 'notifications:inbox' %}" aria-label="Notifications, {{ notification_unread_count }} unread"{% if notifications_current %} aria-current="page"{% endif %}>
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+  Notifications{% if notification_unread_count %} <span class="status-badge" aria-hidden="true">{{ notification_unread_count }}</span>{% endif %}
+</a>
+{% endif %}

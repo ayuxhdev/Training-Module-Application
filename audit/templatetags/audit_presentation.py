@@ -168,6 +168,15 @@ def audit_display_value(value, field_name=""):
     return str(value)
 
 
+@register.filter
+def audit_value_structure(value):
+    if isinstance(value, dict):
+        return {"kind": "mapping", "entries": value.items()}
+    if isinstance(value, list):
+        return {"kind": "sequence", "entries": value}
+    return None
+
+
 METADATA_FIELDS = {"changed_fields"}
 
 

@@ -3,17 +3,15 @@
 {% block title %}Audit history | Garden's Need Training{% endblock %}
 {% block content %}
 <style>
-  .audit-workspace { display: grid; gap: var(--space-4); min-width: 0; }
-  .audit-heading { margin-bottom: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-hero); box-shadow: var(--shadow-sm); }
-  .audit-heading p { margin: var(--space-2) 0 0; color: var(--color-text-muted); }
-  .audit-panel { min-width: 0; padding: clamp(1rem, 2.5vw, 1.5rem); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+  .audit-heading { padding: var(--management-inset); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-hero); box-shadow: var(--shadow-sm); }
+  .audit-panel { min-width: 0; padding: var(--management-inset); border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
   .audit-panel h2 { margin: 0; }
   .audit-filter-form { max-width: none; grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr)); align-items: start; margin-top: var(--space-4); }
   .audit-filter-field { display: grid; align-content: start; gap: var(--space-1); min-width: 0; }
   .audit-filter-field label { font-weight: 650; }
   .audit-filter-field select, .audit-filter-field input { min-width: 0; max-width: 100%; }
   .audit-filter-field .helptext { margin-top: 0; }
-  .audit-filter-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-4); grid-column: 1 / -1; }
+  .audit-filter-actions { grid-column: 1 / -1; padding-top: var(--space-4); border-top: var(--border-subtle); }
   .audit-list { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
   .audit-entry { min-width: 0; overflow: hidden; border: var(--border-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
   .audit-entry-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-4); background: var(--color-surface-subtle); }
@@ -31,14 +29,26 @@
   .audit-reason h4, .audit-reason p { margin: 0; }
   .audit-reason h4 { font-size: var(--font-size-sm); }
   .audit-reason p { margin-top: var(--space-1); }
-  .audit-change-heading { margin: 0 0 var(--space-2); font-size: var(--font-size-base); }
-  .table-scroll .audit-change-table { min-width: 0; table-layout: fixed; }
-  .audit-change-table th:first-child { width: 21%; }
-  .audit-change-table th:nth-child(2), .audit-change-table th:nth-child(3) { width: 39.5%; }
-  .audit-change-table th, .audit-change-table td { overflow-wrap: anywhere; }
+  .audit-changes { display: grid; gap: var(--space-2); min-width: 0; }
+  .audit-changes > p, .audit-change-heading { margin: 0; }
+  .audit-change-heading { font-size: var(--font-size-base); }
+  .audit-change-scroll { border: var(--border-subtle); border-radius: var(--radius-sm); }
+  .table-scroll .audit-change-table { min-width: 30rem; table-layout: fixed; font-size: var(--font-size-sm); }
+  .audit-change-table th:first-child { width: 24%; }
+  .audit-change-table th, .audit-change-table td { overflow-wrap: anywhere; vertical-align: top; }
+  .audit-change-table tbody th { background: var(--color-surface); }
+  .audit-change-table tbody tr:last-child > * { border-bottom: 0; }
+  .audit-change-table tbody td + td { border-inline-start: var(--border-subtle); background: var(--color-accent-surface); }
+  .table-scroll .audit-snapshot-table { min-width: 0; }
   .audit-snapshot-table th:first-child { width: 35%; }
   .audit-snapshot-table th:nth-child(2) { width: 65%; }
   .audit-change-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .audit-value-map, .audit-value-list { margin: 0; }
+  .audit-value-map > div { display: grid; gap: var(--space-1); }
+  .audit-value-map > div + div, .audit-value-list > li + li { margin-top: var(--space-2); }
+  .audit-value-map dt { font-weight: 600; }
+  .audit-value-map dd { margin: 0; }
+  .audit-value-list { padding-inline-start: var(--space-6); }
   .audit-raw { border-top: var(--border-subtle); background: var(--color-surface-subtle); }
   .audit-raw summary { min-height: 2.75rem; padding: var(--space-2) var(--space-4); color: var(--color-brand-primary); font-weight: 650; cursor: pointer; }
   .audit-raw summary:focus-visible { outline-offset: -3px; }
@@ -47,9 +57,6 @@
   .audit-raw-meta div { min-width: 0; padding: var(--space-2) var(--space-3); border: var(--border-subtle); border-radius: var(--radius-sm); background: var(--color-surface); }
   .audit-raw-meta dt { color: var(--color-text-muted); font-size: var(--font-size-sm); }
   .audit-raw-meta dd { margin: var(--space-1) 0 0; overflow-wrap: anywhere; }
-  .audit-raw-snapshot { min-width: 0; margin: 0; padding: var(--space-3); border: var(--border-subtle); border-radius: var(--radius-sm); background: var(--color-surface); }
-  .audit-raw-snapshot h4 { margin: 0 0 var(--space-2); font-size: var(--font-size-base); }
-  .audit-raw-snapshot pre { max-width: 100%; margin: 0; overflow: auto; color: var(--color-text); font: 0.875rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
   .audit-empty { margin: 0; color: var(--color-text-muted); }
   @media (max-width: 34rem) {
     .audit-entry-heading { align-items: flex-start; }
@@ -59,11 +66,11 @@
   }
 </style>
 
-<div class="audit-workspace">
-  <header class="page-heading audit-heading">
-    <div>
+<div class="management-workspace">
+  <header class="page-header audit-heading">
+    <div class="page-header-main">
       <h1>Audit history</h1>
-      <p>Review recorded changes and activity across the training workspace.</p>
+      <p class="muted">Review recorded changes and activity across the training workspace.</p>
     </div>
   </header>
 
@@ -79,16 +86,18 @@
           {{ field.errors }}
         </div>
       {% endfor %}
-      <div class="audit-filter-actions">
-        <button type="submit">Apply filters</button>
-        <a href="{% url 'audit:audit-log-list' %}">Clear filters</a>
+      <div class="record-actions audit-filter-actions">
+        <button class="btn btn-primary" type="submit">Apply filters</button>
+        <a class="btn btn-secondary" href="{% url 'audit:audit-log-list' %}">Clear filters</a>
       </div>
     </form>
   </section>
 
   <section class="audit-panel" aria-labelledby="audit-results-heading">
-    <h2 id="audit-results-heading">Events</h2>
-    <p id="audit-results-limit" class="muted">Showing up to the {{ audit_result_limit }} newest matching events. If more events match, older matches are not shown. Narrow the filters to find earlier activity.</p>
+    <div class="management-section-copy">
+      <h2 id="audit-results-heading">Events</h2>
+      <p id="audit-results-limit" class="muted">Showing up to the {{ audit_result_limit }} newest matching events. If more events match, older matches are not shown. Narrow the filters to find earlier activity.</p>
+    </div>
     <div class="audit-list" role="region" aria-label="Audit history results" aria-describedby="audit-results-limit" tabindex="0">
       {% for entry in audit_logs %}
         {% with changes=entry|audit_changes detail_kind=entry|audit_detail_kind %}
@@ -123,7 +132,7 @@
               {% endif %}
 
               {% if changes %}
-                <section aria-label="{% if detail_kind == 'changes' %}Recorded changes{% else %}Recorded details{% endif %}">
+                <section class="audit-changes" aria-label="{% if detail_kind == 'changes' %}Recorded changes{% else %}Recorded details{% endif %}">
                   <h4 class="audit-change-heading">{% if detail_kind == 'creation' %}New record details{% elif detail_kind == 'changes' %}What changed{% else %}Recorded details{% endif %}</h4>
                   {% if detail_kind == 'creation' %}
                     <p class="muted">Values recorded when this record was created.</p>
@@ -134,7 +143,7 @@
                       {% endif %}
                     {% endwith %}
                   {% endif %}
-                  <div class="table-scroll" role="region" aria-label="{% if detail_kind == 'changes' %}Before and after values{% else %}Recorded values{% endif %}" tabindex="0">
+                  <div class="table-scroll audit-change-scroll" role="region" aria-label="{% if detail_kind == 'changes' %}Before and after values{% else %}Recorded values{% endif %}" tabindex="0">
                     <table class="audit-change-table{% if detail_kind != 'changes' %} audit-snapshot-table{% endif %}">
                       <thead><tr><th scope="col">Detail</th>{% if detail_kind == 'changes' %}<th scope="col">Before</th><th scope="col">After</th>{% else %}<th scope="col">Recorded value</th>{% endif %}</tr></thead>
                       <tbody>
@@ -143,13 +152,13 @@
                             <th scope="row">{{ change.field|audit_field_label }}</th>
                             {% if detail_kind == 'changes' %}
                               {% if change.captured %}
-                                <td><span class="audit-change-value">{{ change.before|audit_display_value:change.field }}</span></td>
-                                <td><span class="audit-change-value">{{ change.after|audit_display_value:change.field }}</span></td>
+                                <td>{% include "audit/_value.html" with value=change.before field_name=change.field only %}</td>
+                                <td>{% include "audit/_value.html" with value=change.after field_name=change.field only %}</td>
                               {% else %}
                                 <td colspan="2"><span class="audit-change-value">Listed as changed; values not captured in audit snapshots.</span></td>
                               {% endif %}
                             {% else %}
-                              <td><span class="audit-change-value">{% if change.captured %}{{ change.recorded|audit_display_value:change.field }}{% else %}Not captured in audit snapshots{% endif %}</span></td>
+                              <td>{% if change.captured %}{% include "audit/_value.html" with value=change.recorded field_name=change.field only %}{% else %}Not captured in audit snapshots{% endif %}</td>
                             {% endif %}
                           </tr>
                         {% endfor %}
@@ -172,18 +181,13 @@
                   <div><dt>Record type</dt><dd>{{ entry.entity_type }}</dd></div>
                   <div><dt>Record ID</dt><dd>{{ entry.entity_id }}</dd></div>
                   <div><dt>Recorded actor</dt><dd>{{ entry.actor_label_snapshot }}</dd></div>
+                  {% if entry.actor_id %}
+                    <div><dt>Actor ID</dt><dd>{{ entry.actor_id }}</dd></div>
+                  {% endif %}
                   <div><dt>Exact timestamp</dt><dd>{{ entry.occurred_at|date:"c" }}</dd></div>
                   <div><dt>Request ID</dt><dd>{{ entry.request_id|default:"Not recorded" }}</dd></div>
                   <div><dt>Reason</dt><dd>{{ entry.reason|default:"Not recorded" }}</dd></div>
                 </dl>
-                <section class="audit-raw-snapshot" aria-label="Original before data">
-                  <h4>Original before data</h4>
-                  <pre>{{ entry.before_data|audit_json }}</pre>
-                </section>
-                <section class="audit-raw-snapshot" aria-label="Original after data">
-                  <h4>Original after data</h4>
-                  <pre>{{ entry.after_data|audit_json }}</pre>
-                </section>
               </div>
             </details>
           </article>

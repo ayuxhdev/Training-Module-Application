@@ -14,6 +14,7 @@ import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/domain/models/employee.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
+import 'package:training_app/features/profile/presentation/screens/password_change_screen.dart';
 
 class AuthControllerMock extends AuthController {
   final Future<Employee> Function()? onRefresh;
@@ -188,6 +189,37 @@ void main() {
     await tester.tap(find.text('My Certificates'));
     await tester.pumpAndSettle();
     expect(find.text('Certificate destination'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('password action opens the authenticated password form', (
+    tester,
+  ) async {
+    final router = GoRouter(
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const ProfileScreen()),
+        GoRoute(
+          path: '/profile/password-change',
+          builder: (_, _) => const PasswordChangeScreen(),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authControllerProvider.overrideWith(() => AuthControllerMock()),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Change password'), 150);
+    await tester.tap(find.text('Change password'));
+    await tester.pumpAndSettle();
+    expect(router.state.uri.path, '/profile/password-change');
+    expect(find.byType(PasswordChangeScreen), findsOneWidget);
+    expect(find.byType(TextFormField), findsNWidgets(3));
     expect(tester.takeException(), isNull);
   });
 
@@ -376,21 +408,28 @@ void main() {
           of: find.widgetWithText(ListTile, 'Job roles'),
           matching: find.byType(Card),
         );
+        final passwordFinder = find.ancestor(
+          of: find.widgetWithText(ListTile, 'Change password'),
+          matching: find.byType(Card),
+        );
         final logoutFinder = find.widgetWithText(SecondaryButton, 'Logout');
 
         expect(certsFinder, findsOneWidget);
         expect(deptFinder, findsOneWidget);
         expect(jobFinder, findsOneWidget);
+        expect(passwordFinder, findsOneWidget);
         expect(logoutFinder, findsOneWidget);
 
         final certsRect = tester.getRect(certsFinder);
         final deptRect = tester.getRect(deptFinder);
         final jobRect = tester.getRect(jobFinder);
+        final passwordRect = tester.getRect(passwordFinder);
         final logoutRect = tester.getRect(logoutFinder);
 
         expect(deptRect.top - certsRect.bottom, AppSpacing.md);
         expect(jobRect.top - deptRect.bottom, AppSpacing.md);
-        expect(logoutRect.top - jobRect.bottom, AppSpacing.md);
+        expect(passwordRect.top - jobRect.bottom, AppSpacing.md);
+        expect(logoutRect.top - passwordRect.bottom, AppSpacing.md);
       }
     },
   );

@@ -4,6 +4,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/network/dio_client.dart';
 import 'package:training_app/features/notifications/data/repositories/notification_repository.dart';
+import 'package:training_app/features/notifications/domain/models/training_notification.dart';
 
 import '../../notification_fixtures.dart';
 
@@ -177,4 +178,39 @@ void main() {
     ).thenAnswer((_) async => response({'updated_count': -1}));
     await expectLater(repository.markAllRead(), throwsA(isA<ApiError>()));
   });
+
+  test(
+    'passes server-side status, keyword and pagination filters to endpoints',
+    () async {
+      when(
+        () => dio.get(
+          '/notifications/',
+          queryParameters: {'status': 'unread', 'q': 'chemical', 'page': 2},
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => response({
+          'count': 5,
+          'next': null,
+          'previous': '/notifications/?page=1',
+          'results': [notificationJson(id: 2)],
+        }),
+      );
+
+      final page = await repository.getPage(
+        page: 2,
+        status: NotificationReadFilter.unread,
+        query: '  chemical  ',
+      );
+      expect(page.count, 5);
+      expect(page.items.single.id, 2);
+      verify(
+        () => dio.get(
+          '/notifications/',
+          queryParameters: {'status': 'unread', 'q': 'chemical', 'page': 2},
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+    },
+  );
 }

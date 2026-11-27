@@ -17,11 +17,13 @@ class AssessmentChoice extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Semantics(
+      inMutuallyExclusiveGroup: true,
       selected: selected,
-      child: OutlinedButton.icon(
+      child: OutlinedButton(
         style: OutlinedButton.styleFrom(
           alignment: Alignment.centerLeft,
           minimumSize: const Size(48, 64),
+          tapTargetSize: MaterialTapTargetSize.padded,
           padding: const EdgeInsets.all(20),
           animationDuration: MediaQuery.disableAnimationsOf(context)
               ? Duration.zero
@@ -41,10 +43,21 @@ class AssessmentChoice extends StatelessWidget {
           ),
         ),
         onPressed: onPressed,
-        icon: Icon(
-          selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+        child: Row(
+          children: [
+            ExcludeSemantics(
+              child: Icon(
+                selected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(text, style: const TextStyle(height: 1.5)),
+            ),
+          ],
         ),
-        label: Text(text, style: const TextStyle(height: 1.5)),
       ),
     );
   }

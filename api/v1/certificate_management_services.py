@@ -6,6 +6,7 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
+from accounts.lifecycle_authorization import require_lifecycle_permission
 from api.capabilities import can_use_mobile
 from audit.models import AuditLog
 from certifications.models import Certificate
@@ -31,8 +32,7 @@ def revocation_reason(value):
 
 
 def _revoker(actor):
-    # A fresh instance avoids request permission caches, including after waiting
-    # for the assignment lock. This grants no group or hierarchy-based authority.
+    # Reject a stale or ineligible caller before looking up the certificate.
     current = get_user_model().objects.filter(pk=getattr(actor, "pk", None)).first()
     if not can_use_mobile(current) or not current.has_perm(CHANGE_PERMISSION):
         raise PermissionDenied
@@ -48,16 +48,16 @@ def revoke_certificate(actor, certificate_id, reason):
     # the current revocation state only after acquiring those locks.
     TrainingAssignment.objects.select_for_update().get(pk=reference.assignment_id)
     certificate = get_object_or_404(Certificate.objects.select_for_update(), pk=certificate_id)
-    actor = _revoker(actor)
+    actor = require_lifecycle_permission(actor, CHANGE_PERMISSION, using=certificate._state.db)
+    if not can_use_mobile(actor):
+        raise PermissionDenied
     if certificate.revoked_at is not None:
         raise CertificateAlreadyRevoked
     certificate.revoked_at = timezone.now()
     certificate.revoked_by = actor
     certificate.revocation_reason = reason
     certificate.save()
-    # Revocation requires durable audit persistence in this same transaction.
-    # The shared record_event() helper defers writes until after commit, so do
-    # not use it here. Preserve its server-derived event fields and snapshots.
+    # Preserve the revocation event's explicit snapshots in this transaction.
     AuditLog.objects.create(
         actor=actor, actor_label_snapshot=actor.get_username()[:150],
         action="certifications.certificate.revoked",

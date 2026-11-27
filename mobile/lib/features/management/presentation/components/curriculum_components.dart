@@ -4,6 +4,48 @@ import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
 
+class TrainingNavigationCard extends StatelessWidget {
+  const TrainingNavigationCard({
+    super.key,
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final String description;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        minTileHeight: 64,
+        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        leading: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.primaryContainer,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            child: Icon(icon, color: colors.onPrimaryContainer),
+          ),
+        ),
+        title: Text(title, style: theme.textTheme.titleSmall),
+        subtitle: Text(description),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
 /// Reusable badge reflecting version lifecycle immutability and state.
 class VersionLifecycleBadge extends StatelessWidget {
   final String status;

@@ -35,6 +35,41 @@ class EmployeeForm(forms.ModelForm):
         widgets = {"date_joined": forms.DateInput(attrs={"type": "date"})}
 
 
+class EmployeeDirectoryFilterForm(forms.Form):
+    q = forms.CharField(
+        label="Search employees",
+        required=False,
+        max_length=150,
+        widget=forms.SearchInput(attrs={"autocomplete": "off"}),
+    )
+    department = forms.ModelChoiceField(
+        label="Department",
+        queryset=Department.objects.none(),
+        required=False,
+        empty_label="All departments",
+    )
+    job_role = forms.ModelChoiceField(
+        label="Job role",
+        queryset=JobRole.objects.none(),
+        required=False,
+        empty_label="All job roles",
+    )
+    status = forms.ChoiceField(
+        label="Employment status",
+        required=False,
+        choices=(("", "All statuses"), ("active", "Active"), ("inactive", "Inactive")),
+    )
+
+    def __init__(self, *args, employees_queryset, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["department"].queryset = Department.objects.filter(
+            employees__in=employees_queryset,
+        ).distinct().order_by("name", "pk")
+        self.fields["job_role"].queryset = JobRole.objects.filter(
+            employees__in=employees_queryset,
+        ).distinct().order_by("name", "pk")
+
+
 class EmployeeDeactivateForm(forms.Form):
     reason = forms.CharField(
         max_length=1000,

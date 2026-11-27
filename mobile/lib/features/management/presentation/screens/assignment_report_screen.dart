@@ -12,6 +12,7 @@ import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/management/data/repositories/management_repository.dart';
+import 'package:training_app/features/management/presentation/controllers/assignment_report_export_controller.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/management/presentation/models/assignment_report_view_data.dart';
 
@@ -29,6 +30,7 @@ class AssignmentReportScreen extends ConsumerStatefulWidget {
   final Future<void> Function()? onRefresh;
   final VoidCallback? onRetry;
   final ValueChanged<int>? onCertificateTap;
+  final Future<void> Function(AssignmentReportFilterQuery query)? onExport;
 
   const AssignmentReportScreen({
     super.key,
@@ -42,6 +44,7 @@ class AssignmentReportScreen extends ConsumerStatefulWidget {
     this.onRefresh,
     this.onRetry,
     this.onCertificateTap,
+    this.onExport,
   });
 
   @override
@@ -72,6 +75,26 @@ class _AssignmentReportScreenState
       widget.onQueryChanged != null ||
       widget.pageData != null ||
       widget.isLoading != null;
+
+  bool _isExporting = false;
+
+  Future<void> _handleExport(BuildContext context) async {
+    if (_isExporting) return;
+    setState(() => _isExporting = true);
+    try {
+      if (widget.onExport != null) {
+        await widget.onExport!(_query);
+      } else {
+        await ref
+            .read(assignmentReportExportControllerProvider.notifier)
+            .exportReport(_query);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
+  }
 
   void _applyQuery(AssignmentReportFilterQuery newQuery) {
     setState(() => _query = newQuery);
@@ -157,6 +180,41 @@ class _AssignmentReportScreenState
     final theme = Theme.of(context);
 
     if (!_isControlled) {
+      ref.listen<
+        AssignmentReportExportState
+      >(assignmentReportExportControllerProvider, (previous, next) {
+        if (!mounted) return;
+        switch (next) {
+          case AssignmentReportExportSuccess(:final itemCount):
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Assignment report exported ($itemCount ${itemCount == 1 ? 'record' : 'records'}).',
+                ),
+                backgroundColor: AppColors.statusSuccess,
+              ),
+            );
+          case AssignmentReportExportCancelled():
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('Export cancelled.')));
+          case AssignmentReportExportEmpty():
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('No records available to export.')),
+            );
+          case AssignmentReportExportError(:final message):
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message),
+                backgroundColor: AppColors.error,
+              ),
+            );
+          case AssignmentReportExportIdle():
+          case AssignmentReportExportInProgress():
+            break;
+        }
+      });
+
       final auth = ref.watch(authControllerProvider);
       if (auth is! AuthAuthenticated ||
           !canViewAssignmentReports(auth.identity)) {
@@ -233,6 +291,11 @@ class _AssignmentReportScreenState
     VoidCallback? onRetryFilters,
   }) {
     final activeCount = _query.activeFilterCount;
+    final isExporting =
+        _isExporting ||
+        (!_isControlled &&
+            ref.watch(assignmentReportExportControllerProvider)
+                is AssignmentReportExportInProgress);
 
     return Scaffold(
       appBar: AppBar(
@@ -249,6 +312,23 @@ class _AssignmentReportScreenState
                 child: const Icon(Icons.filter_list),
               ),
               onPressed: () => _openFilterSheet(filterOptions),
+            ),
+          ),
+          Semantics(
+            label: 'Export assignment report as CSV',
+            button: true,
+            child: IconButton(
+              tooltip: 'Export CSV',
+              icon: isExporting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.download_rounded),
+              onPressed: (isExporting || isLoading)
+                  ? null
+                  : () => _handleExport(context),
             ),
           ),
           if (onRefresh != null)
@@ -704,7 +784,7 @@ class _AssignmentReportCard extends StatelessWidget {
                   context,
                   'Deadline',
                   item.dueAt != null
-                      ? localDateLabel(item.dueAt!)
+                      ? assignmentDeadlineLabel(item.dueAt!)
                       : 'No deadline',
                   isWarning: item.isOverdue,
                 ),
@@ -750,24 +830,32 @@ class _AssignmentReportCard extends StatelessWidget {
                             : AppColors.statusSuccess,
                       ),
                       const SizedBox(width: AppSpacing.xs),
-                      Text(
-                        item.hasCertificate
-                            ? (item.certificateNumber ??
-                                  'Certificate #${item.certificateId}')
-                            : 'Certificate',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Wrap(
+                          spacing: AppSpacing.xs,
+                          runSpacing: AppSpacing.xs,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              item.hasCertificate
+                                  ? (item.certificateNumber ??
+                                        'Certificate #${item.certificateId}')
+                                  : 'Certificate',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            StatusBadge(
+                              text: item.isCertificateRevoked == true
+                                  ? 'Revoked'
+                                  : 'Issued',
+                              status: item.isCertificateRevoked == true
+                                  ? BadgeStatus.error
+                                  : BadgeStatus.success,
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: AppSpacing.xs),
-                      StatusBadge(
-                        text: item.isCertificateRevoked == true
-                            ? 'Revoked'
-                            : 'Issued',
-                        status: item.isCertificateRevoked == true
-                            ? BadgeStatus.error
-                            : BadgeStatus.success,
                       ),
                       if (onCertificateTap != null && item.hasCertificate) ...[
                         const SizedBox(width: AppSpacing.xs),

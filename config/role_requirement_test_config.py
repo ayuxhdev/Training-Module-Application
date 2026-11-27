@@ -1,7 +1,8 @@
 """Opt-in disposable MySQL test safeguards. No environment loading or provisioning.
 
-Only RR_TEST_* values are used; development/QA settings and .env are never read.
-The owner must provision a separate loopback MySQL 8 instance before execution.
+Only profile-specific test values are used; development/QA settings and .env
+are never read. RR_TEST_* retains its separate-server CI contract; MYSQL_TEST_*
+uses a new disposable schema on the existing loopback MySQL 8 server.
 """
 
 from dataclasses import dataclass, field
@@ -10,6 +11,7 @@ import re
 import stat
 from pathlib import Path
 import tempfile
+from typing import ClassVar
 
 
 class UnsafeTestTarget(RuntimeError):
@@ -22,6 +24,8 @@ PROTECTED_DATABASES = frozenset({
 RUNNER = "config.role_requirement_test_runner.RoleRequirementTestRunner"
 PROFILE = "config.role_requirement_test_settings"
 ENGINE = "config.role_requirement_test_backend"
+INTEGRATION_PROFILE = "config.integration_test_settings"
+INTEGRATION_RUNNER = "config.integration_test_runner.IntegrationTestRunner"
 REQUIRED_PRIVILEGES = frozenset({
     "SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "INDEX", "REFERENCES",
 })
@@ -41,6 +45,14 @@ def required(environment, name):
 
 @dataclass(frozen=True)
 class DisposableConfig:
+    prefix: ClassVar[str] = "RR_TEST_"
+    schema_prefix: ClassVar[str] = "test_gn_rr_"
+    user_prefix: ClassVar[str] = "gn_rr_"
+    media_prefix: ClassVar[str] = "gn-rr-media-"
+    lock_prefix: ClassVar[str] = "gn_rr:"
+    port: ClassVar[int] = 3308
+    profile: ClassVar[str] = PROFILE
+    runner: ClassVar[str] = RUNNER
     database: str
     owner: str
     server_uuid: str
@@ -58,45 +70,60 @@ class DisposableConfig:
             "HOST", "PORT", "USER", "ACCOUNT", "PASSWORD", "SECRET_KEY", "MEDIA_ROOT",
             "ISOLATION", "ALLOW_CREATE", "EXCLUSIVE_OWNER",
         }
-        if any(key.startswith("RR_TEST_") and key[8:] not in names for key in environment):
-            raise UnsafeTestTarget("Unexpected RR_TEST_* configuration.")
-        database = required(environment, "RR_TEST_DATABASE")
-        match = re.fullmatch(r"test_gn_rr_(\d{8})_([0-9a-f]{32})", database)
+        if cls is IntegrationConfig:
+            names.update({"ALLOW_RESET", "RETENTION"})
+        prefix = cls.prefix
+        if any(key.startswith(prefix) and key[len(prefix):] not in names for key in environment):
+            raise UnsafeTestTarget(f"Unexpected {prefix} configuration.")
+        database = required(environment, prefix + "DATABASE")
+        match = re.fullmatch(re.escape(cls.schema_prefix) + r"(\d{8})_([0-9a-f]{32})", database)
         if database.casefold() in PROTECTED_DATABASES or not match:
             raise UnsafeTestTarget("A unique disposable GUID database name is required.")
         try:
             datetime.strptime(match[1], "%Y%m%d")
         except ValueError:
             raise UnsafeTestTarget("Invalid disposable database date.") from None
-        owner = required(environment, "RR_TEST_OWNER")
-        if owner != match[2] or required(environment, "RR_TEST_APPROVED_DATABASE") != database:
+        owner = required(environment, prefix + "OWNER")
+        if owner != match[2] or required(environment, prefix + "APPROVED_DATABASE") != database:
             raise UnsafeTestTarget("Explicit database approval and ownership must match.")
-        validate_execution_approval(environment, owner)
-        if required(environment, "RR_TEST_HOST") != "127.0.0.1" or required(environment, "RR_TEST_PORT") != "3308":
-            raise UnsafeTestTarget("Only the separately provisioned 127.0.0.1:3308 target is allowed.")
-        server_uuid = required(environment, "RR_TEST_SERVER_UUID")
+        validate_execution_approval(environment, owner, prefix=prefix)
+        if required(environment, prefix + "HOST") != "127.0.0.1" or required(environment, prefix + "PORT") != str(cls.port):
+            raise UnsafeTestTarget("The explicitly approved loopback endpoint is required.")
+        server_uuid = required(environment, prefix + "SERVER_UUID")
         if not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", server_uuid):
             raise UnsafeTestTarget("An explicit MySQL server UUID is required.")
-        hostname = required(environment, "RR_TEST_SERVER_HOSTNAME")
-        user = required(environment, "RR_TEST_USER")
-        if not re.fullmatch(r"gn_rr_[0-9a-f]{16}", user):
-            raise UnsafeTestTarget("A dedicated gn_rr_<16 hex characters> account is required.")
-        account = required(environment, "RR_TEST_ACCOUNT")
+        hostname = required(environment, prefix + "SERVER_HOSTNAME")
+        user = required(environment, prefix + "USER")
+        if not re.fullmatch(re.escape(cls.user_prefix) + r"[0-9a-f]{16}", user):
+            raise UnsafeTestTarget("A dedicated owner-named test account is required.")
+        account = required(environment, prefix + "ACCOUNT")
         if account not in {f"{user}@localhost", f"{user}@127.0.0.1"}:
             raise UnsafeTestTarget("The expected account must be restricted to loopback.")
-        if required(environment, "RR_TEST_ISOLATION") != "read committed":
+        if required(environment, prefix + "ISOLATION") != "read committed":
             raise UnsafeTestTarget("Explicit READ COMMITTED isolation is required.")
-        password = required(environment, "RR_TEST_PASSWORD")
-        secret = required(environment, "RR_TEST_SECRET_KEY")
+        password = required(environment, prefix + "PASSWORD")
+        secret = required(environment, prefix + "SECRET_KEY")
         if len(secret) < 50 or len(set(secret)) < 20 or "django-insecure" in secret:
             raise UnsafeTestTarget("A strong test-only signing key is required.")
-        media = validate_media(required(environment, "RR_TEST_MEDIA_ROOT"), owner)
+        if cls is IntegrationConfig:
+            if user != cls.user_prefix + owner[:16] or account != user + "@127.0.0.1":
+                raise UnsafeTestTarget("Integration account must match its owner and loopback host.")
+            if environment.get("DJANGO_SETTINGS_MODULE") not in (None, "", cls.profile):
+                raise UnsafeTestTarget("Unexpected Django settings override.")
+            if not secret.isascii() or any(character.isspace() for character in secret):
+                raise UnsafeTestTarget("A strong test-only signing key is required.")
+            if any(ord(character) < 32 or ord(character) == 127 for character in password):
+                raise UnsafeTestTarget("Database password must not contain control characters.")
+        media_value = required(environment, prefix + "MEDIA_ROOT")
+        media = validate_media(media_value, owner, media_prefix=cls.media_prefix)
+        if cls is IntegrationConfig and media_value != str(media):
+            raise UnsafeTestTarget("MYSQL_TEST_MEDIA_ROOT must use the canonical absolute path.")
         return cls(database, owner, server_uuid, hostname, user, account, media, password, secret)
 
     def database_settings(self):
         return {
             "ENGINE": ENGINE, "NAME": self.database,
-            "USER": self.user, "PASSWORD": self.password, "HOST": "127.0.0.1", "PORT": "3308",
+            "USER": self.user, "PASSWORD": self.password, "HOST": "127.0.0.1", "PORT": str(self.port),
             "OPTIONS": {"charset": "utf8mb4", "isolation_level": "read committed", "connect_timeout": 5},
             "ATOMIC_REQUESTS": False, "AUTOCOMMIT": True, "CONN_MAX_AGE": 0,
             "CONN_HEALTH_CHECKS": False, "TIME_ZONE": None,
@@ -105,18 +132,57 @@ class DisposableConfig:
         }
 
 
-def validate_execution_approval(environment, owner):
-    if required(environment, "RR_TEST_ALLOW_CREATE") != "create-new-disposable-schema":
+@dataclass(frozen=True)
+class IntegrationConfig(DisposableConfig):
+    prefix: ClassVar[str] = "MYSQL_TEST_"
+    schema_prefix: ClassVar[str] = "test_gn_it_"
+    user_prefix: ClassVar[str] = "gn_it_"
+    media_prefix: ClassVar[str] = "gn-it-media-"
+    lock_prefix: ClassVar[str] = "gn_it:"
+    port: ClassVar[int] = 3306
+    profile: ClassVar[str] = INTEGRATION_PROFILE
+    runner: ClassVar[str] = INTEGRATION_RUNNER
+
+
+def validate_execution_approval(environment, owner, *, prefix="RR_TEST_"):
+    if required(environment, prefix + "ALLOW_CREATE") != "create-new-disposable-schema":
         raise UnsafeTestTarget("Explicit schema-creation authorization is required.")
-    if required(environment, "RR_TEST_EXCLUSIVE_OWNER") != owner:
+    if required(environment, prefix + "EXCLUSIVE_OWNER") != owner:
         raise UnsafeTestTarget("An exclusive owner-approved test window is required.")
+    if prefix == IntegrationConfig.prefix:
+        if required(environment, prefix + "ALLOW_RESET") != "owned-schema-only":
+            raise UnsafeTestTarget("Explicit owned-schema fixture-reset approval is required.")
+        if required(environment, prefix + "RETENTION") != "retain-for-approved-cleanup":
+            raise UnsafeTestTarget("Explicit retained-schema cleanup policy is required.")
 
 
-def validate_media(value, owner):
+def validate_config_approval(environment, config):
+    validate_execution_approval(environment, config.owner, prefix=config.prefix)
+    if type(config) is IntegrationConfig:
+        # Recheck configuration without requiring the media root to remain empty
+        # after tests start writing their own isolated fixtures.
+        expected = {
+            "DATABASE": config.database, "APPROVED_DATABASE": config.database,
+            "OWNER": config.owner, "HOST": "127.0.0.1", "PORT": str(config.port),
+            "SERVER_UUID": config.server_uuid, "SERVER_HOSTNAME": config.server_hostname,
+            "USER": config.user, "ACCOUNT": config.account, "PASSWORD": config.password,
+            "SECRET_KEY": config.secret_key, "MEDIA_ROOT": str(config.media),
+            "ISOLATION": "read committed",
+        }
+        allowed = {*expected, "ALLOW_CREATE", "EXCLUSIVE_OWNER", "ALLOW_RESET", "RETENTION"}
+        if any(key.startswith(config.prefix) and key[len(config.prefix):] not in allowed for key in environment):
+            raise UnsafeTestTarget("Unexpected integration environment override.")
+        if any(required(environment, config.prefix + key) != value for key, value in expected.items()):
+            raise UnsafeTestTarget("Integration configuration changed during execution.")
+        if environment.get("DJANGO_SETTINGS_MODULE") not in (None, "", config.profile):
+            raise UnsafeTestTarget("Unexpected Django settings override.")
+
+
+def validate_media(value, owner, *, media_prefix="gn-rr-media-"):
     path = Path(value)
     root = Path(__file__).resolve().parents[1]
     temporary_root = Path(tempfile.gettempdir()).resolve()
-    if not path.is_absolute() or path.name != f"gn-rr-media-{owner}":
+    if not path.is_absolute() or path.name != media_prefix + owner:
         raise UnsafeTestTarget("A dedicated, owner-named temporary media directory is required.")
     for ancestor in (path, *path.parents):
         try:
@@ -140,12 +206,18 @@ def validate_media(value, owner):
 
 def validate_database(config, database, *, maintenance=False):
     if (
-        config.database.casefold() in PROTECTED_DATABASES
-        or not re.fullmatch(r"test_gn_rr_\d{8}_[0-9a-f]{32}", config.database)
+        type(config) not in (DisposableConfig, IntegrationConfig)
+        or config.database.casefold() in PROTECTED_DATABASES
+        or not re.fullmatch(re.escape(config.schema_prefix) + r"\d{8}_[0-9a-f]{32}", config.database)
         or not re.fullmatch(r"[0-9a-f]{32}", config.owner)
         or not config.database.endswith("_" + config.owner)
     ):
         raise UnsafeTestTarget("The approved target is not a disposable GUID schema.")
+    if type(config) is IntegrationConfig and (
+        config.user != config.user_prefix + config.owner[:16]
+        or config.account != config.user + "@127.0.0.1"
+    ):
+        raise UnsafeTestTarget("Integration connection ownership does not match the approved run.")
     expected = config.database_settings()
     if maintenance:
         expected["NAME"] = None
@@ -154,10 +226,32 @@ def validate_database(config, database, *, maintenance=False):
 
 
 def validate_settings(settings, *, setup=False):
-    config = getattr(settings, "ROLE_REQUIREMENT_TEST_CONFIG", None)
-    if not isinstance(config, DisposableConfig):
+    from django.conf import LazySettings, Settings, UserSettingsHolder
+
+    profile = getattr(settings, "SETTINGS_MODULE", None)
+    if isinstance(settings, LazySettings):
+        # override_settings() masks SETTINGS_MODULE with its holder's class
+        # attribute (None). Resolve only Django's genuine override chain; all
+        # mutable settings below must still be validated through the live view.
+        original = settings._wrapped
+        while type(original) is UserSettingsHolder:
+            if "SETTINGS_MODULE" in vars(original) or "SETTINGS_MODULE" in original._deleted:
+                raise UnsafeTestTarget("The disposable settings profile must not be overridden.")
+            original = original.default_settings
+        if type(original) is not Settings:
+            raise UnsafeTestTarget("The dedicated disposable test profile is required.")
+        profile = original.SETTINGS_MODULE
+    if profile == PROFILE:
+        config = getattr(settings, "ROLE_REQUIREMENT_TEST_CONFIG", None)
+        expected_type = DisposableConfig
+    elif profile == INTEGRATION_PROFILE:
+        config = getattr(settings, "INTEGRATION_TEST_CONFIG", None)
+        expected_type = IntegrationConfig
+    else:
         raise UnsafeTestTarget("The dedicated disposable test profile is required.")
-    if settings.SETTINGS_MODULE != PROFILE or settings.TEST_RUNNER != RUNNER:
+    if type(config) is not expected_type:
+        raise UnsafeTestTarget("The dedicated disposable test profile is required.")
+    if settings.TEST_RUNNER != config.runner:
         raise UnsafeTestTarget("The dedicated profile and runner must be used together.")
     if set(settings.DATABASES) != {"default"} or settings.DATABASE_ROUTERS or settings.MIGRATION_MODULES:
         raise UnsafeTestTarget("Extra aliases, routers and migration overrides are forbidden.")
@@ -165,20 +259,28 @@ def validate_settings(settings, *, setup=False):
     if setup:
         if Path(settings.MEDIA_ROOT) != config.media:
             raise UnsafeTestTarget("The isolated media configuration changed.")
-        validate_media(str(config.media), config.owner)
+        validate_media(str(config.media), config.owner, media_prefix=config.media_prefix)
     # CurriculumTestCase supplies its own temporary media override during tests.
     # The approved initial root is checked before any database connection.
     return config
 
 
-def verify_identity(cursor, config, database):
+def verify_identity(cursor, config, database, *, initializing=False):
+    # Only the integration runner's exact Django initialization statement may
+    # inspect a new session before it has applied READ COMMITTED. All server,
+    # account and schema checks still apply, and runtime checks remain strict.
+    isolations = {"read committed"}
+    if initializing:
+        if type(config) is not IntegrationConfig or database != config.database:
+            raise UnsafeTestTarget("Only an owned integration session may initialize isolation.")
+        isolations.update({"repeatable read", "read uncommitted", "serializable"})
     cursor.execute(IDENTITY_SQL)
     row = cursor.fetchone()
     if not row or len(row) != 9 or (
-        row[:5] != (config.server_uuid, config.server_hostname, 3308, config.account, database)
+        row[:5] != (config.server_uuid, config.server_hostname, config.port, config.account, database)
         or not re.match(r"8\.\d+\.\d+", str(row[5]))
         or "mariadb" in str(row[5]).lower()
-        or str(row[6]).replace("-", " ").lower() != "read committed"
+        or str(row[6]).replace("-", " ").lower() not in isolations
         or str(row[7]).lower() != "innodb" or row[8] not in (0, 1)
     ):
         raise UnsafeTestTarget("MySQL server, account, database or isolation identity mismatch.")
@@ -207,20 +309,24 @@ def verify_grants(rows, config, partial_revokes):
 
 def preflight(cursor, config):
     partial_revokes = verify_identity(cursor, config, None)
-    cursor.execute("SELECT GET_LOCK(%s, 0)", ("gn_rr:" + config.owner,))
+    cursor.execute("SELECT GET_LOCK(%s, 0)", (config.lock_prefix + config.owner,))
     if cursor.fetchone() != (1,):
         raise UnsafeTestTarget("Another runner owns the disposable target.")
     cursor.execute("SHOW GRANTS FOR CURRENT_USER")
     verify_grants(cursor.fetchall(), config, partial_revokes)
+    verify_no_other_sessions(cursor, config)
+    cursor.execute("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = %s", (config.database,))
+    if cursor.fetchone() is not None:
+        raise UnsafeTestTarget("Schema collision: existing databases are never reused or deleted.")
+
+
+def verify_no_other_sessions(cursor, config):
     cursor.execute(
         "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE USER = %s AND ID <> CONNECTION_ID()",
         (config.user,),
     )
     if cursor.fetchone() != (0,):
         raise UnsafeTestTarget("The test account has another active connection.")
-    cursor.execute("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = %s", (config.database,))
-    if cursor.fetchone() is not None:
-        raise UnsafeTestTarget("Schema collision: existing databases are never reused or deleted.")
 
 
 def mark_verified(config):

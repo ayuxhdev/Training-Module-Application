@@ -74,6 +74,11 @@ class CertificateDetail {
         throw const FormatException('Cannot parse revoked_at timestamp.');
       }
     }
+    if (isRevoked != (revokedAt != null)) {
+      throw const FormatException(
+        'Inconsistent certificate revocation status.',
+      );
+    }
     final assignmentId = json['assignment_id'];
     if (assignmentId is! int || assignmentId <= 0) {
       throw const FormatException('Invalid assignment_id.');

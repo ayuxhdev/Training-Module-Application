@@ -43,6 +43,25 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('logo fits the login header on a narrow dark screen', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final semantics = tester.ensureSemantics();
+    try {
+      await pumpLogin(tester, themeMode: ThemeMode.dark);
+
+      final logo = find.bySemanticsLabel("Garden's Need");
+      expect(logo, findsOneWidget);
+      expect(tester.getRect(logo).right, lessThanOrEqualTo(320));
+      expect(find.byType(TextFormField), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+    } finally {
+      semantics.dispose();
+    }
+  });
+
   final passwordField = find.byType(TextFormField).last;
 
   testWidgets('password starts hidden and toggles accessibly without changes', (

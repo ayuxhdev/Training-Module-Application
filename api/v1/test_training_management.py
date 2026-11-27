@@ -334,11 +334,12 @@ class TrainingManagementAPITests(CurriculumTestCase):
             self.assertEqual(len(response.data["modules"]), 11)
         self.assertLessEqual(len(expanded), len(initial) + 2)
 
-    def test_course_creation_uses_server_actor_defaults_and_commit_time_audit(self):
-        with self.captureOnCommitCallbacks(execute=True):
+    def test_course_creation_uses_server_actor_defaults_and_synchronous_audit(self):
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
             response = self.post_course()
             self.assertEqual(response.status_code, 201, response.data)
-            self.assertFalse(AuditLog.objects.exists())
+            self.assertEqual(AuditLog.objects.count(), 1)
+        self.assertEqual(callbacks, [])
         training = Training.objects.get(pk=response.data["id"])
         self.assertEqual(training.code, "MOBILE-COURSE")
         self.assertEqual(training.catalog_title, "Mobile course")
@@ -385,7 +386,7 @@ class TrainingManagementAPITests(CurriculumTestCase):
         form = TrainingForm(data=payload)
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(self.post_course(payload).status_code, 201)
-        self.assertFalse(AuditLog.objects.exists())
+        self.assertEqual(list(AuditLog.objects.values_list("action", flat=True)), ["training.training.created"])
 
     def test_duplicate_course_codes_are_rejected_without_success_audit(self):
         for code in (self.training.code, self.training.code.lower()):
@@ -433,10 +434,11 @@ class TrainingManagementAPITests(CurriculumTestCase):
         before_modules = list(Module.objects.values())
         before_lessons = list(Lesson.objects.values())
         creator = self.training.created_by_id
-        with self.captureOnCommitCallbacks(execute=True):
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
             response = self.client.patch(self.training_url(), {"catalog_title": "New catalog title"}, format="json")
             self.assertEqual(response.status_code, 200, response.data)
-            self.assertFalse(AuditLog.objects.exists())
+            self.assertEqual(AuditLog.objects.count(), 1)
+        self.assertEqual(callbacks, [])
         self.training.refresh_from_db()
         self.assertEqual(self.training.catalog_title, "New catalog title")
         self.assertEqual(self.training.code, "SAFETY")
@@ -487,13 +489,17 @@ class TrainingManagementAPITests(CurriculumTestCase):
 
     def test_new_draft_uses_next_number_and_server_metadata_without_cloning(self):
         self.authenticate()
-        with self.captureOnCommitCallbacks(execute=True):
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
             response = self.client.post(self.versions_url(), {
                 "title": "Revised safety", "description": "Overview",
                 "learning_objectives": "Understand safe work", "change_summary": "New edition",
             }, format="json")
             self.assertEqual(response.status_code, 201, response.data)
-            self.assertFalse(AuditLog.objects.exists())
+            event = AuditLog.objects.get(action="training.trainingversion.created")
+            self.assertEqual(event.entity_id, str(response.data["id"]))
+            self.assertEqual(event.actor_id, self.user.pk)
+            self.assertEqual(event.after_data["status"], "DRAFT")
+        self.assertEqual(callbacks, [])
         draft = TrainingVersion.objects.get(pk=response.data["id"])
         self.assertEqual(draft.training_id, self.training.pk)
         self.assertEqual(draft.version_number, 2)
@@ -512,10 +518,6 @@ class TrainingManagementAPITests(CurriculumTestCase):
         self.assertEqual(self.assignment.training_version_id, self.version.pk)
         self.version.refresh_from_db()
         self.assertEqual(self.version.status, "PUBLISHED")
-        event = AuditLog.objects.get(action="training.trainingversion.created")
-        self.assertEqual(event.entity_id, str(draft.pk))
-        self.assertEqual(event.actor_id, self.user.pk)
-        self.assertEqual(event.after_data["status"], "DRAFT")
 
     def test_draft_numbering_uses_max_existing_and_works_on_inactive_courses(self):
         self.training.is_active = False

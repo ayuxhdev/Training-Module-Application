@@ -2,6 +2,7 @@ from django.urls import path, re_path
 
 from .views import APINotFoundView, APIStatusView
 from .auth_views import EmployeeLoginView, EmployeeRefreshView, EmployeeLogoutView, EmployeeMeView
+from .password_views import PasswordChangeView
 from .dashboard_views import EmployeeDashboardView
 from .assignment_management_views import AssignableTrainingVersionListView, ManualAssignmentCreateView
 from .assignment_monitoring_views import EmployeeAssignmentListView
@@ -32,7 +33,9 @@ from .certificate_views import CertificateDetailView, CertificateListView
 from .certificate_management_views import (
     CertificateManagementDetailView, CertificateManagementListView, CertificateRevocationView,
 )
-from .assignment_report_views import AssignmentReportFiltersView, AssignmentReportView
+from .assignment_report_views import (
+    AssignmentReportExportView, AssignmentReportFiltersView, AssignmentReportView,
+)
 from .management_audit_views import AuditLogDetailView, AuditLogFiltersView, AuditLogListView
 from .notification_views import (
     NotificationListView,
@@ -66,6 +69,7 @@ urlpatterns = [
     path("auth/refresh/", EmployeeRefreshView.as_view(), name="auth-refresh"),
     path("auth/logout/", EmployeeLogoutView.as_view(), name="auth-logout"),
     path("auth/me/", EmployeeMeView.as_view(), name="auth-me"),
+    path("auth/password-change/", PasswordChangeView.as_view(), name="auth-password-change"),
     path("dashboard/", EmployeeDashboardView.as_view(), name="dashboard"),
     path("management/dashboard/", ManagementDashboardView.as_view(), name="management-dashboard"),
     path("management/trainings/", TrainingCatalogView.as_view(), name="management-trainings"),
@@ -110,6 +114,7 @@ urlpatterns = [
     path("notifications/<int:notification_id>/read/", NotificationReadView.as_view(), name="notification-read"),
     path("management/certificates/", CertificateManagementListView.as_view(), name="management-certificates"),
     path("management/reports/assignments/", AssignmentReportView.as_view(), name="management-assignment-report"),
+    path("management/reports/assignments/export/", AssignmentReportExportView.as_view(), name="management-assignment-report-export"),
     path("management/reports/assignments/filters/", AssignmentReportFiltersView.as_view(), name="management-assignment-report-filters"),
     path("management/audit-logs/", AuditLogListView.as_view(), name="management-audit-logs"),
     path("management/audit-logs/filters/", AuditLogFiltersView.as_view(), name="management-audit-log-filters"),

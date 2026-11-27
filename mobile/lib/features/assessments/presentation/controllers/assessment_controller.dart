@@ -237,7 +237,11 @@ class AssessmentController extends Notifier<AssessmentState> {
   }
 
   Future<void> startOrResume() {
+    if (_mutation != null) return _mutation!;
     if (state.attempt?.summary.isClosed == true) return Future.value();
+    // Reopening a known attempt must read its outcome before another start POST:
+    // a lost submission response may already have closed it on the server.
+    if (_requestedAttemptId case final id?) return loadAttempt(id);
     return _mutate(AssessmentPhase.starting, (generation, requests) async {
       final attempt = await _repository.startOrResume(
         target.assignmentId,
@@ -344,6 +348,7 @@ class AssessmentController extends Notifier<AssessmentState> {
               'network_failure',
               'unexpected',
             }.contains(failure.code) ||
+            failure.statusCode == 408 ||
             failure.statusCode == 409 ||
             (failure.statusCode ?? 0) >= 500;
         if (uncertain) {

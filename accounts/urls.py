@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import ProfileView, SignInView, SignOutView
+from .password_views import OwnPasswordChangeView
 from .system_admin import SystemDashboardView, SystemUserDetailView, SystemUserListView
 from .system_admin_mutations import SystemUserCreateView, SystemUserEmployeeLinkView, SystemUserGroupsView
 
@@ -14,6 +15,7 @@ urlpatterns = [
     path("system/users/<int:pk>/link-employee/", SystemUserEmployeeLinkView.as_view(), name="system-user-link-employee"),
     path("system/users/<int:pk>/", SystemUserDetailView.as_view(), name="system-user-detail"),
     path("profile/", ProfileView.as_view(), name="profile"),
+    path("password-change/", OwnPasswordChangeView.as_view(), name="password-change"),
     path("login/", SignInView.as_view(), name="login"),
     path("logout/", SignOutView.as_view(), name="logout"),
 ]

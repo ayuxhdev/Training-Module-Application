@@ -10,6 +10,8 @@ from django.core.cache import cache
 from organization.models import Employee, Department, JobRole
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.settings import api_settings
+from rest_framework_simplejwt.utils import get_md5_hash_password
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
 User = get_user_model()
@@ -17,6 +19,10 @@ User = get_user_model()
 
 class MobileAuthTests(TestCase):
     def setUp(self):
+        # TestCase owns an outer rollback transaction. Durable admission and
+        # real bucket consumption are covered by LoginAdmissionMySQLTests.
+        self.enterContext(patch("accounts.login_rate_limit.reserve_login_source", return_value=0))
+        self.enterContext(patch("accounts.login_rate_limit.reserve_login_account", return_value=0))
         self.client = APIClient()
 
         # Base setup
@@ -197,6 +203,8 @@ class MobileAuthTests(TestCase):
     def test_refresh_registers_a_valid_parent_before_serializing_consumption(self):
         token = RefreshToken()
         token["user_id"] = str(self.active_user.pk)
+        if api_settings.CHECK_REVOKE_TOKEN:
+            token[api_settings.REVOKE_TOKEN_CLAIM] = get_md5_hash_password(self.active_user.password)
         self.assertFalse(OutstandingToken.objects.filter(jti=token["jti"]).exists())
         response = self.client.post(self.refresh_url, {"refresh": str(token)})
         self.assertEqual(response.status_code, 200)

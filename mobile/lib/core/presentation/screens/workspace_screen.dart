@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
 import 'package:training_app/core/presentation/components/custom_card.dart';
+import 'package:training_app/core/presentation/components/gardens_need_logo.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
@@ -19,7 +20,10 @@ class WorkspaceScreen extends ConsumerWidget {
     if (auth is! AuthAuthenticated) return const SizedBox.shrink();
     final identity = auth.identity;
     return Scaffold(
-      appBar: AppBar(title: const Text('Account access')),
+      appBar: AppBar(
+        title: const Text('Account access'),
+        actions: const [GardensNeedHeaderMark()],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
@@ -111,6 +115,21 @@ class WorkspaceScreen extends ConsumerWidget {
                   title: const Text('Assignment reports'),
                   subtitle: const Text(
                     'Track employee training status and completion history.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/workspace/reports/assignments'),
+                ),
+              ),
+            ),
+          if (identity.canViewTeam && canViewAssignmentReports(identity))
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.assignment_ind_outlined),
+                  title: const Text('Team Assignments'),
+                  subtitle: const Text(
+                    'View training assignments within your authorized reporting scope.',
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push('/workspace/reports/assignments'),

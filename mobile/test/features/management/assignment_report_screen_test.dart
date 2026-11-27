@@ -681,6 +681,55 @@ void main() {
       expect(find.textContaining('Very Long Employee Name'), findsOneWidget);
     });
 
+    testWidgets('long certificate wraps and opens at 320px with 2x text', (
+      tester,
+    ) async {
+      setTestViewport(tester, const Size(320, 800));
+      final semantics = tester.ensureSemantics();
+      try {
+        const number = 'GN-CERT-2026-000000000000000000000000000000000001';
+        final item = createSampleItem(
+          status: 'COMPLETED',
+          statusDisplay: 'Completed',
+          dueAt: DateTime.parse('2026-11-26T23:59:59Z'),
+          certificateId: 44,
+          certificateNumber: number,
+          isCertificateRevoked: true,
+        );
+        final page = AssignmentReportPageViewData(
+          items: [item],
+          count: 1,
+          hasMore: false,
+          page: 1,
+        );
+        int? openedCertificate;
+        await tester.pumpWidget(
+          buildTestableScreen(
+            pageData: page,
+            textScaleFactor: 2,
+            onCertificateTap: (id) => openedCertificate = id,
+          ),
+        );
+
+        final certificate = find.text(number);
+        expect(certificate, findsOneWidget);
+        await tester.ensureVisible(certificate);
+        await tester.pumpAndSettle();
+        expect(tester.getSize(certificate).height, greaterThan(48));
+        expect(
+          find.bySemanticsLabel(RegExp(RegExp.escape(number))),
+          findsOneWidget,
+        );
+        expect(find.text('REVOKED'), findsOneWidget);
+        expect(find.textContaining('2026-11-26'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.tap(certificate.hitTestable());
+        expect(openedCertificate, 44);
+      } finally {
+        semantics.dispose();
+      }
+    });
+
     testWidgets('renders cleanly on narrow screen (320px) without overflow', (
       tester,
     ) async {

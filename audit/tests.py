@@ -1,15 +1,24 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from types import SimpleNamespace
+from unittest import skipUnless
+from unittest.mock import patch
 from uuid import uuid4
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.db import IntegrityError, transaction
-from django.test import Client, TestCase
+from django.db import DatabaseError, IntegrityError, connection, connections, transaction
+from django.test import Client, SimpleTestCase, TestCase, TransactionTestCase
 
-from assessments.models import Assessment, AssessmentQuestion, Question
+from accounts.system_admin_services import update_system_user_groups
+from assessments.models import Assessment, AssessmentQuestion, Question, QuestionOption, QuestionRevision
 from certifications.models import Certificate
 from certifications.services import issue_completed_assignment_certificate
 from config.model_test_utils import CurriculumTestCase
+from config.role_requirement_test_config import ENGINE, IntegrationConfig, validate_settings
+from config.role_requirement_test_runner import require_authorized_connection
 from organization.models import Employee
 from training.models import (
     Lesson,
@@ -20,7 +29,67 @@ from training.models import (
 )
 
 from .models import AuditLog
-from .services import record_event
+from .services import AuditWriteError, audit_snapshot, record_event
+
+
+class TransactionalAuditContractTests(SimpleTestCase):
+    def setUp(self):
+        self.actor = get_user_model()(id=8, username="audit-actor", password="private-sentinel")
+        self.target = TrainingVersion(id=14, training_id=2, version_number=1, title="Training", status="DRAFT")
+        for model in (self.actor, self.target):
+            model._state.adding = False
+            model._state.db = "default"
+
+    def test_synchronous_write_on_target_connection_never_registers_callback(self):
+        with patch.object(transaction, "get_connection", return_value=SimpleNamespace(in_atomic_block=True)), \
+                patch.object(AuditLog.objects, "db_manager") as manager, patch.object(transaction, "on_commit") as callback:
+            record_event(self.actor, "training.trainingversion.published", self.target,
+                         before=audit_snapshot(self.target), after={"status": "PUBLISHED"}, reason="Approved")
+        manager.assert_called_once_with("default")
+        manager.return_value.create.assert_called_once_with(
+            actor=self.actor, actor_label_snapshot="audit-actor", action="training.trainingversion.published",
+            entity_type="training.trainingversion", entity_id="14",
+            before_data={"training_id": 2, "version_number": 1, "title": "Training", "status": "DRAFT"},
+            after_data={"status": "PUBLISHED"}, reason="Approved",
+        )
+        callback.assert_not_called()
+
+    def test_outside_transaction_cannot_write_a_required_record(self):
+        with patch.object(transaction, "get_connection", return_value=SimpleNamespace(in_atomic_block=False)), \
+                patch.object(AuditLog.objects, "db_manager") as manager, self.assertRaises(AuditWriteError):
+            record_event(self.actor, "training.trainingversion.published", self.target)
+        manager.assert_not_called()
+
+    def test_cross_database_actor_marks_rollback_and_fails_closed(self):
+        self.actor._state.db = "alternate"
+        with patch.object(transaction, "get_connection", return_value=SimpleNamespace(in_atomic_block=True)), \
+                patch.object(AuditLog.objects, "db_manager") as manager, patch.object(transaction, "set_rollback") as rollback, \
+                self.assertRaises(AuditWriteError):
+            record_event(self.actor, "training.trainingversion.published", self.target)
+        manager.assert_not_called()
+        rollback.assert_called_once_with(True, using="default")
+
+    def test_audit_storage_error_marks_outer_transaction_and_uses_generic_error(self):
+        for failure in (DatabaseError("private-sentinel"), ValidationError("private-sentinel")):
+            with self.subTest(failure_type=type(failure).__name__), \
+                    patch.object(transaction, "get_connection", return_value=SimpleNamespace(in_atomic_block=True)), \
+                    patch.object(AuditLog.objects, "db_manager") as manager, patch.object(transaction, "set_rollback") as rollback:
+                manager.return_value.create.side_effect = failure
+                with self.assertRaisesMessage(AuditWriteError, "Required audit event could not be saved.") as caught:
+                    record_event(self.actor, "training.trainingversion.published", self.target)
+                self.assertNotIn("private-sentinel", str(caught.exception))
+                rollback.assert_called_once_with(True, using="default")
+
+    def test_password_change_audit_has_no_credential_snapshot(self):
+        self.assertEqual(audit_snapshot(self.actor), {})
+        with patch.object(transaction, "get_connection", return_value=SimpleNamespace(in_atomic_block=True)), \
+                patch.object(AuditLog.objects, "db_manager") as manager:
+            record_event(self.actor, "auth.password.changed", self.actor)
+        values = manager.return_value.create.call_args.kwargs
+        self.assertEqual(values["before_data"], {})
+        self.assertEqual(values["after_data"], {})
+        self.assertEqual(values["reason"], "")
+        self.assertNotIn("private-sentinel", repr(values))
 
 
 class AuditLogTests(TestCase):
@@ -365,5 +434,94 @@ class AuditWorkflowTests(CurriculumTestCase):
                     before={"catalog_title": self.training.catalog_title},
                     after={"catalog_title": "Rolled back"},
                 )
+                self.assertTrue(AuditLog.objects.filter(action="training.training.updated").exists())
                 raise RuntimeError("rollback")
         self.assertFalse(AuditLog.objects.filter(action="training.training.updated").exists())
+
+    def test_failed_issuance_audit_rolls_back_certificate_and_allows_idempotent_retry(self):
+        self.complete_assignment()
+        action = "certifications.certificate.issued"
+        with patch.object(AuditLog, "save", side_effect=IntegrityError("Simulated audit failure")):
+            with self.assertRaises(AuditWriteError):
+                issue_completed_assignment_certificate(self.assignment.pk, actor=self.user)
+        self.assertFalse(Certificate.objects.filter(assignment=self.assignment).exists())
+        self.assertFalse(AuditLog.objects.filter(action=action).exists())
+        issued = issue_completed_assignment_certificate(self.assignment.pk, actor=self.user)
+        self.assertEqual(issue_completed_assignment_certificate(self.assignment.pk, actor=self.user).pk, issued.pk)
+        self.assertEqual(AuditLog.objects.filter(action=action, entity_id=str(issued.pk)).count(), 1)
+
+    def test_inner_savepoint_rollback_removes_business_change_and_its_audit_only(self):
+        client = self.client_for(self.user)
+        path = f"/versions/{self.version.pk}/retire/"
+        with transaction.atomic():
+            record_event(self.user, "test.outer", self.training)
+            with transaction.atomic():
+                self.assertEqual(client.post(path).status_code, 302)
+                self.assertTrue(AuditLog.objects.filter(action="training.trainingversion.retired").exists())
+                transaction.set_rollback(True)
+            self.version.refresh_from_db()
+            self.assertEqual(self.version.status, TrainingVersion.Status.PUBLISHED)
+            self.assertEqual(list(AuditLog.objects.values_list("action", flat=True)), ["test.outer"])
+
+    def test_website_audit_insert_failure_rolls_back_lifecycle_and_form_saves(self):
+        draft = QuestionRevision.objects.create(question=self.question, revision_number=2, prompt="Practice?", created_by=self.user)
+        QuestionOption.objects.create(question_revision=draft, text="Yes", position=1, is_correct=True)
+        QuestionOption.objects.create(question_revision=draft, text="No", position=2)
+        client = self.client_for(self.user)
+        operations = (
+            (f"/versions/{self.version.pk}/retire/", {}, self.version, "status", TrainingVersion.Status.PUBLISHED),
+            (f"/revisions/{draft.pk}/freeze/", {}, draft, "status", QuestionRevision.Status.DRAFT),
+            (f"/trainings/{self.training.pk}/edit/",
+             {"code": self.training.code, "catalog_title": "Rejected", "is_active": "on"},
+             self.training, "catalog_title", self.training.catalog_title),
+        )
+        for path, data, entity, field, expected in operations:
+            with self.subTest(path=path), patch.object(AuditLog, "save", side_effect=IntegrityError("Simulated write failure")):
+                with self.assertRaises(AuditWriteError):
+                    client.post(path, data)
+                entity.refresh_from_db()
+                self.assertEqual(getattr(entity, field), expected)
+        self.assertFalse(AuditLog.objects.exists())
+
+    def test_failed_group_change_audit_restores_membership(self):
+        actor = get_user_model().objects.create_user(username="audit-superuser", is_superuser=True)
+        group = Group.objects.get(name="Trainer")
+        with patch.object(AuditLog, "save", side_effect=IntegrityError("Simulated audit failure")):
+            with self.assertRaises(AuditWriteError):
+                update_system_user_groups(actor, self.employee_user.pk, [group])
+        self.assertFalse(self.employee_user.groups.filter(pk=group.pk).exists())
+        self.assertFalse(AuditLog.objects.filter(action="accounts.user.groups_changed").exists())
+
+
+@skipUnless(
+    settings.DATABASES.get("default", {}).get("ENGINE") == ENGINE and hasattr(settings, "INTEGRATION_TEST_CONFIG"),
+    "Requires the explicitly approved guarded integration test profile.",
+)
+class AuditTransactionConcurrencyTests(TransactionTestCase):
+    @classmethod
+    def _pre_setup(cls):
+        if type(validate_settings(settings)) is not IntegrationConfig:
+            raise RuntimeError("These tests require the guarded integration profile.")
+        require_authorized_connection(connection)
+        super()._pre_setup()
+
+    def test_concurrent_same_group_change_commits_one_business_change_and_one_audit(self):
+        users = get_user_model().objects
+        actor = users.create_user(username="audit-race-admin", is_superuser=True)
+        target = users.create_user(username="audit-race-target")
+        group, _ = Group.objects.get_or_create(name="Trainer")
+        ready = Barrier(2)
+
+        def worker():
+            try:
+                ready.wait(timeout=10)
+                return update_system_user_groups(actor, target.pk, [group])
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            pending = [workers.submit(worker) for _ in range(2)]
+            self.assertEqual(sorted(job.result(timeout=25) for job in pending), [False, True])
+        self.assertEqual(list(target.groups.values_list("pk", flat=True)), [group.pk])
+        event = AuditLog.objects.get(action="accounts.user.groups_changed", entity_id=str(target.pk))
+        self.assertEqual(event.actor_id, actor.pk)

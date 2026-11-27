@@ -100,12 +100,17 @@ def _create_assignment_event(assignment, event_type):
 
 
 def mark_notifications_read(employee, *, notification_id=None):
-    """One conditional update; existing read timestamps and immutable event fields survive."""
-    unread = Notification.objects.filter(employee_id=employee.pk, read_at__isnull=True)
-    if notification_id is not None:
-        unread = unread.filter(pk=notification_id)
-    # A backwards clock adjustment must not violate the model's read/creation order.
-    read_at = Greatest(F("created_at"), Value(timezone.now()))
-    # The normal validated queryset forbids generic updates. This narrowly scoped
-    # operation changes only read metadata, preserving its checks in one SQL statement.
-    return models.QuerySet.update(unread, read_at=read_at, updated_at=read_at)
+    """Serialize recipient read mutations before touching notification indexes."""
+    with transaction.atomic():
+        # Individual reads and read-all can scan different indexes. Take the same
+        # parent lock first so their UPDATEs cannot acquire row/index locks in
+        # opposite orders. Hold it through commit, including an outer transaction.
+        Employee.objects.select_for_update().only("pk").get(pk=employee.pk)
+        unread = Notification.objects.filter(employee_id=employee.pk, read_at__isnull=True)
+        if notification_id is not None:
+            unread = unread.filter(pk=notification_id)
+        # A backwards clock adjustment must not violate the model's read/creation order.
+        read_at = Greatest(F("created_at"), Value(timezone.now()))
+        # The normal validated queryset forbids generic updates. This narrowly scoped
+        # operation changes only read metadata, preserving its checks in one SQL statement.
+        return models.QuerySet.update(unread, read_at=read_at, updated_at=read_at)

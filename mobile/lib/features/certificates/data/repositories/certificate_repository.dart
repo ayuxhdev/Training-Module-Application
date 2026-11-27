@@ -23,7 +23,10 @@ class CertificateRepository {
       var page = 1;
       while (true) {
         final response = page == 1
-            ? await apiClient.dio.get('/certificates/', cancelToken: cancelToken)
+            ? await apiClient.dio.get(
+                '/certificates/',
+                cancelToken: cancelToken,
+              )
             : await apiClient.dio.get(
                 '/certificates/',
                 queryParameters: {'page': page},
@@ -32,11 +35,15 @@ class CertificateRepository {
         final data = response.data as Map<String, dynamic>;
         final results = data['results'] as List<dynamic>;
         certificates.addAll(
-          results.map((item) => Certificate.fromJson(item as Map<String, dynamic>)),
+          results.map(
+            (item) => Certificate.fromJson(item as Map<String, dynamic>),
+          ),
         );
         if (data['next'] == null) return certificates;
         if (results.isEmpty || data['next'] is! String) {
-          throw const FormatException('Invalid certificate pagination response.');
+          throw const FormatException(
+            'Invalid certificate pagination response.',
+          );
         }
         page++;
       }
@@ -59,7 +66,15 @@ class CertificateRepository {
         '/certificates/$certificateId/',
         cancelToken: cancelToken,
       );
-      return CertificateDetail.fromJson(response.data as Map<String, dynamic>);
+      final certificate = CertificateDetail.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+      if (certificate.id != certificateId) {
+        throw const FormatException(
+          'Certificate response does not match the requested certificate.',
+        );
+      }
+      return certificate;
     } catch (e) {
       throw apiClient.mapExceptionToApiError(e);
     }

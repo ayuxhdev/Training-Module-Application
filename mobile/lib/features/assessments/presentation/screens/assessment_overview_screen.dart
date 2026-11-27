@@ -113,18 +113,20 @@ class _AssessmentCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: item.completed
-                      ? colors.primaryContainer.withValues(alpha: 0.5)
-                      : colors.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  item.completed ? Icons.task_alt : Icons.quiz_outlined,
-                  color: colors.primary,
-                  size: 24,
+              ExcludeSemantics(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: item.completed
+                        ? colors.primaryContainer.withValues(alpha: 0.5)
+                        : colors.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    item.completed ? Icons.task_alt : Icons.quiz_outlined,
+                    color: colors.primary,
+                    size: 24,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -190,10 +192,21 @@ class _AssessmentCard extends StatelessWidget {
                     ? Icons.pause_circle_outline
                     : Icons.lock_outline,
               ),
+            )
+          else if (item.attemptsRemaining == 0 && !item.completed)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: const CinematicNotice(
+                message: 'You have reached the maximum attempt limit for this assessment.',
+                icon: Icons.block_outlined,
+              ),
             ),
           if (item.eligibility.canStart || item.eligibility.canResume) ...[
             const SizedBox(height: 12),
             FilledButton.icon(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
               icon: Icon(
                 item.eligibility.canResume ? Icons.play_arrow : Icons.edit_note,
               ),
@@ -218,25 +231,29 @@ class _AssessmentCard extends StatelessWidget {
             for (final attempt in item.attempts)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: attempt.passed == true
-                        ? colors.primaryContainer.withValues(alpha: 0.5)
-                        : colors.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    attempt.passed == true
-                        ? Icons.check_circle_outline
-                        : Icons.history_rounded,
-                    color: colors.primary,
-                    size: 20,
+                leading: ExcludeSemantics(
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: attempt.passed == true
+                          ? colors.primaryContainer.withValues(alpha: 0.5)
+                          : colors.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      attempt.passed == true
+                          ? Icons.check_circle_outline
+                          : Icons.history_rounded,
+                      color: colors.primary,
+                      size: 20,
+                    ),
                   ),
                 ),
                 title: Text('Attempt ${attempt.attemptNumber}'),
                 subtitle: Text(attemptLabel(attempt)),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: const ExcludeSemantics(
+                  child: Icon(Icons.chevron_right),
+                ),
                 onTap: () => context.push('$base/attempts/${attempt.id}'),
               ),
           ],

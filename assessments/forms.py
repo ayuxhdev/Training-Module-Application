@@ -1,5 +1,5 @@
 from django import forms
-from django.forms import inlineformset_factory
+from django.forms import BaseInlineFormSet, inlineformset_factory
 
 from training.models import Module
 
@@ -24,10 +24,37 @@ class QuestionOptionForm(forms.ModelForm):
         fields = ["text", "position", "is_correct"]
 
 
+class QuestionOptionInlineFormSet(BaseInlineFormSet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            self.extra = max(0, 2 - self.initial_form_count())
+            position = max((form.initial.get("position", 0) for form in self.initial_forms), default=0)
+            for form in self.extra_forms:
+                position += 1
+                form.initial["position"] = position
+
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        choices = [form.cleaned_data for form in self.forms
+                   if form.cleaned_data and not form.cleaned_data.get("DELETE")]
+        if len(choices) < 2:
+            raise forms.ValidationError("Provide at least two answer options.")
+        if sum(bool(choice.get("is_correct")) for choice in choices) != 1:
+            raise forms.ValidationError("Select exactly one correct answer.")
+        if self.instance.question_type == QuestionRevision.QuestionType.TRUE_FALSE and (
+            len(choices) != 2 or {choice["text"].strip().lower() for choice in choices} != {"true", "false"}
+        ):
+            raise forms.ValidationError('True/False questions require exactly the "True" and "False" options.')
+
+
 QuestionOptionFormSet = inlineformset_factory(
     QuestionRevision,
     QuestionOption,
     form=QuestionOptionForm,
+    formset=QuestionOptionInlineFormSet,
     extra=2,
     can_delete=True,
 )

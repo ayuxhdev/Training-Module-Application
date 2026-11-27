@@ -439,16 +439,7 @@ class _RoleRequirementsScreenState
 
     if (!canView) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Role requirements'),
-          actions: [
-            IconButton(
-              tooltip: 'Add requirement',
-              icon: const Icon(Icons.add),
-              onPressed: _showCreateDialog,
-            ),
-          ],
-        ),
+        appBar: AppBar(title: const Text('Role requirements')),
         body: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(AppSpacing.lg),
@@ -469,13 +460,7 @@ class _RoleRequirementsScreenState
                 ),
                 const SizedBox(height: AppSpacing.md),
                 Text(
-                  'Add role requirement',
-                  style: Theme.of(context).textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  'Your account has permission to configure mandatory training for job roles. Tap below to create a requirement.',
+                  'Choose a job role and a published version.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,

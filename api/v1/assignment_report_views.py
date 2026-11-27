@@ -11,6 +11,7 @@ from api.permissions import IsMobileAccount
 from reports.queries import dashboard_role
 from training.models import TrainingAssignment
 
+from .assignment_report_csv import assignment_report_csv_response
 from .assignment_report_queries import assignment_report_options, assignment_report_queryset
 from .assignment_report_serializers import (
     AssignmentReportQuerySerializer, AssignmentReportSerializer,
@@ -37,6 +38,20 @@ class AssignmentReportView(AssignmentReportMixin, generics.ListAPIView):
         query = AssignmentReportQuerySerializer(data=dict(self.request.query_params.items()))
         query.is_valid(raise_exception=True)
         return assignment_report_queryset(self.request.user, query.validated_data)
+
+
+class AssignmentReportExportView(AssignmentReportView):
+    """Download all scoped matches, independent of JSON list pagination."""
+
+    def get(self, request, *args, **kwargs):
+        return assignment_report_csv_response(self.get_queryset())
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        # Errors must not be cached either; only successful responses are CSV.
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
 
 class AssignmentReportFiltersView(AssignmentReportMixin, generics.GenericAPIView):

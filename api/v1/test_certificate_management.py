@@ -61,6 +61,7 @@ class CertificateManagementContractTests(SimpleTestCase):
             revoked_at=timezone.now() if revoked else None,
             revocation_reason="Issued in error" if revoked else "",
             _meta=SimpleNamespace(label_lower="certifications.certificate"),
+            _state=SimpleNamespace(db="default"),
         )
 
     def test_direct_and_group_effective_permissions_reach_me_capabilities(self):
@@ -237,22 +238,32 @@ class CertificateManagementContractTests(SimpleTestCase):
     def test_service_permission_loss_while_waiting_does_not_save_or_audit(self):
         self.service_case(revoked_permission=True)
 
+    def test_service_mobile_eligibility_loss_after_lock_does_not_save_or_audit(self):
+        self.service_case(eligible_after_lock=False)
+
     def test_service_audit_persistence_failure_is_not_deferred(self):
         self.service_case(audit_failure=True)
 
-    def service_case(self, duplicate=False, revoked_permission=False, audit_failure=False):
+    def service_case(self, duplicate=False, revoked_permission=False, audit_failure=False, eligible_after_lock=True):
         # Exercise actual control flow without executing atomic/SQL. Real row-lock
         # serialization and transaction rollback require the pending MySQL run.
         certificate = self.certificate(revoked=duplicate)
         order = []
         certificate.save = Mock(side_effect=lambda: order.append("save"))
         actor = self.actor(services.CHANGE_PERMISSION)
+        current_actor = self.actor(services.CHANGE_PERMISSION)
 
         def authorize(_):
-            if revoked_permission and order:
-                raise PermissionDenied
             order.append("authorize")
             return actor
+
+        def lock_authority(request_actor, permission, *, using):
+            self.assertIs(request_actor, actor)
+            self.assertEqual((permission, using), (services.CHANGE_PERMISSION, "default"))
+            order.append("authority_lock")
+            if revoked_permission:
+                raise PermissionDenied
+            return current_actor
 
         def persist_audit(**kwargs):
             order.append("audit")
@@ -260,6 +271,8 @@ class CertificateManagementContractTests(SimpleTestCase):
                 raise DatabaseError("Synthetic audit persistence failure")
 
         with patch.object(services, "_revoker", side_effect=authorize), \
+             patch.object(services, "require_lifecycle_permission", side_effect=lock_authority), \
+             patch.object(services, "can_use_mobile", return_value=eligible_after_lock) as eligible, \
              patch.object(services, "get_object_or_404", side_effect=[certificate, certificate]), \
              patch.object(services, "TrainingAssignment") as assignment, \
              patch.object(services, "Certificate") as model, \
@@ -267,8 +280,8 @@ class CertificateManagementContractTests(SimpleTestCase):
              patch("django.db.transaction.on_commit") as deferred:
             assignment.objects.select_for_update.side_effect = lambda: (order.append("assignment_lock") or Mock())
             model.objects.select_for_update.side_effect = lambda: (order.append("certificate_lock") or Mock())
-            if duplicate or revoked_permission:
-                with self.assertRaises(PermissionDenied if revoked_permission else services.CertificateAlreadyRevoked):
+            if duplicate or revoked_permission or not eligible_after_lock:
+                with self.assertRaises(services.CertificateAlreadyRevoked if duplicate else PermissionDenied):
                     services.revoke_certificate.__wrapped__(actor, 7, "Error")
                 certificate.save.assert_not_called()
                 audit.assert_not_called()
@@ -279,11 +292,13 @@ class CertificateManagementContractTests(SimpleTestCase):
             else:
                 result = services.revoke_certificate.__wrapped__(actor, 7, " Error ")
                 self.assertIs(result, certificate)
-                self.assertEqual(order, ["authorize", "assignment_lock", "certificate_lock", "authorize", "save", "audit"])
+                self.assertEqual(order, ["authorize", "assignment_lock", "certificate_lock", "authority_lock", "save", "audit"])
                 self.assertEqual(certificate.revocation_reason, "Error")
-                self.assertIs(certificate.revoked_by, actor)
+                self.assertIs(certificate.revoked_by, current_actor)
                 self.assertEqual(audit.call_args.kwargs["before_data"], {"revoked_at": None})
-                self.assertEqual(audit.call_args.kwargs["actor_label_snapshot"], actor.get_username())
+                self.assertEqual(audit.call_args.kwargs["actor_label_snapshot"], current_actor.get_username())
+            if not revoked_permission:
+                eligible.assert_called_once_with(current_actor)
             deferred.assert_not_called()
 
 

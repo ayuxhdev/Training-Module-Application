@@ -179,6 +179,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ),
                 ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.password_outlined),
+                  title: const Text('Change password'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/profile/password-change'),
+                ),
+              ),
+            ),
             SecondaryButton(
               text: 'Logout',
               onPressed: () {

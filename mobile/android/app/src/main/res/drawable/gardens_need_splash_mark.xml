@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/transparent"
+        android:width="288dp" android:height="288dp" android:gravity="center" />
+    <item android:drawable="@drawable/gardens_need_logo"
+        android:width="168dp" android:height="76.18dp" android:gravity="center" />
+</layer-list>

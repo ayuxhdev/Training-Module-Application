@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ assignment.training_version.training.catalog_title }} | Assignment details | Garden's Need Training{% endblock %}
-{% load static %}
+{% load static l10n %}
 {% block content %}
 <div class="catalog-workspace">
   <nav aria-label="Breadcrumb">
@@ -91,6 +91,65 @@
       </section>
     {% endif %}
   {% endif %}
+{% if management_progress %}
+  <section class="catalog-panel" aria-labelledby="management-progress-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="management-progress-heading">Training progress summary</h2>
+      <p>Read-only recorded results for this assignment's pinned training version. Video coverage is not the same as playback position.</p>
+    </header>
+    <div class="catalog-panel-body">
+      {% for module in management_progress.modules %}
+        <section aria-labelledby="progress-module-{{ forloop.counter }}">
+          <h3 id="progress-module-{{ forloop.counter }}">{{ module.title }}</h3>
+          <p>{{ module.completed_count }} of {{ module.lesson_count }} lessons completed</p>
+          <ul>
+            {% for lesson in module.lessons %}
+              <li>
+                <h4>{{ lesson.title }}</h4>
+                <p>{{ lesson.type_label }} · {% if lesson.is_required %}Required{% else %}Optional{% endif %} · <strong>{{ lesson.status }}</strong></p>
+                {% if lesson.completed_at %}<p>Completed: <time datetime="{{ lesson.completed_at|date:'c' }}">{{ lesson.completed_at|date:"M j, Y, g:i A T" }}</time></p>{% endif %}
+                {% if lesson.content_type == 'VIDEO' %}
+                  <p id="coverage-label-{{ forloop.parentloop.counter }}-{{ forloop.counter }}">Watched coverage: {{ lesson.coverage_percent|floatformat:'-2' }}% ({{ lesson.watched_seconds|floatformat:1 }} / {{ lesson.duration_seconds }} seconds)</p>
+                  <progress max="100" value="{{ lesson.coverage_percent|unlocalize }}" aria-labelledby="coverage-label-{{ forloop.parentloop.counter }}-{{ forloop.counter }}">{{ lesson.coverage_percent|floatformat:'-2' }}%</progress>
+                  <p class="muted">Minimum watched coverage: {{ lesson.minimum_watch_percent|floatformat:'-2' }}%. Completion is recorded by the server.</p>
+                {% endif %}
+              </li>
+            {% empty %}
+              <li>No lessons are available in this module.</li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% empty %}
+        <p class="empty-state">No lessons are available for this assignment.</p>
+      {% endfor %}
+      <section aria-labelledby="management-assessments-heading">
+        <h3 id="management-assessments-heading">Assessment results</h3>
+        <p class="muted">Latest recorded attempt for each assessment. Questions and answers are not displayed.</p>
+        <ul>
+          {% for assessment in management_progress.assessments %}
+            <li>
+              <h4>{{ assessment.title }}</h4>
+              <p>{{ assessment.kind }} · {% if assessment.is_required %}Required{% else %}Optional{% endif %} · {{ assessment.status }}</p>
+              {% if assessment.attempt_number %}<p>Latest attempt: {{ assessment.attempt_number }}</p>{% endif %}
+              {% if assessment.has_score %}
+                <p>Score: {{ assessment.score_points|floatformat:2 }} / {{ assessment.maximum_points|floatformat:2 }} · {% if assessment.passed %}Passed{% else %}Not passed{% endif %}</p>
+              {% endif %}
+              {% if assessment.submitted_at %}<p>Closed: <time datetime="{{ assessment.submitted_at|date:'c' }}">{{ assessment.submitted_at|date:"M j, Y, g:i A T" }}</time></p>{% endif %}
+            </li>
+          {% empty %}
+            <li>No assessments are available for this training version.</li>
+          {% endfor %}
+        </ul>
+      </section>
+      <section aria-labelledby="management-certificate-heading">
+        <h3 id="management-certificate-heading">Certificate status</h3>
+        <p>{{ management_progress.certificate_status }}</p>
+        {% if management_progress.certificate_issued_at %}<p>Issued: <time datetime="{{ management_progress.certificate_issued_at|date:'c' }}">{{ management_progress.certificate_issued_at|date:"M j, Y, g:i A T" }}</time></p>{% endif %}
+        {% if management_progress.certificate_revoked_at %}<p>Revoked: <time datetime="{{ management_progress.certificate_revoked_at|date:'c' }}">{{ management_progress.certificate_revoked_at|date:"M j, Y, g:i A T" }}</time></p>{% endif %}
+      </section>
+    </div>
+  </section>
+{% endif %}
 {% if can_learn %}
 <section class="catalog-panel catalog-curriculum learning-section" aria-labelledby="assignment-learning-heading">
   <header class="catalog-panel-heading">

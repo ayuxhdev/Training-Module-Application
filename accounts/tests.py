@@ -58,6 +58,13 @@ class ProductionSettingsTests(SimpleTestCase):
 
 
 class AuthenticationWorkflowTests(TestCase):
+	def setUp(self):
+		# These workflow tests run inside Django's rollback transaction.
+		# Real admission commits independently in the guarded MySQL tests.
+		admission = patch("accounts.login_rate_limit.reserve_login", return_value=0)
+		admission.start()
+		self.addCleanup(admission.stop)
+
 	def test_login_page_renders_the_accessible_branded_form(self):
 		response = Client().get(reverse("accounts:login"))
 

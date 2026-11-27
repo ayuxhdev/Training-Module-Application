@@ -437,6 +437,26 @@ test("M16 Gate 2: start puck centering and label clearance reserve safe margins 
   desktop.video.emit("loadedmetadata");
   assert.equal(desktop.stage.style.getPropertyValue("--video-label-gap"), "12px");
   assert.equal(desktop.stage.style.getPropertyValue("--video-puck-half"), "36px");
+
+  // At the calculated minimum stage height, both Start and Resume labels must
+  // clear the deck. This tests the sizing calculation, not real browser layout.
+  for (const player of [mobile, desktop]) {
+    for (const currentTime of [0, 15]) {
+      player.video.currentTime = currentTime;
+      player.video.emit("timeupdate");
+      const style = player.window.getComputedStyle(player.startLabel);
+      const labelHeight = parseFloat(style.lineHeight) + parseFloat(style.paddingTop) +
+        parseFloat(style.paddingBottom) + 2 * parseFloat(style.borderTopWidth);
+      const height = parseFloat(player.stage.style.getPropertyValue("--video-min-height"));
+      const puckHalf = parseFloat(player.stage.style.getPropertyValue("--video-puck-half"));
+      const gap = parseFloat(player.stage.style.getPropertyValue("--video-label-gap"));
+      const deckMargin = parseFloat(player.window.getComputedStyle(player.deck).marginBottom);
+      const labelBottom = height / 2 + puckHalf + gap + labelHeight;
+      const deckTop = height - player.deck.getBoundingClientRect().height - deckMargin;
+      assert.equal(player.startLabel.textContent, currentTime ? "Resume video" : "Start video");
+      assert.ok(labelBottom + 5 < deckTop, `${player.startLabel.textContent} must clear the deck`);
+    }
+  }
 });
 
 test("M16 Gate 3: keyboard End-key and range slider seek dispatches video-seek-request without altering media clock", () => {

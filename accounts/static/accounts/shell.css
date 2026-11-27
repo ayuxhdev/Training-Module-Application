@@ -162,6 +162,16 @@ a:hover { color: var(--color-brand-primary-dark); }
 }
 .site-header a { color: var(--color-text); }
 .site-brand { font-size: var(--font-size-lg); font-weight: 700; text-decoration: none; }
+.site-brand-logo {
+  display: block;
+  box-sizing: border-box;
+  width: clamp(6rem, 18vw, 8rem);
+  max-width: 100%;
+  height: auto;
+  padding: 0.25rem;
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
 .account-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4); }
 .account-controls form { margin: 0; }
 
@@ -1004,6 +1014,7 @@ tbody tr:nth-child(even) { background: var(--color-surface-subtle); }
 }
 
 .app-topbar {
+  --topbar-inset: clamp(1rem, 3.5vw, 2.5rem);
   position: sticky;
   top: 0;
   z-index: 50;
@@ -1014,7 +1025,7 @@ tbody tr:nth-child(even) { background: var(--color-surface-subtle); }
   gap: var(--space-4);
   min-height: var(--shell-topbar-min-height);
   align-self: start;
-  padding: 0 clamp(1rem, 3vw, 2rem);
+  padding-inline: max(var(--topbar-inset), env(safe-area-inset-left)) max(var(--topbar-inset), env(safe-area-inset-right));
   background: var(--color-surface);
   color: var(--color-text);
   box-shadow: var(--shadow-sm);
@@ -1024,7 +1035,9 @@ tbody tr:nth-child(even) { background: var(--color-surface-subtle); }
 .app-topbar a { color: var(--color-text); }
 .topbar-brand-group { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
 .app-topbar .site-brand { overflow-wrap: anywhere; }
-.app-topbar .account-controls { flex-wrap: nowrap; gap: var(--space-4); min-width: 0; }
+.app-topbar .account-controls { justify-content: flex-end; flex-wrap: nowrap; gap: var(--space-2) var(--space-4); min-width: 0; }
+.account-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+.account-actions > .btn { gap: var(--space-2); }
 .signed-in-user { overflow: hidden; max-width: min(26rem, 42vw); text-overflow: ellipsis; white-space: nowrap; }
 .app-topbar .account-controls form { flex: none; }
 .app-topbar .btn-secondary {
@@ -1152,9 +1165,7 @@ button.sidebar-backdrop { display: none; }
     gap: var(--space-1);
     padding: var(--space-2) var(--space-4);
   }
-  .topbar-brand-group, .app-topbar .account-controls { width: 100%; justify-content: space-between; }
-  .app-topbar .account-controls { gap: var(--space-2); }
-  .signed-in-user { max-width: calc(100vw - 8rem); font-size: var(--font-size-sm); }
+  .topbar-brand-group { width: 100%; justify-content: space-between; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1285,12 +1296,11 @@ button.sidebar-backdrop { display: none; }
 .dashboard-record-details dt, .dashboard-task-details dt { color: var(--color-text-muted); font-size: var(--font-size-sm); }
 .dashboard-record-details dd, .dashboard-task-details dd { margin: var(--space-1) 0 0; font-weight: 600; overflow-wrap: anywhere; }
 .dashboard-hero-greeting {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4) var(--space-6);
   margin-bottom: var(--space-6);
   border: var(--border-subtle);
   border-radius: var(--radius-lg);
@@ -1300,6 +1310,7 @@ button.sidebar-backdrop { display: none; }
 .dashboard-hero-greeting h2 {
   margin: 0;
   font-size: var(--font-size-xl);
+  line-height: 1.25;
   color: var(--color-text);
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -1307,22 +1318,23 @@ button.sidebar-backdrop { display: none; }
   word-break: break-word;
 }
 .dashboard-hero-greeting p {
-  margin: var(--space-1) 0 0;
+  margin: var(--space-2) 0 0;
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
 .dashboard-hero-greeting .hero-badge {
   display: inline-flex;
   align-items: center;
+  max-inline-size: 100%;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   background: var(--color-surface);
   border: var(--border-subtle);
-  border-radius: var(--radius-pill);
+  border-radius: 999px;
   font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--color-brand-primary);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .dashboard-progress-track {
   width: 100%;
@@ -1387,7 +1399,6 @@ button.sidebar-backdrop { display: none; }
 .site-header, .app-topbar { border-bottom: var(--border-subtle); }
 .site-brand-caption { display: block; margin-top: 0.15rem; color: var(--color-text-muted); font-size: 0.65rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; }
 .signed-in-user { font-size: var(--font-size-sm); color: var(--color-text-muted); }
-.app-topbar .account-controls { gap: var(--space-3); }
 .app-topbar .btn-secondary { border-color: var(--color-border); color: var(--color-text); }
 .app-sidebar { padding-top: var(--space-6); }
 .primary-nav .nav-link { color: var(--color-text-muted); font-size: var(--font-size-sm); }
@@ -1419,9 +1430,16 @@ button.sidebar-backdrop { display: none; }
   .site-header .appearance-control { align-self: flex-end; }
   .appearance-label { display: none; }
   .appearance-control summary { padding: var(--space-2); }
-  .app-topbar .appearance-panel { right: -4.5rem; }
+  .app-topbar .account-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
+  .app-topbar .account-actions { justify-content: flex-start; }
+  .app-topbar .appearance-control { position: static; }
+  .app-topbar .appearance-current { display: none; }
+  .app-topbar .appearance-panel {
+    inset-inline-end: max(var(--topbar-inset), env(safe-area-inset-right));
+    width: min(16rem, calc(100% - 2 * var(--topbar-inset)));
+  }
   .app-topbar .btn-secondary { padding-inline: var(--space-2); font-size: var(--font-size-sm); }
-  .signed-in-user { max-width: none; }
+  .app-topbar .signed-in-user { margin-inline: 0; white-space: normal; overflow-wrap: anywhere; }
 }
 
 /* Dashboard composition: scoped to preserve management pages and the player. */
@@ -1482,6 +1500,12 @@ button.sidebar-backdrop { display: none; }
   .dashboard-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 30rem) {
+  .dashboard-hero-greeting {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
   .dashboard-summary { grid-template-columns: repeat(auto-fit, minmax(min(8rem, 100%), 1fr)); gap: var(--space-3); }
   .dashboard-summary .card-body { padding: var(--space-4); }
   .dashboard-panel-heading, .dashboard-panel-body, .dashboard-panel-empty, .dashboard-failures > li, .dashboard-follow-up > li { padding: var(--space-4); }
@@ -1499,6 +1523,8 @@ button.sidebar-backdrop { display: none; }
 .org-panel-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2) var(--space-4); padding: var(--space-4) var(--space-6); border-bottom: var(--border-subtle); }
 .org-panel-heading h2 { margin: 0; font-size: var(--font-size-lg); }
 .org-panel-heading p { margin: 0; font-size: var(--font-size-sm); color: var(--color-text-muted); }
+.org-panel-body { display: grid; gap: var(--space-4); padding: var(--space-6); }
+.org-panel-body > p { margin: 0; }
 .org-workspace .org-table-scroll:focus-visible { outline-offset: -4px; }
 .org-workspace .org-table { table-layout: fixed; font-size: var(--font-size-sm); }
 .org-table th, .org-table td { padding: var(--space-3) var(--space-4); vertical-align: middle; overflow-wrap: anywhere; }
@@ -1545,7 +1571,7 @@ button.sidebar-backdrop { display: none; }
 }
 @media (max-width: 40rem) {
   .org-fields, .org-profile { grid-template-columns: minmax(0, 1fr); }
-  .org-panel-heading, .org-workspace .org-form, .org-profile { padding: var(--space-4); }
+  .org-panel-heading, .org-panel-body, .org-workspace .org-form, .org-profile { padding: var(--space-4); }
   .org-fields, .org-profile { gap: var(--space-4); }
 }
 
@@ -1631,7 +1657,6 @@ button.sidebar-backdrop { display: none; }
 }
 
 /* M22 Batch 5: management presentation, scoped away from learner/player pages. */
-.management-scope-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
 .management-scope-label { font-size: var(--font-size-xs); font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--color-brand-primary); }
 .management-dashboard > .page-header { padding: var(--space-6); border: var(--border-subtle); border-inline-start: 4px solid var(--color-brand-primary); border-radius: var(--radius-md); background: var(--color-accent-surface); }
 .management-dashboard--manager > .page-header { border-inline-start-color: var(--color-brand-secondary); background: var(--color-surface-subtle); }
@@ -1687,3 +1712,67 @@ button.sidebar-backdrop { display: none; }
 .record-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
 .record-actions .btn { max-width: 100%; white-space: normal; }
 .login-field .password-toggle { justify-self: start; margin-top: var(--space-1); }
+
+/* Rhythm for management landing pages. Form and table contracts stay local. */
+.management-workspace {
+  --management-gap: clamp(1rem, 2vw, 1.5rem);
+  --management-inset: clamp(1rem, 2.5vw, 1.5rem);
+  display: grid;
+  gap: var(--management-gap);
+  min-width: 0;
+}
+.management-workspace > * { min-width: 0; }
+.management-workspace > :is(.page-header, .org-panel, .catalog-panel, .dashboard-section, .dashboard-quick-actions, .catalog-notice, .catalog-validation) { margin-block: 0; }
+.management-workspace > .page-header { align-items: end; gap: var(--space-3) var(--management-inset); }
+.management-workspace .page-header-main > p { max-width: 72ch; }
+.management-workspace .breadcrumbs { margin-bottom: 0; }
+.management-section-copy { display: grid; gap: var(--space-1); min-width: 0; }
+.management-section-copy > :is(h2, p) { margin: 0; }
+.management-workspace :is(.org-panel-heading, .catalog-panel-heading, .dashboard-panel-heading) {
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-4) var(--management-inset);
+}
+.management-workspace :is(.org-table, .catalog-table) thead th { padding-block: var(--space-3); vertical-align: bottom; }
+.management-workspace :is(.catalog-form, .management-search-form, .management-panel-body) {
+  max-width: none;
+  padding: var(--space-4) var(--management-inset);
+  gap: var(--space-4);
+}
+.management-panel-body { display: grid; }
+.management-panel-body > p { margin: 0; }
+.management-workspace .catalog-fields { column-gap: var(--management-inset); row-gap: var(--space-4); }
+.management-results-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--management-inset);
+  border-bottom: var(--border-subtle);
+  font-size: var(--font-size-sm);
+}
+.management-results-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-1) var(--space-4); }
+.management-results-bar p { margin: 0; }
+.management-workspace .management-scroll-hint { padding-inline: var(--management-inset); }
+.management-workspace .dashboard-section > .management-section-copy { margin-bottom: var(--space-4); }
+.management-dashboard .management-scope-label { display: block; margin-bottom: var(--space-2); }
+.management-dashboard > .page-header { padding: var(--management-inset); }
+.management-workspace .dashboard-panels { gap: var(--management-gap); }
+
+.report-workspace .report-filters > .report-checkbox-field { grid-column: auto; align-self: end; }
+.report-filters .report-checkbox-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  padding-inline: var(--space-3);
+  border: var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  cursor: pointer;
+}
+.report-checkbox-control input { flex: none; margin: 0; }
+.report-checkbox-control:focus-within { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+.org-workspace .system-user-table { min-width: 62rem; table-layout: auto; }
+.system-user-table thead th:first-child { width: auto; }
+.system-user-table thead th:last-child { width: 6rem; }

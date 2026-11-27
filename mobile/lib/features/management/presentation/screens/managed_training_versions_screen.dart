@@ -79,39 +79,6 @@ class _ManagedTrainingVersionsScreenState
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
-            // Architectural policy card
-            CustomCard(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline, color: theme.colorScheme.primary),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Version Pinning & Immutability',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'PUBLISHED versions are immutable and pinned to learner '
-                          'assignments. RETIRED versions remain available for existing learners.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-
             asyncData.when(
               loading: () => const CardListSkeleton(
                 message: 'Loading versions',
@@ -125,18 +92,9 @@ class _ManagedTrainingVersionsScreenState
               ),
               data: (page) {
                 if (page.items.isEmpty) {
-                  return EmptyView(
+                  return const EmptyView(
                     message: 'No versions found for this course.',
                     icon: Icons.history,
-                    action: canCreateVersions(auth.identity)
-                        ? FilledButton.icon(
-                            onPressed: () => context.push(
-                              '/workspace/training/catalog/${widget.trainingId}/versions/new',
-                            ),
-                            icon: const Icon(Icons.add),
-                            label: const Text('Create draft version'),
-                          )
-                        : null,
                   );
                 }
 
@@ -205,12 +163,6 @@ class _ManagedTrainingVersionsScreenState
   ) {
     final theme = Theme.of(context);
     final status = version.status.toUpperCase();
-    final lifecycleDescription = switch (status) {
-      'PUBLISHED' => 'Published version · Immutable and pinned to assignments',
-      'DRAFT' => 'Draft version · Content is actively mutable',
-      'RETIRED' => 'Retired version · Historical read-only archive',
-      _ => 'Version status: $status',
-    };
 
     return CustomCard(
       onTap: () => context.push('/workspace/training/versions/${version.id}'),
@@ -232,13 +184,6 @@ class _ManagedTrainingVersionsScreenState
                           : 'Version ${version.versionNumber}',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      lifecycleDescription,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],

@@ -32,7 +32,11 @@ class MobileIdentityTests(TestCase):
         return user
 
     def login(self, user):
-        return self.client.post("/api/v1/auth/login/", {"username": user.username, "password": "test-password"})
+        # This contract test's outer TestCase transaction cannot commit a reservation.
+        with patch("accounts.login_rate_limit.reserve_login_source", return_value=0), patch(
+            "accounts.login_rate_limit.reserve_login_account", return_value=0,
+        ):
+            return self.client.post("/api/v1/auth/login/", {"username": user.username, "password": "test-password"})
 
     def identity(self, user):
         response = self.login(user)

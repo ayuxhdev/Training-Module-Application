@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:training_app/core/presentation/components/gardens_need_logo.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:training_app/core/presentation/components/cinematic_components.dart';
@@ -26,6 +27,7 @@ class ManagementDashboardScreen extends ConsumerWidget {
     }
     return ReadOnlyPage<ManagementDashboard>(
       title: 'Management dashboard',
+      actions: const [GardensNeedHeaderMark()],
       loading: const ManagementSkeleton(),
       value: ref.watch(managementDashboardProvider),
       refresh: () =>

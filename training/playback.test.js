@@ -234,6 +234,21 @@ test("paused seeking and media errors never retain the Playing status", async ()
   assert.equal(player.calls.filter((call) => call.url.includes("/end/")).length, 1);
 });
 
+test("initial authorization failure leaves playback unavailable without opening media or a session", async () => {
+  for (const status of [401, 403]) {
+    const player = playback(async () => ({ ok: false, status }), true);
+    await settle();
+    assert.equal(player.calls.length, 1);
+    assert.equal(player.calls[0].options.method, "GET");
+    assert.equal(player.video.src, undefined);
+    assert.equal(player.video.paused, true);
+    assert.equal(player.element("start-video").disabled, true);
+    assert(player.controls.every((control) => control.disabled));
+    assert.equal(player.hasHeartbeat(), false);
+    assert.match(player.element("playback-status").textContent, /Reload the lesson/);
+  }
+});
+
 test("expired session errors replace Playing and leave playback stopped", async () => {
   const player = playback(async (url, options) => {
     if (url.includes("/progress/") && options.method === "POST") return { ok: false, status: 409 };
@@ -293,8 +308,27 @@ test("End/rapid unwatched range requests never reach the native media clock and 
   }, true);
   await settle(); await player.start(); player.event("seeked");
   player.video.currentTime = 20; player.event("timeupdate");
+  const mediaSource = player.video.src;
+  const assignedPositions = [];
+  let position = player.video.currentTime;
+  let mediaErrors = 0;
+  player.video.addEventListener("error", () => { mediaErrors += 1; });
+  Object.defineProperty(player.video, "currentTime", {
+    get() { return position; },
+    set(value) {
+      assignedPositions.push(value);
+      position = value;
+      // Model the media failure reported after native forward-seek requests.
+      // Rejected intent must never reach this setter in the first place.
+      if (value >= 80) player.event("error");
+    },
+  });
   player.seek(100); player.seek(99); player.seek(80);
   await settle();
+  assert.deepEqual(assignedPositions, []);
+  assert.equal(mediaErrors, 0);
+  assert.equal(player.video.src, mediaSource);
+  assert.doesNotMatch(player.element("playback-status").textContent, /Video is unavailable/);
   assert.equal(player.video.currentTime, 20);
   assert.equal(player.video.paused, false);
   assert.equal(player.calls.filter((call) => call.url.includes("/end/")).length, 0);

@@ -2,6 +2,7 @@ import 'package:training_app/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:training_app/core/presentation/components/gardens_need_logo.dart';
 import 'package:training_app/core/presentation/screens/app_shell.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/domain/models/employee.dart';
@@ -15,7 +16,33 @@ class ShellAuthController extends AuthController {
   ));
 }
 
+class _CheckingAccount extends AuthController {
+  @override
+  AuthState build() => AuthInitial();
+}
+
 void main() {
+  testWidgets('account loading shows one brand mark without navigation', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 240));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [authControllerProvider.overrideWith(_CheckingAccount.new)],
+        child: const MaterialApp(
+          home: AppShell(location: '/', child: Text('Authenticated content')),
+        ),
+      ),
+    );
+
+    expect(find.byType(GardensNeedLogo), findsOneWidget);
+    expect(find.text('Checking your account'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+    expect(find.text('Authenticated content'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final (location, index) in [('/dashboard', 0), ('/learning/assignments/42', 1), ('/profile', 2)]) {
   testWidgets('shell selects $location without a GoRouterState ancestor', (tester) async {
     await tester.pumpWidget(ProviderScope(

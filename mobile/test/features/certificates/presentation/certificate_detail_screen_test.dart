@@ -237,7 +237,7 @@ void main() {
 
   for (final document in [false, true]) {
     testWidgets(
-      'has_document=$document never fabricates Download, Share or Print controls',
+      'has_document=$document never fabricates unverified Download or Share controls, but provides authoritative Print / Save as PDF action',
       (tester) async {
         final harness = _Harness(certificate: _certificate(document: document));
         await harness.open(tester);
@@ -246,12 +246,11 @@ void main() {
           'Download certificate',
           'Share',
           'Share certificate',
-          'Print',
-          'Print certificate',
         ]) {
           expect(find.text(label), findsNothing);
         }
-        expect(find.textContaining('Need a printed copy?'), findsOneWidget);
+        expect(find.text('Print / Save as PDF'), findsOneWidget);
+        expect(find.text('Print & PDF Export'), findsOneWidget);
       },
     );
   }

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
+import 'package:training_app/core/presentation/components/gardens_need_logo.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 
 class AppShell extends ConsumerWidget {
@@ -18,7 +19,10 @@ class AppShell extends ConsumerWidget {
 
     if (authState is AuthInitial || authState is AuthLoading) {
       return const Scaffold(
-        body: LoadingView(message: 'Checking your account'),
+        body: LoadingView(
+          message: 'Checking your account',
+          branding: GardensNeedLogo(width: 144, height: 72),
+        ),
       );
     }
 

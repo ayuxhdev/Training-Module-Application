@@ -4,18 +4,18 @@ import 'package:training_app/features/certificates/domain/models/certificate_det
 void main() {
   group('CertificateDetail.fromJson', () {
     Map<String, dynamic> validJson() => {
-          'id': 5,
-          'certificate_number': 'GN-XYZ123',
-          'training_title': 'First Aid',
-          'version_number': 1,
-          'employee_name': 'Alice Smith',
-          'employee_code': 'GN-001',
-          'issued_at': '2024-07-01T08:00:00Z',
-          'is_revoked': false,
-          'revoked_at': null,
-          'assignment_id': 42,
-          'has_document': false,
-        };
+      'id': 5,
+      'certificate_number': 'GN-XYZ123',
+      'training_title': 'First Aid',
+      'version_number': 1,
+      'employee_name': 'Alice Smith',
+      'employee_code': 'GN-001',
+      'issued_at': '2024-07-01T08:00:00Z',
+      'is_revoked': false,
+      'revoked_at': null,
+      'assignment_id': 42,
+      'has_document': false,
+    };
 
     test('parses valid active certificate detail', () {
       final detail = CertificateDetail.fromJson(validJson());
@@ -45,6 +45,24 @@ void main() {
       final json = validJson()..['has_document'] = true;
       final detail = CertificateDetail.fromJson(json);
       expect(detail.hasDocument, true);
+    });
+
+    test('rejects contradictory revocation flag and timestamp', () {
+      for (final fields in [
+        {'is_revoked': true, 'revoked_at': null},
+        {'is_revoked': false, 'revoked_at': '2024-08-01T09:00:00Z'},
+      ]) {
+        expect(
+          () => CertificateDetail.fromJson({...validJson(), ...fields}),
+          throwsA(
+            isA<FormatException>().having(
+              (error) => error.message,
+              'message',
+              'Inconsistent certificate revocation status.',
+            ),
+          ),
+        );
+      }
     });
 
     test('throws on invalid id', () {

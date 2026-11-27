@@ -192,7 +192,7 @@ void main() {
       );
 
       expect(find.text('Training versions'), findsWidgets);
-      expect(find.text('Version Directory & Immutability'), findsOneWidget);
+      expect(find.text('Version Directory & Immutability'), findsNothing);
       expect(find.text('3 version(s) recorded'), findsOneWidget);
 
       // Verify version item cards

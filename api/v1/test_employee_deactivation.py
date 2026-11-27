@@ -180,13 +180,13 @@ class EmployeeDeactivationAPITests(CurriculumTestCase):
         response = self.client.patch(f"/api/v1/management/employees/{self.employee.pk}/", {"is_active": False}, format="json")
         self.assert_error(response, 400, "is_active")
 
-    def test_audit_occurs_after_commit_with_server_actor_snapshots_and_reason(self):
+    def test_audit_is_synchronous_with_server_actor_snapshots_and_reason(self):
         self.authenticate(self.admin)
-        with self.captureOnCommitCallbacks(execute=True) as callbacks:
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
             response = self.client.post(self.url(), {"reason": "Left company"}, format="json")
             self.assertEqual(response.status_code, 200)
-            self.assertFalse(AuditLog.objects.exists())
-        self.assertEqual(len(callbacks), 1)
+            self.assertEqual(AuditLog.objects.count(), 1)
+        self.assertEqual(callbacks, [])
         event = AuditLog.objects.get(action="organization.employee.deactivated")
         self.assertEqual(event.actor_id, self.admin.pk)
         self.assertEqual(event.entity_id, str(self.employee.pk))

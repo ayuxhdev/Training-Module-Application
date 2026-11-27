@@ -189,6 +189,16 @@ class DisposableHarnessTests(unittest.TestCase):
         self.assertNotIn(self.config.password, repr(self.config))
         self.assertNotIn(self.config.secret_key, repr(self.config))
 
+    def test_shared_defaults_preserve_strict_role_profile_and_jwt_contract(self):
+        with patch.dict(os.environ, self.environment, clear=True):
+            values = runpy.run_module(PROFILE, run_name="config._rr_shared_defaults")
+        self.assertEqual(values["TEST_RUNNER"], RUNNER)
+        self.assertEqual(values["DATABASES"]["default"]["PORT"], "3308")
+        self.assertNotIn("CHECK_REVOKE_TOKEN", values["SIMPLE_JWT"])
+        self.assertEqual(values["EMAIL_BACKEND"], "django.core.mail.backends.locmem.EmailBackend")
+        from . import isolated_test_defaults
+        self.assertIsNot(values["STORAGES"], isolated_test_defaults.STORAGES)
+
     def test_missing_configuration_does_not_fall_back_to_generic_db_environment(self):
         required_keys = set(self.environment)
         for key in required_keys:
@@ -284,7 +294,7 @@ class DisposableHarnessTests(unittest.TestCase):
                 del environment[missing]
             with self.subTest(arguments=arguments, missing=missing):
                 result = subprocess.run(
-                    [sys.executable, "-B", "-c", script, *arguments], env=environment,
+                    [sys.executable, *(["-O"] if sys.flags.optimize else []), "-B", "-c", script, *arguments], env=environment,
                     cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=30,
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)

@@ -373,6 +373,54 @@ void main() {
     },
   );
 
+  testWidgets('locked final assessment rejects direct attempt navigation', (
+    tester,
+  ) async {
+    const reason = 'Complete all required lessons before the final assessment.';
+    catalog['assessments'][0].addAll({
+      'kind': 'FINAL',
+      'module_id': null,
+      'can_start': false,
+      'can_resume': false,
+      'ongoing_attempt_id': null,
+      'attempts': [],
+      'blocking_reason': reason,
+    });
+    when(
+      () => assessments.startOrResume(
+        1,
+        2,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenThrow(ApiError(message: reason, statusCode: 409));
+
+    await open(tester, overviewPath);
+    expect(find.text(reason), findsOneWidget);
+    expect(find.text('Start assessment'), findsNothing);
+    expect(find.text('Resume assessment'), findsNothing);
+
+    router.go(attemptPath);
+    await tester.pumpAndSettle();
+    expect(find.text('Assessment unavailable'), findsOneWidget);
+    expect(find.text(reason), findsOneWidget);
+    expect(find.text('Wear PPE?'), findsNothing);
+    expect(find.text('Submit assessment'), findsNothing);
+    verify(
+      () => assessments.startOrResume(
+        1,
+        2,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+    verifyNever(
+      () => assessments.submitAttempt(
+        any(),
+        any(),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+  });
+
   testWidgets(
     'ordered single-choice and true/false selections survive question navigation',
     (tester) async {
@@ -429,6 +477,111 @@ void main() {
       ),
     );
     expect(find.text('Wear PPE?'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Submit assessment'),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(
+      tester
+          .widget<PopScope>(find.byWidgetPredicate((w) => w is PopScope).last)
+          .canPop,
+      isTrue,
+    );
+    await tap(tester, 'Back to training');
+    expect(
+      router.routeInformationProvider.value.uri.path,
+      '/learning/assignments/1',
+    );
+  });
+
+  for (final uncertain in [false, true]) {
+    testWidgets(
+      '${uncertain ? 'uncertain' : 'rejected'} submission restores back navigation without inventing a result',
+      (tester) async {
+        when(
+          () => assessments.submitAttempt(
+            7,
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenThrow(
+          uncertain
+              ? ApiError.timeout()
+              : ApiError(message: 'Answers rejected', statusCode: 400),
+        );
+        when(
+          () =>
+              assessments.getAttempt(7, cancelToken: any(named: 'cancelToken')),
+        ).thenThrow(ApiError.networkFailure());
+        await open(tester, attemptPath);
+        await tap(tester, 'Yes');
+        await confirm(tester);
+        expect(find.text('Passed'), findsNothing);
+        expect(find.text('Not passed'), findsNothing);
+        expect(find.textContaining('Score:'), findsNothing);
+        expect(
+          tester
+              .widget<PopScope>(
+                find.byWidgetPredicate((w) => w is PopScope).last,
+              )
+              .canPop,
+          isTrue,
+        );
+        final state = container.read(
+          assessmentAttemptProvider((assignmentId: 1, assessmentId: 2)),
+        );
+        expect(state.selectedAnswers, {11: 21});
+        expect(state.canSubmit, isFalse);
+        await tap(tester, 'Back to training');
+        expect(
+          router.routeInformationProvider.value.uri.path,
+          '/learning/assignments/1',
+        );
+        verify(
+          () => assessments.submitAttempt(
+            7,
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+      },
+    );
+  }
+
+  testWidgets('system back cancels confirmation and restores draft controls', (
+    tester,
+  ) async {
+    await open(tester, attemptPath);
+    await tap(tester, 'Yes');
+    await tap(tester, 'Submit assessment');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Submit assessment?'), findsNothing);
+    expect(find.text('1 of 1 answered'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Submit assessment'),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    verifyNever(
+      () => assessments.submitAttempt(
+        7,
+        any(),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+    await tap(tester, 'Back to training');
+    expect(
+      router.routeInformationProvider.value.uri.path,
+      '/learning/assignments/1',
+    );
   });
 
   testWidgets(
@@ -462,6 +615,33 @@ void main() {
       expect(find.byType(CertificateDetailScreen), findsOneWidget);
     },
   );
+
+  testWidgets('passing without a server certificate does not invent one', (
+    tester,
+  ) async {
+    final result = attemptJson(status: 'SUBMITTED')
+      ..['certificate_id'] = null
+      ..['assignment_status'] = 'IN_PROGRESS';
+    when(
+      () => assessments.submitAttempt(
+        7,
+        any(),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) async => AssessmentAttempt.fromJson(result));
+
+    await open(tester, attemptPath);
+    await confirm(tester);
+    expect(find.text('Passed'), findsOneWidget);
+    expect(find.text('Score: 2.00 / 2.00'), findsOneWidget);
+    expect(find.text('View certificate'), findsNothing);
+    verifyNever(
+      () => certificates.getCertificateDetail(
+        any(),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+  });
 
   testWidgets('timeout reconciles the result with GET and never resubmits', (
     tester,

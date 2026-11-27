@@ -47,6 +47,7 @@ import 'package:training_app/features/learning/presentation/screens/lesson_list_
 import 'package:training_app/features/learning/presentation/screens/text_lesson_screen.dart';
 import 'package:training_app/features/learning/presentation/screens/video_lesson_screen.dart';
 import 'package:training_app/features/profile/presentation/screens/profile_screen.dart';
+import 'package:training_app/features/profile/presentation/screens/password_change_screen.dart';
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/features/assessments/presentation/screens/assessment_overview_screen.dart';
 import 'package:training_app/features/assessments/presentation/screens/assessment_attempt_screen.dart';
@@ -1091,6 +1092,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/profile',
             builder: (context, state) => const ProfileScreen(),
             routes: [
+              GoRoute(
+                path: 'password-change',
+                builder: (context, state) => const PasswordChangeScreen(),
+              ),
               GoRoute(
                 path: 'certificates',
                 builder: (context, state) => const CertificateListScreen(),
