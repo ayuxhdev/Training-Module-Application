@@ -61,6 +61,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
   bool _accountChanged = false;
   bool _readOnlyReplay = false;
   bool _recoveringFromBuffering = false;
+  bool _sessionClockReady = false;
   String? _message;
   ApiError? _mediaAccessError;
 
@@ -124,7 +125,9 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
       return;
     }
     final oldSession = _session;
-    final position = _video?.value.isInitialized == true ? _reported : null;
+    final position = _sessionClockReady && _video?.value.isInitialized == true
+        ? _reported
+        : null;
     ++_generation;
     _cancelTimers();
     final video = _video;
@@ -147,6 +150,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     _busy = false;
     _controls = true;
     _origin = 0;
+    _sessionClockReady = false;
     _readOnlyReplay = false;
     _message = null;
     _mediaAccessError = null;
@@ -344,15 +348,24 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
       // A failed close must be resolved before starting another session.
       await session.close();
       if (!_current(generation) || !_foreground) return;
+      // The preceding player's clock belongs to the closed session until the
+      // new session's approved seek completes. Lifecycle cleanup must ignore it.
+      _sessionClockReady = false;
       final previousProgress =
           ref.read(playbackSessionProvider(_lesson)).progress ??
           _currentLesson()?.progress;
       final knownDuration = _video?.value.isInitialized == true
           ? _video!.value.duration.inMilliseconds / 1000
           : (_currentLesson()?.videoDurationSeconds ?? 0).toDouble();
+      final isCompleted = previousProgress?.completed == true;
+      final isSavedEnd = _nearEnd(
+        previousProgress?.resumePosition ?? 0,
+        knownDuration,
+      );
       final replay =
           _video?.value.isCompleted == true ||
-          _nearEnd(previousProgress?.resumePosition ?? 0, knownDuration);
+          (isCompleted && isSavedEnd) ||
+          isSavedEnd;
       await session.start(position: replay ? 0 : null);
       if (!_current(generation) || !_foreground) {
         await session.close();
@@ -393,11 +406,23 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
         approvedPosition,
         video.value.duration.inMilliseconds / 1000,
       )) {
-        throw StateError('Playback session resumed at the video endpoint.');
+        // Reconcile an inconsistent saved-end response through the existing
+        // backward-observation protocol before moving the local media clock.
+        // Only the server response can establish the new baseline or credit.
+        await session.heartbeat(0);
+        if (!_current(generation) || !_foreground) return;
+        final restarted = ref.read(playbackSessionProvider(_lesson));
+        if (restarted.phase != PlaybackPhase.active ||
+            restarted.progress?.resumePosition != 0 ||
+            restarted.lastObservationPosition != 0) {
+          throw StateError('Playback restart was not confirmed by the server.');
+        }
+        approvedPosition = 0;
       }
       _origin = approvedPosition;
       await video.seekTo(Duration(milliseconds: (_origin * 1000).floor()));
       if (!_current(generation) || !_foreground) return;
+      _sessionClockReady = true;
       video.addListener(_onVideo);
       await video.play();
     } catch (error) {
@@ -434,7 +459,10 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     await video?.pause();
     if (!_readOnlyReplay) {
       await session?.close(
-        position: approvedOnly || video?.value.isInitialized != true
+        position:
+            approvedOnly ||
+                !_sessionClockReady ||
+                video?.value.isInitialized != true
             ? null
             : position,
         // video_player also derives isCompleted from position/seek updates.
@@ -495,13 +523,6 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
     final video = _video!;
     final playing = video.value.isPlaying;
     final generation = _generation;
-    setState(() => _busy = true);
-    _cancelTimers();
-    await video.pause();
-    await _session!.heartbeat(
-      _reported,
-    ); // Save real playback before moving its baseline.
-    if (!_current(generation)) return;
     final state = ref.read(playbackSessionProvider(_lesson));
     final progress = state.progress;
     final allowed =
@@ -510,14 +531,7 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
             progress.watchedRanges.any(
               (range) => target >= range[0] && target <= range[1],
             ));
-    if (state.phase == PlaybackPhase.active && allowed) {
-      await video.seekTo(Duration(milliseconds: (target * 1000).floor()));
-      if (!_current(generation)) return;
-      await _session!.heartbeat(
-        target,
-      ); // Backend validates the new observation baseline.
-      _origin = target;
-    } else if (state.phase == PlaybackPhase.active) {
+    if (!allowed) {
       _message = 'Move through unwatched video by playing it.';
       _warningExpiry?.cancel();
       late final Timer warningExpiry;
@@ -529,17 +543,42 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
         }
       });
       _warningExpiry = warningExpiry;
+      _onVideo();
+      _reveal();
+      return;
     }
-    if (!_current(generation)) return;
-    setState(() => _busy = false);
-    if (playing &&
-        _foreground &&
-        ref.read(playbackSessionProvider(_lesson)).phase ==
-            PlaybackPhase.active) {
-      await video.play();
+    setState(() => _busy = true);
+    _cancelTimers();
+    await video.pause();
+    try {
+      await _session!.heartbeat(
+        _reported,
+      ); // Save real playback before moving its baseline.
+      if (!_current(generation)) return;
+      final activeState = ref.read(playbackSessionProvider(_lesson));
+      if (activeState.phase == PlaybackPhase.active) {
+        await video.seekTo(Duration(milliseconds: (target * 1000).floor()));
+        if (!_current(generation)) return;
+        await _session!.heartbeat(
+          target,
+        ); // Backend validates the new observation baseline.
+        _origin = target;
+      }
+    } catch (_) {
+      // Catch transient network error so _busy is cleanly reset.
+    } finally {
+      if (_current(generation)) {
+        setState(() => _busy = false);
+        if (playing &&
+            _foreground &&
+            ref.read(playbackSessionProvider(_lesson)).phase ==
+                PlaybackPhase.active) {
+          await video.play();
+        }
+        _onVideo();
+        _reveal();
+      }
     }
-    _onVideo();
-    _reveal();
   }
 
   Future<void> _toggleFullscreen() async {
@@ -687,6 +726,12 @@ class _VideoLessonScreenState extends ConsumerState<VideoLessonScreen>
       watchedRanges: progress?.watchedRanges ?? const [],
       completed: progress?.completed ?? false,
       resumePosition: lesson?.playbackMode == 'read_only_replay'
+          ? 0
+          : (progress?.completed == true &&
+                _nearEnd(
+                  progress?.resumePosition ?? 0,
+                  (lesson?.videoDurationSeconds ?? 0).toDouble(),
+                ))
           ? 0
           : progress?.resumePosition ?? 0,
       videoDurationSeconds: lesson?.videoDurationSeconds,

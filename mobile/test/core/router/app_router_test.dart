@@ -265,14 +265,17 @@ void main() {
         expect(find.byType(LearningScreen), findsOneWidget);
       }
 
-      // Tap the assignment card
+      // The Dashboard uses a CTA; Learning keeps its assignment card action.
+      final assignmentAction = fromDashboard
+          ? find.widgetWithText(ElevatedButton, 'Continue training')
+          : find.text('Test Assignment');
       await tester.scrollUntilVisible(
-        find.text('Test Assignment'), 250,
+        assignmentAction, 250,
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
       expect(find.text('Test Assignment'), findsOneWidget);
-      await tester.tap(find.text('Test Assignment'));
+      await tester.tap(assignmentAction);
       await tester.pumpAndSettle();
 
       // Verify detail screen is shown

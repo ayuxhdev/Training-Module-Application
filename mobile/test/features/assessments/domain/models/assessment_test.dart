@@ -124,6 +124,48 @@ void main() {
     );
   });
 
+  test('incomplete or contradictory attempt results fail closed', () {
+    for (final status in ['IN_PROGRESS', 'SUBMITTED', 'EXPIRED', 'ABANDONED']) {
+      final valid = summaryJson(status: status, passed: false);
+      if (status == 'ABANDONED') {
+        valid.addAll({'score_points': null, 'passed': null});
+      }
+      final invalidFields = status == 'IN_PROGRESS'
+          ? <String, dynamic>{
+              'submitted_at': '2040-01-01T10:00:30Z',
+              'score_points': '2.00',
+              'passed': true,
+            }
+          : status == 'ABANDONED'
+          ? <String, dynamic>{
+              'submitted_at': null,
+              'score_points': '2.00',
+              'passed': true,
+            }
+          : <String, dynamic>{
+              'submitted_at': null,
+              'score_points': null,
+              'passed': null,
+            };
+      for (final field in invalidFields.entries) {
+        expect(
+          () => AssessmentAttemptSummary.fromJson({
+            ...valid,
+            field.key: field.value,
+          }),
+          throwsFormatException,
+          reason: '$status with ${field.key}=${field.value}',
+        );
+      }
+    }
+    expect(
+      () => AssessmentAttemptSummary.fromJson(
+        summaryJson(status: 'EXPIRED', passed: true),
+      ),
+      throwsFormatException,
+    );
+  });
+
   test(
     'malformed IDs, types, timestamps, decimals and collections fail closed',
     () {

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:pdf/pdf.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/network/dio_client.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
@@ -17,6 +18,8 @@ import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/management/data/repositories/management_repository.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
+import 'package:training_app/features/certificates/data/services/certificate_print_service.dart';
+import 'package:training_app/features/certificates/domain/models/certificate_print_data.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 import 'package:training_app/features/management/presentation/screens/managed_certificate_detail_screen.dart';
 import 'package:training_app/features/management/presentation/screens/managed_certificate_list_screen.dart';
@@ -25,6 +28,9 @@ import 'package:training_app/features/notifications/presentation/controllers/not
 import 'management_fixtures.dart';
 
 class MockManagementRepository extends Mock implements ManagementRepository {}
+
+class MockCertificatePrintService extends Mock
+    implements CertificatePrintService {}
 
 class MockApiClient extends Mock implements ApiClient {}
 
@@ -94,6 +100,21 @@ void setTestViewport(WidgetTester tester, [Size size = const Size(800, 2400)]) {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() {
+    registerFallbackValue(
+      CertificatePrintData(
+        certificateId: 1,
+        certificateNumber: 'fallback',
+        employeeName: 'fallback',
+        employeeCode: 'fallback',
+        trainingTitle: 'fallback',
+        versionNumber: 1,
+        issuedAt: DateTime.now(),
+        isRevoked: false,
+      ),
+    );
+    registerFallbackValue(PdfPageFormat.a4);
+  });
 
   group('Domain models fail-closed validation', () {
     test('ManagedCertificate parses valid JSON', () {
@@ -1430,7 +1451,160 @@ void main() {
       expect(find.text('Version 3'), findsOneWidget);
       expect(find.text('VALID'), findsOneWidget);
       expect(find.text('Revoke certificate'), findsOneWidget);
+      expect(find.text('Print / Save as PDF'), findsOneWidget);
     });
+
+    testWidgets(
+      'Print / Save as PDF action prints managed certificate with authoritative data',
+      (tester) async {
+        setTestViewport(tester);
+        final mockPrint = MockCertificatePrintService();
+        when(
+          () => mockPrint.printCertificate(
+            any(),
+            format: any(named: 'format'),
+            canPrint: any(named: 'canPrint'),
+          ),
+        ).thenAnswer((_) async => true);
+        when(
+          () => repository.certificateDetail(
+            1,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => ManagedCertificateDetail.fromJson(
+            sampleManagedCertificateDetailJson(
+              id: 1,
+              certificateNumber: 'CERT-999',
+              employeeName: 'Sarah Connor',
+              employeeCode: 'EMP777',
+              trainingTitle: 'Cyber Security',
+              versionNumber: 3,
+              issuedAt: '2026-01-10T10:00:00Z',
+              isRevoked: false,
+            ),
+          ),
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              authControllerProvider.overrideWith(() => auth),
+              managementRepositoryProvider.overrideWithValue(repository),
+              certificatePrintServiceProvider.overrideWithValue(mockPrint),
+            ],
+            child: const MaterialApp(
+              home: ManagedCertificateDetailScreen(certificateId: 1),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final printBtn = find.widgetWithText(
+          FilledButton,
+          'Print / Save as PDF',
+        );
+        expect(printBtn, findsOneWidget);
+        await tester.ensureVisible(printBtn);
+        await tester.tap(printBtn);
+        await tester.pumpAndSettle();
+
+        final captured = verify(
+          () => mockPrint.printCertificate(
+            captureAny(),
+            format: any(named: 'format'),
+            canPrint: any(named: 'canPrint'),
+          ),
+        ).captured;
+        expect(captured.length, 1);
+        final printData = captured.first as CertificatePrintData;
+        expect(printData.certificateId, 1);
+        expect(printData.certificateNumber, 'CERT-999');
+        expect(printData.employeeName, 'Sarah Connor');
+        expect(printData.employeeCode, 'EMP777');
+        expect(printData.trainingTitle, 'Cyber Security');
+        expect(printData.versionNumber, 3);
+        expect(printData.isRevoked, isFalse);
+        verify(
+          () => repository.certificateDetail(
+            1,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(2);
+      },
+    );
+
+    testWidgets(
+      'managed certificate revoked after load uses freshly fetched revocation data',
+      (tester) async {
+        setTestViewport(tester);
+        final mockPrint = MockCertificatePrintService();
+        var loads = 0;
+        when(
+          () => mockPrint.printCertificate(
+            any(),
+            format: any(named: 'format'),
+            canPrint: any(named: 'canPrint'),
+          ),
+        ).thenAnswer((_) async => true);
+        when(
+          () => repository.certificateDetail(
+            2,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async {
+          loads++;
+          return ManagedCertificateDetail.fromJson(
+            sampleManagedCertificateDetailJson(
+              id: 2,
+              isRevoked: loads > 1,
+              revokedAt: loads > 1 ? '2026-03-02T12:00:00Z' : null,
+              revocationReason: loads > 1
+                  ? 'Safety certification was falsified.'
+                  : null,
+            ),
+          );
+        });
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              authControllerProvider.overrideWith(() => auth),
+              managementRepositoryProvider.overrideWithValue(repository),
+              certificatePrintServiceProvider.overrideWithValue(mockPrint),
+            ],
+            child: const MaterialApp(
+              home: ManagedCertificateDetailScreen(certificateId: 2),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final printBtn = find.widgetWithText(
+          FilledButton,
+          'Print / Save as PDF',
+        );
+        expect(printBtn, findsOneWidget);
+        await tester.ensureVisible(printBtn);
+        await tester.tap(printBtn);
+        await tester.pumpAndSettle();
+
+        final captured = verify(
+          () => mockPrint.printCertificate(
+            captureAny(),
+            format: any(named: 'format'),
+            canPrint: any(named: 'canPrint'),
+          ),
+        ).captured;
+        final printData = captured.first as CertificatePrintData;
+        expect(printData.isRevoked, isTrue);
+        expect(loads, 2);
+        expect(
+          printData.revocationReason,
+          'Safety certification was falsified.',
+        );
+      },
+    );
 
     testWidgets(
       'revoked certificate shows revoked date and reason, hides revoke button',

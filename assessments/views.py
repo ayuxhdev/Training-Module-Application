@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
+from accounts.lifecycle_authorization import require_lifecycle_permission
 from audit.mixins import AuditedFormMixin
 from audit.services import audit_snapshot, record_event
 from organization.models import Employee
@@ -140,27 +141,38 @@ def create_question_revision(request, pk):
 	return render(request, "assessments/revision_form.html", {"form": form, "question": question})
 
 
+def _locked_draft_revision(pk):
+	reference = get_object_or_404(QuestionRevision.objects.only("question_id"), pk=pk, status=QuestionRevision.Status.DRAFT)
+	get_object_or_404(Question.objects.select_for_update(), pk=reference.question_id)
+	return get_object_or_404(
+		QuestionRevision.objects.select_for_update(),
+		pk=pk, question_id=reference.question_id, status=QuestionRevision.Status.DRAFT,
+	)
+
+
 @login_required
 def edit_question_revision(request, pk):
 	_check_permission(request, "assessments.change_questionrevision")
-	revision = get_object_or_404(QuestionRevision, pk=pk, status=QuestionRevision.Status.DRAFT)
 	if request.method == "POST":
-		form = QuestionRevisionForm(request.POST, instance=revision)
-		options = QuestionOptionFormSet(request.POST, instance=revision)
-		if form.is_valid() and options.is_valid():
+		with transaction.atomic():
+			revision = _locked_draft_revision(pk)
+			actor = require_lifecycle_permission(request.user, "assessments.change_questionrevision", using=revision._state.db)
 			before = audit_snapshot(revision)
-			with transaction.atomic():
+			form = QuestionRevisionForm(request.POST, instance=revision)
+			options = QuestionOptionFormSet(request.POST, instance=revision)
+			if form.is_valid() and options.is_valid():
 				form.save()
 				options.save()
 				record_event(
-					request.user,
+					actor,
 					"assessments.questionrevision.updated",
 					revision,
 					before=before,
 					after={**audit_snapshot(revision), "content_updated": True},
 				)
-			return redirect("assessments:revision-detail", pk=revision.pk)
+				return redirect("assessments:revision-detail", pk=revision.pk)
 	else:
+		revision = get_object_or_404(QuestionRevision, pk=pk, status=QuestionRevision.Status.DRAFT)
 		form = QuestionRevisionForm(instance=revision)
 		options = QuestionOptionFormSet(instance=revision)
 	return render(request, "assessments/revision_form.html", {
@@ -176,11 +188,13 @@ def question_revision_detail(request, pk):
 
 
 @login_required
+@transaction.atomic
 def freeze_question_revision(request, pk):
 	_check_permission(request, "assessments.change_questionrevision")
 	if request.method != "POST":
 		raise Http404
-	revision = get_object_or_404(QuestionRevision, pk=pk, status=QuestionRevision.Status.DRAFT)
+	revision = _locked_draft_revision(pk)
+	actor = require_lifecycle_permission(request.user, "assessments.change_questionrevision", using=revision._state.db)
 	before = audit_snapshot(revision)
 	revision.status = QuestionRevision.Status.FROZEN
 	revision.frozen_at = timezone.now()
@@ -188,9 +202,9 @@ def freeze_question_revision(request, pk):
 		revision.save()
 	except ValidationError as exc:
 		revision.refresh_from_db()
-		return render(request, "assessments/revision_detail.html", {"revision": revision, "errors": exc}, status=400)
+		return render(request, "assessments/revision_detail.html", {"revision": revision, "errors": exc.messages}, status=400)
 	record_event(
-		request.user,
+		actor,
 		"assessments.questionrevision.frozen",
 		revision,
 		before=before,

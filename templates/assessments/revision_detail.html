@@ -54,9 +54,9 @@
   </header>
 
   {% if errors %}
-    <p class="form-errors" role="alert" style="padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-danger-foreground); background: var(--color-danger-background); color: var(--color-danger-foreground); margin: 0;">
-      {{ errors }}
-    </p>
+    <div class="form-errors" role="alert" style="padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-danger-foreground); background: var(--color-danger-background); color: var(--color-danger-foreground); margin: 0;">
+      <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    </div>
   {% endif %}
 
   {% if revision.status == 'DRAFT' %}

@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Notifications | Garden's Need Training{% endblock %}
+{% block content %}
+<style>
+  .notification-history { display: grid; gap: var(--space-4); }
+  .notification-history .card-body { overflow-wrap: anywhere; }
+</style>
+<div class="catalog-workspace">
+  <header class="page-header">
+    <div class="page-header-main">
+      <h1>Notifications</h1>
+      <p class="muted">Your training updates and reminders, newest first.</p>
+    </div>
+    {% if page_obj.paginator.count %}
+      <form method="post" action="{% url 'notifications:mark-all-read' %}{% if return_query %}?{{ return_query }}{% endif %}">
+        {% csrf_token %}
+        <button class="btn btn-secondary" type="submit">Mark all as read</button>
+      </form>
+    {% endif %}
+  </header>
+  <section class="catalog-panel" aria-labelledby="notification-filters-heading">
+    <header class="catalog-panel-heading">
+      <h2 id="notification-filters-heading">Find notifications</h2>
+    </header>
+    <form method="get" action="{% url 'notifications:inbox' %}" class="form-stack catalog-form">
+      {% if filter_form.errors %}<p class="catalog-validation" role="alert">Please correct the notification filters.</p>{% endif %}
+      <div class="catalog-fields">
+        {% for field in filter_form %}
+          <div>
+            {{ field.label_tag }}
+            {{ field }}
+            {{ field.errors }}
+          </div>
+        {% endfor %}
+      </div>
+      <div class="catalog-form-actions">
+        <button class="btn btn-primary" type="submit">Apply filters</button>
+        <a class="btn btn-secondary" href="{% url 'notifications:inbox' %}">Clear search and filters</a>
+      </div>
+    </form>
+  </section>
+  {% if page_obj.paginator.count %}
+    <p class="muted" aria-live="polite">
+      Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ page_obj.paginator.count }} notifications.
+    </p>
+  {% else %}
+    <p class="muted" aria-live="polite">Showing 0 notifications.</p>
+  {% endif %}
+  {% if notification_items %}
+    <div class="notification-history">
+      {% for item in notification_items %}
+        {% with notification=item.notification %}
+          <article class="card" aria-labelledby="notification-{{ notification.pk }}-title">
+            <div class="card-body">
+              <span class="status-badge{% if notification.read_at %} status-badge--neutral{% endif %}">{% if notification.read_at %}Read{% else %}Unread{% endif %}</span>
+              <h2 id="notification-{{ notification.pk }}-title">{{ notification.title }}</h2>
+              <p>{{ notification.message|linebreaksbr }}</p>
+              <p class="muted"><time datetime="{{ notification.created_at|date:'c' }}">{{ notification.created_at|date:"M j, Y, H:i" }}</time></p>
+              <div class="page-header-actions">
+                {% if item.can_open_assignment %}
+                  <a class="btn btn-secondary" href="{% url 'training:assignment-detail' notification.assignment_id %}">View assignment<span class="visually-hidden"> for {{ notification.title }}</span></a>
+                {% else %}
+                  <span class="muted">Assignment unavailable with your current access.</span>
+                {% endif %}
+                {% if not notification.read_at %}
+                  <form method="post" action="{% url 'notifications:mark-read' notification.pk %}{% if return_query %}?{{ return_query }}{% endif %}">
+                    {% csrf_token %}
+                    <button class="btn btn-secondary" type="submit">Mark as read<span class="visually-hidden">: {{ notification.title }}</span></button>
+                  </form>
+                {% endif %}
+              </div>
+            </div>
+          </article>
+        {% endwith %}
+      {% endfor %}
+    </div>
+    {% if page_obj.has_other_pages %}
+      <nav class="page-header-actions form-section" aria-label="Notification pages">
+        {% if page_obj.has_previous %}
+          <a class="btn btn-secondary" rel="prev" aria-label="Previous notification page"
+             href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+        {% endif %}
+        <span aria-current="page">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+          <a class="btn btn-secondary" rel="next" aria-label="Next notification page"
+             href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <section class="empty-state" aria-labelledby="empty-notifications-heading">
+      {% if has_active_filters %}
+        <h2 id="empty-notifications-heading">No matching notifications</h2>
+        <p>Try changing your search or read-status filter.</p>
+      {% else %}
+        <h2 id="empty-notifications-heading">You're all caught up</h2>
+        <p>You have no notifications yet. Training updates will appear here.</p>
+      {% endif %}
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

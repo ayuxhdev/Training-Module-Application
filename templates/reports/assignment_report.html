@@ -56,7 +56,13 @@
     white-space: nowrap;
   }
 </style>
-<div class="catalog-workspace report-workspace">
+<div class="catalog-workspace report-workspace management-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li><a href="{% url 'reports:dashboard' %}">Dashboard</a></li>
+      <li aria-current="page">Assignment report</li>
+    </ol>
+  </nav>
   <header class="page-header">
     <div class="page-header-main">
       <h1>Assignment report</h1>
@@ -66,6 +72,12 @@
         <p class="muted">Review training assignments within your authorized reporting team.</p>
       {% endif %}
     </div>
+    <div class="page-header-actions">
+      <a class="btn btn-secondary" href="{% url 'training:assignment-list' %}">Team assignments</a>
+      <a class="btn btn-primary"
+         href="{% url 'reports:assignment-report-export' %}{% if page_query %}?{{ page_query }}{% endif %}"
+         aria-label="Download the filtered assignment report as a CSV file">Download CSV</a>
+    </div>
   </header>
 
   <p class="catalog-notice">
@@ -73,15 +85,24 @@
     {% else %}<strong>Reporting scope:</strong> assignments for employees in your reporting team.{% endif %}
   </p>
 
+  {% if export_limit_exceeded %}
+    <p class="catalog-validation" role="alert">
+      This report contains more than {{ export_max_rows }} assignments, so no CSV was generated.
+      Narrow the filters and try again.
+    </p>
+  {% endif %}
+
   <section class="catalog-panel catalog-editor" aria-labelledby="assignment-report-filters-heading">
     <header class="catalog-panel-heading">
-      <h2 id="assignment-report-filters-heading">Filter assignments</h2>
-      <p>Choose from the report’s existing filters to narrow the results.</p>
+      <div class="management-section-copy">
+        <h2 id="assignment-report-filters-heading">Filter assignments</h2>
+        <p>Use these filters to narrow the results.</p>
+      </div>
     </header>
     <form method="get" class="form-stack catalog-form">
       {% if filter_form.errors %}<p class="catalog-validation" role="alert">Please review the filters below and correct any errors.</p>{% endif %}
       {{ filter_form.non_field_errors }}
-      <div class="catalog-fields">
+      <div class="catalog-fields report-filters">
         <div>
           {{ filter_form.status.label_tag }}
           {{ filter_form.status }}
@@ -107,9 +128,11 @@
           {{ filter_form.training_version }}
           {{ filter_form.training_version.errors }}
         </div>
-        <div>
-          {{ filter_form.overdue_only }}
-          {{ filter_form.overdue_only.label_tag }}
+        <div class="report-checkbox-field">
+          <label class="report-checkbox-control" for="{{ filter_form.overdue_only.id_for_label }}">
+            {{ filter_form.overdue_only }}
+            <span>{{ filter_form.overdue_only.label }}</span>
+          </label>
           {{ filter_form.overdue_only.errors }}
         </div>
       </div>
@@ -122,31 +145,40 @@
 
   <section class="catalog-panel" aria-labelledby="assignment-report-results-heading">
     <header class="catalog-panel-heading">
-      <h2 id="assignment-report-results-heading">Assignment results</h2>
-      <p>Employee, training, timeline and completion information for assignments in scope.</p>
+      <div class="management-section-copy">
+        <h2 id="assignment-report-results-heading">Assignment results</h2>
+        <p>Employee, training, timeline and completion information for assignments in scope.</p>
+      </div>
+      <div class="page-header-actions">
+        <a class="btn btn-secondary"
+           href="{% url 'reports:assignment-report-export' %}{% if page_query %}?{{ page_query }}{% endif %}"
+           aria-label="Download the filtered assignment report as a CSV file">Download CSV</a>
+      </div>
     </header>
-    {% if paginator.count %}
-      <p class="muted">Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ paginator.count }} assignments.</p>
-    {% else %}
-      <p class="muted">Showing 0 assignments.</p>
-    {% endif %}
-    {% if page_obj.has_other_pages %}
-      <nav class="catalog-form-actions" aria-label="Assignment report pages">
-        {% if page_obj.has_previous %}
-          <a class="btn btn-secondary" rel="prev" aria-label="Previous page"
-             href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
-        {% else %}
-          <span class="btn btn-secondary" aria-disabled="true">Previous</span>
-        {% endif %}
-        <span class="muted">Page {{ page_obj.number }} of {{ paginator.num_pages }}</span>
-        {% if page_obj.has_next %}
-          <a class="btn btn-secondary" rel="next" aria-label="Next page"
-             href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next</a>
-        {% else %}
-          <span class="btn btn-secondary" aria-disabled="true">Next</span>
-        {% endif %}
-      </nav>
-    {% endif %}
+    <div class="management-results-bar">
+      {% if paginator.count %}
+        <p class="muted">Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ paginator.count }} assignments.</p>
+      {% else %}
+        <p class="muted">Showing 0 assignments.</p>
+      {% endif %}
+      {% if page_obj.has_other_pages %}
+        <nav class="record-actions" aria-label="Assignment report pages">
+          {% if page_obj.has_previous %}
+            <a class="btn btn-secondary" rel="prev" aria-label="Previous page"
+               href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+          {% else %}
+            <span class="btn btn-secondary" aria-disabled="true">Previous</span>
+          {% endif %}
+          <span class="muted">Page {{ page_obj.number }} of {{ paginator.num_pages }}</span>
+          {% if page_obj.has_next %}
+            <a class="btn btn-secondary" rel="next" aria-label="Next page"
+               href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+          {% else %}
+            <span class="btn btn-secondary" aria-disabled="true">Next</span>
+          {% endif %}
+        </nav>
+      {% endif %}
+    </div>
     <p class="management-scroll-hint" id="report-table-help">Scroll horizontally to view all columns. Keyboard: focus this table region and use the arrow keys.</p>
     <div class="table-scroll catalog-table-scroll management-table-region" role="region" aria-label="Assignment report results" aria-describedby="report-table-help" tabindex="0">
       <table class="catalog-table assignment-report-table">

@@ -5,6 +5,7 @@ import 'package:training_app/core/presentation/components/empty_view.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/content_skeleton.dart';
 import 'package:training_app/core/presentation/components/status_badge.dart';
+import 'package:training_app/core/presentation/formatters/date_labels.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/learning/domain/models/assignment.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
@@ -94,7 +95,7 @@ class _AssignmentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final dueDate = assignment.dueAt;
     final formattedDate = dueDate != null
-        ? '${dueDate.year}-${dueDate.month.toString().padLeft(2, '0')}-${dueDate.day.toString().padLeft(2, '0')}'
+        ? assignmentDeadlineLabel(dueDate)
         : 'No due date';
 
     return LearningCard(

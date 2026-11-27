@@ -139,4 +139,55 @@ void main() {
       expect(calls, 1);
     },
   );
+
+  testWidgets(
+    'large text scaling and long multiline options render without overflow and declare radio semantics',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(
+                textScaler: TextScaler.linear(2.0),
+              ),
+              child: Scaffold(
+                body: SizedBox(
+                  width: 360,
+                  child: AssessmentChoice(
+                    text:
+                        'Ensure all safety locks and operational guardrails are secured before turning on main equipment in hazardous zone B.',
+                    selected: true,
+                    onPressed: () {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        expect(tester.takeException(), isNull);
+        final choiceSemantics = tester.widgetList<Semantics>(
+          find.ancestor(
+            of: find.textContaining('Ensure all safety locks'),
+            matching: find.byType(Semantics),
+          ),
+        );
+        expect(
+          choiceSemantics.any(
+            (item) => item.properties.inMutuallyExclusiveGroup == true,
+          ),
+          isTrue,
+        );
+        expect(
+          choiceSemantics.any((item) => item.properties.selected == true),
+          isTrue,
+        );
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      } finally {
+        semantics.dispose();
+      }
+    },
+  );
 }

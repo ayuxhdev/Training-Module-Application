@@ -10,6 +10,7 @@ import 'package:training_app/core/theme/app_spacing.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
 import 'package:training_app/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
+import 'package:training_app/features/management/presentation/components/assignable_versions_sheet.dart';
 import 'package:training_app/features/management/presentation/components/curriculum_components.dart';
 import 'package:training_app/features/management/presentation/controllers/management_controller.dart';
 
@@ -53,6 +54,12 @@ class _TrainingVersionDirectoryScreenState
       appBar: AppBar(
         title: const Text('Training versions'),
         actions: [
+          if (canAssignTraining(auth.identity))
+            IconButton(
+              tooltip: 'Assignable versions',
+              onPressed: () => showAssignableVersions(context, auth),
+              icon: const Icon(Icons.assignment_outlined),
+            ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: asyncData.isLoading ? null : () => _refresh(),
@@ -66,42 +73,6 @@ class _TrainingVersionDirectoryScreenState
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
-            // Architectural policy card
-            CustomCard(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.history_outlined,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Version Directory & Immutability',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'All training versions across courses. Published versions are '
-                          'immutable and pinned to learner assignments.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-
             asyncData.when(
               loading: () => const CardListSkeleton(
                 message: 'Loading versions',
@@ -186,12 +157,6 @@ class _TrainingVersionDirectoryScreenState
   ) {
     final theme = Theme.of(context);
     final status = version.status.toUpperCase();
-    final lifecycleDescription = switch (status) {
-      'PUBLISHED' => 'Published version · Immutable and pinned to assignments',
-      'DRAFT' => 'Draft version · Content is actively mutable',
-      'RETIRED' => 'Retired version · Historical read-only archive',
-      _ => 'Version status: $status',
-    };
 
     return CustomCard(
       onTap: () => context.push('/workspace/training/versions/${version.id}'),
@@ -224,13 +189,6 @@ class _TrainingVersionDirectoryScreenState
                           : 'Version ${version.versionNumber}',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      lifecycleDescription,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],

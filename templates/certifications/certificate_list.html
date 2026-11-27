@@ -65,7 +65,7 @@
     }
   }
 </style>
-<div class="catalog-workspace">
+<div class="catalog-workspace management-workspace">
   <header class="page-header">
     <div class="page-header-main">
       <h1>Certificates</h1>
@@ -75,31 +75,37 @@
 
   <section class="catalog-panel" aria-labelledby="certificate-register-heading">
     <header class="catalog-panel-heading">
-      <h2 id="certificate-register-heading">Certificate register</h2>
-      <p>Training and employee details reflect the information recorded when each certificate was issued.</p>
+      <div class="management-section-copy">
+        <h2 id="certificate-register-heading">Certificate register</h2>
+        <p>Training and employee details reflect the information recorded when each certificate was issued.</p>
+      </div>
     </header>
-    {% if paginator.count %}
-      <p class="muted">Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ paginator.count }} certificates.</p>
-    {% else %}
-      <p class="muted">Showing 0 certificates.</p>
-    {% endif %}
-    <p class="muted">Page {{ page_obj.number }} of {{ paginator.num_pages }}</p>
-    {% if page_obj.has_other_pages %}
-      <nav class="catalog-form-actions" aria-label="Certificate pages">
-        {% if page_obj.has_previous %}
-          <a class="btn btn-secondary" rel="prev" aria-label="Previous page"
-             href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+    <div class="management-results-bar">
+      <div class="management-results-meta">
+        {% if paginator.count %}
+          <p class="muted">Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ paginator.count }} certificates.</p>
         {% else %}
-          <span class="btn btn-secondary" aria-disabled="true">Previous</span>
+          <p class="muted">Showing 0 certificates.</p>
         {% endif %}
-        {% if page_obj.has_next %}
-          <a class="btn btn-secondary" rel="next" aria-label="Next page"
-             href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next</a>
-        {% else %}
-          <span class="btn btn-secondary" aria-disabled="true">Next</span>
-        {% endif %}
-      </nav>
-    {% endif %}
+        <p class="muted">Page {{ page_obj.number }} of {{ paginator.num_pages }}</p>
+      </div>
+      {% if page_obj.has_other_pages %}
+        <nav class="record-actions" aria-label="Certificate pages">
+          {% if page_obj.has_previous %}
+            <a class="btn btn-secondary" rel="prev" aria-label="Previous page"
+               href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+          {% else %}
+            <span class="btn btn-secondary" aria-disabled="true">Previous</span>
+          {% endif %}
+          {% if page_obj.has_next %}
+            <a class="btn btn-secondary" rel="next" aria-label="Next page"
+               href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+          {% else %}
+            <span class="btn btn-secondary" aria-disabled="true">Next</span>
+          {% endif %}
+        </nav>
+      {% endif %}
+    </div>
     <p class="table-scroll-hint" aria-hidden="true">&larr;&rarr; Scroll horizontally to view all columns</p>
     <div class="table-scroll catalog-table-scroll" role="region" aria-label="Certificates" tabindex="0">
       <table class="catalog-table certificate-catalog-table">

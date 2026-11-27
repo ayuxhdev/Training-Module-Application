@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:training_app/core/errors/api_error.dart';
@@ -30,6 +33,164 @@ class FilterOptionsLoadFailure<T> extends ApiError {
          code: cause.code,
          statusCode: cause.statusCode,
        );
+}
+
+/// Server-rendered CSV; bytes are handed to the saver without reserialization.
+class AssignmentReportCsvDownload {
+  final Uint8List bytes;
+  final String filename;
+  final int itemCount;
+
+  AssignmentReportCsvDownload({
+    required this.bytes,
+    required this.filename,
+    required this.itemCount,
+  });
+
+  static const _header =
+      'Employee,Department,Job role,Training,Version,Assigned,Deadline,Status,Overdue,Completed,Certificate';
+
+  factory AssignmentReportCsvDownload.fromResponse(
+    Response<List<int>> response,
+  ) {
+    final types = response.headers[Headers.contentTypeHeader];
+    final contentType = types != null && types.length == 1
+        ? types.single.toLowerCase()
+        : '';
+    final bytes = response.data;
+    if (response.statusCode != 200 ||
+        contentType.split(';').first.trim() != 'text/csv' ||
+        (RegExp(r'\bcharset\s*=').hasMatch(contentType) &&
+            !RegExp(r'charset\s*=\s*"?utf-8"?\s*(;|$)')
+                .hasMatch(contentType)) ||
+        bytes == null ||
+        bytes.isEmpty) {
+      throw const FormatException('Expected a non-empty UTF-8 CSV download.');
+    }
+    var csv = utf8.decode(bytes);
+    if (csv.startsWith('\uFEFF')) csv = csv.substring(1);
+    if (csv != _header &&
+        !csv.startsWith('$_header\r\n') &&
+        !csv.startsWith('$_header\n')) {
+      throw const FormatException('The CSV report header is invalid.');
+    }
+    final dispositions = response.headers['content-disposition'];
+    return AssignmentReportCsvDownload(
+      bytes: Uint8List.fromList(bytes),
+      filename: _filename(
+        dispositions != null && dispositions.length == 1
+            ? dispositions.single
+            : null,
+      ),
+      itemCount: _recordCount(csv) - 1,
+    );
+  }
+
+  static String _filename(String? disposition) {
+    String? candidate;
+    if (disposition != null) {
+      final extended = RegExp(
+        r"(?:^|;)\s*filename\*\s*=\s*UTF-8''([^;]+)",
+        caseSensitive: false,
+      ).firstMatch(disposition);
+      if (extended != null) {
+        try {
+          candidate = Uri.decodeComponent(extended.group(1)!.trim());
+        } on ArgumentError {
+          // Invalid percent escapes are not necessarily FormatExceptions.
+          candidate = null;
+        } on FormatException {
+          candidate = null;
+        }
+      } else {
+        final plain = RegExp(
+          r'(?:^|;)\s*filename\s*=\s*(?:"([^"]*)"|([^;]+))',
+          caseSensitive: false,
+        ).firstMatch(disposition);
+        candidate = (plain?.group(1) ?? plain?.group(2))?.trim();
+      }
+    }
+    // Accept only a short ASCII basename; reject traversal, controls, Unicode
+    // direction overrides and Windows device names rather than repairing them.
+    if (candidate != null &&
+        RegExp(
+          r'^[A-Za-z0-9][A-Za-z0-9._-]{0,110}\.csv$',
+          caseSensitive: false,
+        ).hasMatch(candidate) &&
+        !candidate.contains('..') &&
+        !RegExp(
+          r'^(con|prn|aux|nul|com[1-9]|lpt[1-9])\.',
+          caseSensitive: false,
+        ).hasMatch(candidate)) {
+      return candidate;
+    }
+    final now = DateTime.now();
+    final date =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    return 'assignment-report-$date.csv';
+  }
+
+  // Validate quoting/column boundaries and count records, including quoted
+  // newlines, without creating report models or changing server cell values.
+  static int _recordCount(String csv) {
+    var records = 0;
+    var fields = 1;
+    var quoted = false;
+    var afterQuote = false;
+    var fieldStart = true;
+    var rowStarted = false;
+    for (var index = 0; index < csv.length; index++) {
+      final char = csv[index];
+      if (quoted) {
+        if (char == '"') {
+          if (index + 1 < csv.length && csv[index + 1] == '"') {
+            index++;
+          } else {
+            quoted = false;
+            afterQuote = true;
+          }
+        }
+        continue;
+      }
+      if (afterQuote && char != ',' && char != '\r' && char != '\n') {
+        throw const FormatException('Invalid CSV quoting.');
+      }
+      if (char == '"') {
+        if (!fieldStart) throw const FormatException('Invalid CSV quoting.');
+        quoted = true;
+        fieldStart = false;
+        rowStarted = true;
+      } else if (char == ',') {
+        fields++;
+        fieldStart = true;
+        afterQuote = false;
+        rowStarted = true;
+      } else if (char == '\r' || char == '\n') {
+        if (fields != 11) {
+          throw const FormatException('Invalid CSV column count.');
+        }
+        records++;
+        if (char == '\r' && index + 1 < csv.length && csv[index + 1] == '\n') {
+          index++;
+        }
+        fields = 1;
+        fieldStart = true;
+        afterQuote = false;
+        rowStarted = false;
+      } else {
+        fieldStart = false;
+        rowStarted = true;
+      }
+    }
+    if (quoted) throw const FormatException('Unterminated CSV field.');
+    if (rowStarted) {
+      if (fields != 11) {
+        throw const FormatException('Invalid CSV column count.');
+      }
+      records++;
+    }
+    return records;
+  }
 }
 
 class ManagementRepository {
@@ -2134,25 +2295,7 @@ class ManagementRepository {
     required AssignmentReportFilterQuery query,
     CancelToken? cancelToken,
   }) {
-    final additional = <String, dynamic>{};
-    if (query.status != null && query.status!.trim().isNotEmpty) {
-      additional['status'] = query.status!.trim();
-    }
-    final deptId = int.tryParse(query.departmentId ?? '');
-    if (deptId != null && deptId > 0) additional['department'] = deptId;
-    final roleId = int.tryParse(query.jobRoleId ?? '');
-    if (roleId != null && roleId > 0) additional['job_role'] = roleId;
-    final trainingId = int.tryParse(query.trainingId ?? '');
-    if (trainingId != null && trainingId > 0) {
-      additional['training'] = trainingId;
-    }
-    final versionId = int.tryParse(query.trainingVersionId ?? '');
-    if (versionId != null && versionId > 0) {
-      additional['training_version'] = versionId;
-    }
-    if (query.overdueOnly == true) {
-      additional['overdue_only'] = true;
-    }
+    final additional = _assignmentReportFilters(query);
 
     return _get(
       'reports/assignments/',
@@ -2166,6 +2309,123 @@ class ManagementRepository {
       additionalQueryParameters: additional.isEmpty ? null : additional,
       cancelToken: cancelToken,
     );
+  }
+
+  Map<String, dynamic> _assignmentReportFilters(
+    AssignmentReportFilterQuery query, {
+    bool strict = false,
+  }) {
+    final parameters = <String, dynamic>{};
+    final status = query.status?.trim();
+    if (status != null && status.isNotEmpty) parameters['status'] = status;
+    for (final entry in {
+      'department': query.departmentId,
+      'job_role': query.jobRoleId,
+      'training': query.trainingId,
+      'training_version': query.trainingVersionId,
+    }.entries) {
+      final value = entry.value;
+      if (value == null || value.isEmpty) continue;
+      final id = int.tryParse(value);
+      if (id == null || id <= 0) {
+        if (strict) {
+          throw ApiError(
+            message: 'A selected report filter is invalid. Reopen the filters and try again.',
+            statusCode: 400,
+            code: 'validation_error',
+          );
+        }
+        continue;
+      }
+      parameters[entry.key] = id;
+    }
+    if (query.overdueOnly == true) parameters['overdue_only'] = true;
+    return parameters;
+  }
+
+  Future<AssignmentReportCsvDownload> downloadAssignmentReportCsv({
+    required AssignmentReportFilterQuery query,
+    CancelToken? cancelToken,
+  }) async {
+    final requests = CancelToken();
+    var pending = true;
+    cancelToken?.whenCancel.then((error) {
+      if (pending) requests.cancel(error);
+    });
+    try {
+      if (cancelToken?.cancelError case final cancelled?) throw cancelled;
+      final response = await apiClient.dio
+          .get<List<int>>(
+            '/management/reports/assignments/export/',
+            queryParameters: _assignmentReportFilters(query, strict: true),
+            cancelToken: requests,
+            options: Options(
+              responseType: ResponseType.bytes,
+              // DRF negotiates JSON errors before returning the CSV response.
+              headers: {'Accept': 'text/csv, application/json'},
+              receiveTimeout: const Duration(seconds: 90),
+            ),
+          )
+          .timeout(
+            const Duration(minutes: 2),
+            onTimeout: () {
+              requests.cancel('Report download deadline exceeded.');
+              throw ApiError.timeout();
+            },
+          );
+      if (cancelToken?.cancelError case final cancelled?) throw cancelled;
+      return AssignmentReportCsvDownload.fromResponse(response);
+    } catch (error) {
+      if (error is DioException) {
+        if (CancelToken.isCancel(error)) rethrow;
+        if (error.error is ApiError) {
+          throw apiClient.mapExceptionToApiError(error);
+        }
+        final status = error.response?.statusCode;
+        // Dio byte responses also contain bytes for JSON error envelopes.
+        // Decode errors only; never send them to the document saver.
+        if (status != null) {
+          if (status == 413) {
+            throw ApiError(
+              message: 'Reports are limited to 10,000 rows. Narrow the filters and try again.',
+              statusCode: 413,
+              code: 'export_too_large',
+            );
+          }
+          try {
+            final body = error.response?.data;
+            final decoded = body is List<int>
+                ? jsonDecode(utf8.decode(body))
+                : body;
+            if (decoded is Map<String, dynamic> && status < 500) {
+              throw ApiError.fromBackend(status, decoded);
+            }
+          } on FormatException {
+            // Non-JSON errors use controlled messages below.
+          }
+          throw ApiError(
+            message: status == 401
+                ? 'Your session has ended. Sign in again to continue.'
+                : status == 403
+                ? 'You do not have permission to export this report.'
+                : status == 400
+                ? 'The report filters are invalid. Review them and try again.'
+                : 'The report could not be downloaded. Please try again later.',
+            statusCode: status,
+          );
+        }
+      }
+      if (error is FormatException) {
+        throw ApiError(
+          message:
+              'The server did not return a valid CSV report. Please try again.',
+          code: 'invalid_response',
+        );
+      }
+      throw apiClient.mapExceptionToApiError(error);
+    } finally {
+      pending = false;
+    }
   }
 
   Future<AssignmentReportFilterOptionsViewData> assignmentReportFilterOptions({

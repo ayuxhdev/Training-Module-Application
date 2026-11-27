@@ -1,0 +1,27 @@
+{% load audit_presentation %}
+{% with structure=value|audit_value_structure %}
+  {% if structure.kind == "mapping" and structure.entries %}
+    <dl class="audit-value-map">
+      {% for key, item in structure.entries %}
+        <div>
+          <dt>{{ key }}</dt>
+          <dd>{% include "audit/_value.html" with value=item field_name=key only %}</dd>
+        </div>
+      {% endfor %}
+    </dl>
+  {% elif structure.kind == "mapping" %}
+    <span class="muted">Empty object</span>
+  {% elif structure.kind == "sequence" %}
+    {% if structure.entries %}
+      <ol class="audit-value-list">
+        {% for item in structure.entries %}
+          <li>{% include "audit/_value.html" with value=item field_name="" only %}</li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <span class="muted">Empty list</span>
+    {% endif %}
+  {% else %}
+    <span class="audit-change-value">{{ value|audit_display_value:field_name }}</span>
+  {% endif %}
+{% endwith %}

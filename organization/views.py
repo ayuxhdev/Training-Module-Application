@@ -1,7 +1,10 @@
+from urllib.parse import urlencode
+
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
@@ -9,7 +12,14 @@ from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
 from audit.mixins import AuditedFormMixin
 from audit.services import audit_snapshot, record_event
-from .forms import DepartmentForm, EmployeeDeactivateForm, EmployeeForm, JobRoleForm, may_manage_linked_user
+from .forms import (
+	DepartmentForm,
+	EmployeeDeactivateForm,
+	EmployeeDirectoryFilterForm,
+	EmployeeForm,
+	JobRoleForm,
+	may_manage_linked_user,
+)
 from .models import Department, Employee, JobRole
 from .scopes import employee_scope
 
@@ -26,14 +36,78 @@ class EmployeeListView(LoginRequiredMixin, ListView):
 	model = Employee
 	template_name = "organization/employee_list.html"
 	context_object_name = "employees"
+	paginate_by = 50
+
+	def get_base_queryset(self):
+		if not hasattr(self, "_base_queryset"):
+			if not self.request.user.has_perm(VIEW_EMPLOYEES):
+				self._base_queryset = Employee.objects.none()
+			else:
+				queryset = Employee.objects.select_related(
+					"department",
+					"job_role",
+					"reporting_manager",
+				)
+				if can_manage(self.request.user):
+					self._base_queryset = queryset
+				else:
+					self._base_queryset = queryset.filter(
+						pk__in=employee_scope(self.request.user).values("pk")
+					)
+		return self._base_queryset
+
+	def get_filter_form(self):
+		if not hasattr(self, "_filter_form"):
+			self._filter_form = EmployeeDirectoryFilterForm(
+				self.request.GET,
+				employees_queryset=self.get_base_queryset(),
+			)
+		return self._filter_form
 
 	def get_queryset(self):
-		if not self.request.user.has_perm(VIEW_EMPLOYEES):
-			return Employee.objects.none()
-		queryset = Employee.objects.select_related("department", "job_role", "reporting_manager")
-		if can_manage(self.request.user):
-			return queryset
-		return queryset.filter(pk__in=employee_scope(self.request.user).values("pk"))
+		queryset = self.get_base_queryset()
+		filter_form = self.get_filter_form()
+		if not filter_form.is_valid():
+			return queryset.none()
+
+		search = filter_form.cleaned_data["q"]
+		if search:
+			queryset = queryset.filter(
+				Q(display_name__icontains=search) |
+				Q(employee_code__icontains=search)
+			)
+		department = filter_form.cleaned_data["department"]
+		if department:
+			queryset = queryset.filter(department=department)
+		job_role = filter_form.cleaned_data["job_role"]
+		if job_role:
+			queryset = queryset.filter(job_role=job_role)
+		status = filter_form.cleaned_data["status"]
+		if status == "active":
+			queryset = queryset.filter(is_active=True)
+		elif status == "inactive":
+			queryset = queryset.filter(is_active=False)
+		return queryset.order_by("display_name", "pk")
+
+	def get_context_data(self, **kwargs):
+		context = super().get_context_data(**kwargs)
+		filter_form = self.get_filter_form()
+		context["filter_form"] = filter_form
+		if filter_form.is_valid():
+			params = {
+				"q": filter_form.cleaned_data["q"],
+				"department": filter_form.cleaned_data["department"].pk
+				if filter_form.cleaned_data["department"] else "",
+				"job_role": filter_form.cleaned_data["job_role"].pk
+				if filter_form.cleaned_data["job_role"] else "",
+				"status": filter_form.cleaned_data["status"],
+			}
+			context["page_query"] = urlencode({
+				key: value for key, value in params.items() if value
+			})
+		else:
+			context["page_query"] = ""
+		return context
 
 
 class EmployeeDetailView(LoginRequiredMixin, DetailView):

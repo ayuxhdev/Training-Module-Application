@@ -2,10 +2,20 @@
 {% block title %}{{ employee.display_name }} | Employee details | Garden's Need Training{% endblock %}
 {% block content %}
 <div class="org-workspace">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumbs">
+      <li><a href="{% url 'reports:dashboard' %}">Dashboard</a></li>
+      <li><a href="{% url 'organization:employee-list' %}">Employees</a></li>
+      <li aria-current="page">{{ employee.display_name }}</li>
+    </ol>
+  </nav>
   <header class="page-header">
     <div class="page-header-main"><h1>{{ employee.display_name }}</h1><p class="muted">Employee code: <span class="org-code">{{ employee.employee_code }}</span></p></div>
     <div class="page-header-actions">
       <a class="btn btn-secondary" href="{% url 'organization:employee-list' %}">Back to employees</a>
+      {% if shell_role and shell_role != 'employee' %}
+        <a class="btn btn-secondary" href="{% url 'training:assignment-list' %}">Team assignments</a>
+      {% endif %}
       {% if perms.organization.change_employee %}<a class="btn btn-primary" href="{% url 'organization:employee-update' employee.pk %}">Edit employee</a>{% endif %}
     </div>
   </header>
@@ -20,6 +30,26 @@
       <div><dt>Login account</dt><dd>{% if employee.user %}{% if employee.user.is_active %}Active{% else %}Inactive{% endif %}{% else %}Not linked{% endif %}</dd></div>
     </dl>
   </section>
+  {% if shell_role and shell_role != 'employee' %}
+    <section class="org-panel" aria-labelledby="employee-training-nav-heading">
+      <header class="org-panel-heading">
+        <h2 id="employee-training-nav-heading">Training &amp; assignments</h2>
+        <p>Training oversight for employees in your reporting scope</p>
+      </header>
+      <div class="org-panel-body">
+        <p class="muted">
+          Individual training assignments, progress records, assessment attempts and certificates are managed centrally in team assignments and reports.
+        </p>
+        <div class="catalog-form-actions">
+          <a class="btn btn-primary" href="{% url 'training:assignment-list' %}">View team assignments</a>
+          <a class="btn btn-secondary" href="{% url 'reports:assignment-report' %}">View assignment report</a>
+          {% if shell_can_view_certificates %}
+            <a class="btn btn-secondary" href="{% url 'certifications:certificate-list' %}">View certificates</a>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+  {% endif %}
   {% if perms.organization.change_employee and employee.is_active and employee.user_id != user.id %}
     <section class="org-panel org-deactivation" aria-labelledby="employee-deactivation-heading">
       <header class="org-panel-heading"><h2 id="employee-deactivation-heading">Deactivate employee</h2><p>Disables the linked login and preserves employee history.</p></header>

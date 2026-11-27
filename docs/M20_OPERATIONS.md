@@ -16,7 +16,7 @@ Examples below are operator procedures, not evidence of a deployed environment.
 | Operational diagnostics | Missing; implemented here | Public minimal liveness, restricted readiness, read-only preflight, allowlisted JSON logs |
 | Backups | Procedures only; tooling missing | `ops.mysql_backup` creates/verifies bundles; actual off-host storage, encryption and isolated restore are operator gates |
 | Reminders | Eligibility/deduplication already implemented; scheduler absent | Existing locked service and UTC keys retained; persisted cutoff and safe operation events added; interruption/retry tests |
-| Rate limits | Implemented locally; insufficient across multiple workers | Existing DRF cache throttles are per-process under default cache; edge/shared enforcement and web-login protection require infrastructure verification |
+| Rate limits | Shared MySQL login admission; deployment verification pending | Website, Django admin and API credential attempts share budgets. DRF refresh and API burst throttles are process-local under the default cache |
 | Release/rollback | Infrastructure/operator action required | Procedure below; no automatic migration, destructive rollback or live smoke mutation |
 | Dependencies | Pinned Python dependencies; system dependency required | Maintained ffprobe required for uploads; WSGI/ASGI host and vulnerability review remain release gates |
 
@@ -155,9 +155,51 @@ exposing tokens in command lines, screenshots or access logs.
   reminder failures or missing hourly completion, slow requests, DB capacity,
   disk/media growth and TLS certificate expiry. Set numeric thresholds from the
   pilot baseline and approve them; no vendor, threshold or SLO is invented here.
-- Existing local-memory DRF throttles are not cross-worker protection. Configure
-  and test edge login/refresh/web-login limits, trusted client-IP forwarding and
-  backend isolation before internet exposure. No speculative cache dependency is added.
+- Verify the shared MySQL login budgets across workers and the login paths. Verify
+  edge protection for refresh and flood traffic because the refresh throttle and
+  supplementary API login burst throttle use DRF's process-local default cache.
+
+### Login admission
+
+- Apply the existing `accounts.0006_login_attempt_bucket` migration before
+  enabling login traffic on a new deployment. Use one authoritative MySQL 8
+  primary, the same Django secret across workers, and synchronized worker
+  clocks. Credentials are checked only after committed source, account and
+  source-account reservations. The defaults are `30/60`, `20/4` and `5/5`
+  respectively (burst/refill per minute). Measure legitimate bursts from shared
+  office IPs before tuning. The API retains its supplementary 5/minute check.
+- Bind the application upstream to a private interface reachable only by the
+  trusted proxy. In the Nginx locations for website, admin and API login, cap
+  uploads and replace client forwarding headers at the edge:
+
+  ```nginx
+  client_max_body_size 16k;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  ```
+
+  Use the existing validated upstream Host configuration. Set
+  `LOGIN_LIMIT_TRUSTED_PROXIES` to the explicit immediate proxy IPs only after
+  verifying the overwrite. If Nginx is behind a load balancer, configure
+  real-IP processing for that balancer's verified addresses before using
+  `$remote_addr`. Restrict direct upstream access and test spoofed IPv4 and
+  IPv6 forwarding headers. Tailscale QA retains its current configuration;
+  with no trusted client-IP proxy configured, proxied clients share the
+  immediate peer's source budget.
+- The username column requires a supported MySQL `utf8mb4` `NO PAD` collation
+  and visibility through `information_schema`. Workers cache only verified
+  collation metadata for up to 60 seconds. Each weight query checks the actual
+  schema and server UUID. Drain logins and restart all workers after any
+  approved in-place username collation change, then verify account aliases
+  before reopening login traffic.
+- Start with one `manage.py prune_login_attempt_buckets --limit=200` invocation
+  per minute after operator approval. Monitor expired-row backlog and size,
+  then tune frequency or batch size within the command's 500-row cap. A
+  distributed flood can still grow the table by creating new source keys and
+  admitted account keys. Use edge capacity limits and monitor 429/503 rates.
+  Pruning rechecks expiry for each deletion and keeps bucket transactions
+  independent. A reservation that refreshes a selected row protects it from
+  deletion by that prune run.
 
 ## 5. Hourly reminder activation and recovery
 
@@ -349,6 +391,180 @@ resuming service. Document the incident and the chosen recovery point.
 
 ## 9. Test-database safety and permission-group incident
 
+### Opt-in reusable integration harness (implementation only; MySQL run pending)
+
+`config.integration_test_settings` and `config.integration_test_runner` reuse the
+existing guarded MySQL backend and identity/grant checks. They do not load `.env`,
+`config.settings` or `config.qa_settings`. The role-requirement profile, its port
+3308 CI service, required six-case gate and `--keepdb` contract remain unchanged.
+The general profile instead uses the existing server on **127.0.0.1:3306** and a
+fresh, uniquely approved schema. No second local server is required.
+
+**Code installation is not authorization to provision or run it.** Provisioning,
+connected preflight, schema creation/migrations, fixture writes/reset and later
+cleanup each require explicit operator approval and exclusive resource ownership.
+Never reuse `gardens_training`, `test_gardens_training`,
+`gardens_training_qa_isolated`, an existing unidentified schema/account, or a
+development/QA credential. Never copy employee data or shared media into tests.
+
+#### Operator-provisioned identity and configuration
+
+For each run choose a new owner GUID (32 lowercase hex characters), schema
+`test_gn_it_YYYYMMDD_<owner>` and account `gn_it_<first 16 owner characters>` at
+`127.0.0.1`. The schema must **not exist**. An operator/DBA creates the dedicated
+account and grants only `SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX,
+REFERENCES` on that exact future schema. No global grants, roles, GRANT OPTION or
+DROP are accepted. Schema underscores must be escaped when MySQL partial_revokes
+is disabled; the guard checks the actual server mode and exact SHOW GRANTS scope.
+Do not guess the grants or broaden them after an error.
+
+Create one new empty media directory directly under the system temporary root,
+named `gn-it-media-<owner>`, outside the checkout and all live assets. Linked or
+Windows reparse paths are rejected. The harness neither creates nor deletes it.
+
+Set these **process-local** variables in a dedicated operator window. Obtain the
+server identity through a separately authorized metadata inspection. Do not alter
+global environment variables or the running server's terminal/environment.
+
+| Variable suffix after `MYSQL_TEST_` | Required value |
+| --- | --- |
+| `DATABASE`, `APPROVED_DATABASE` | Same exact new schema name |
+| `OWNER`, `EXCLUSIVE_OWNER` | Same owner GUID |
+| `HOST`, `PORT` | `127.0.0.1`, `3306` |
+| `SERVER_UUID`, `SERVER_HOSTNAME` | Explicit expected existing-server identity |
+| `USER` | Owner-derived dedicated account |
+| `ACCOUNT` | That account followed by `@127.0.0.1` |
+| `MEDIA_ROOT` | Canonical absolute new empty owner-named directory |
+| `ISOLATION` | `read committed` |
+| `ALLOW_CREATE` | `create-new-disposable-schema` |
+| `ALLOW_RESET` | `owned-schema-only` |
+| `RETENTION` | `retain-for-approved-cleanup` |
+
+The entry point prompts for a missing `MYSQL_TEST_PASSWORD` using hidden local
+input; it refuses a noninteractive/echo fallback. Do not put passwords in command
+arguments, shell history, chat, source or files. An approved CI system may supply
+the password securely in its private process environment. A strong process-only
+`MYSQL_TEST_SECRET_KEY` is generated if absent; an explicitly supplied key must
+pass validation. The entry point redacts these values from line-based test output
+and restores its temporary environment entries before exit. Tests remain trusted
+project code and must never intentionally print credentials or use raw drivers to
+bypass Django. No application authentication rules are changed; the integration
+profile retains password-hash JWT revocation and Django password validators.
+
+#### Authorization and lifecycle
+
+1. Configuration, flags and explicit project labels must validate before access.
+   Only the configured runner can activate the backend. Runner replacement,
+   direct migrate/flush commands, settings redirects, `--keepdb`, parallel clones,
+   SQL debugging, shuffling and filtering are rejected.
+2. A temporary maintenance connection selects **no database**. Its identity,
+   exact grants, absence of the schema and absence of other account connections
+   are checked. An owner advisory lock remains held throughout execution.
+3. Preflight-only mode stops here. It creates no schema and runs no migrations,
+   tests or fixture reset. Its temporary metadata connection and lock close.
+4. Execution uses unconditional CREATE DATABASE, with no IF NOT EXISTS, DROP,
+   retry or reuse. A collision is a failure even if metadata visibility was
+   incomplete. The selected fresh database is verified before migrations.
+5. Normal Django TestCase ordering/rollback and TransactionTestCase cleanup are
+   supported. Every new thread connection is verified. Already-open connections
+   recheck approval, actual database/server identity and advisory-lock ownership
+   before Django executes statements, including fixture flush statements.
+6. Django 5.2.17's TransactionTestCase teardown calls flush with
+   `reset_sequences=False`; its actual MySQL backend emits DELETE with
+   connection-local foreign-key checks, not TRUNCATE. A database-free regression
+   checks this behavior. No DROP privilege is needed for this teardown. Direct
+   TRUNCATE, destructive future migrations and unsupported DDL must fail rather
+   than gaining privileges automatically. Real migration/grant compatibility
+   remains pending an approved disposable MySQL run.
+7. Default/maintenance connections close on failure or completion. The schema is
+   **retained, never automatically dropped or reused**, including partial
+   migration failures. Use a new approved schema/account/media identity next run.
+   Record the non-secret run identity/outcome for later exact DBA cleanup.
+
+`--keepdb` never prevents TransactionTestCase fixture deletion. Data migrations
+create application roles; a flush does not replay those migrations. Normal Django
+ordering puts TestCase suites before flush-based tests. Transaction-test fixtures
+must establish their own prerequisites. The initial general profile rejects
+serialized rollback, available_apps subsets, extra database aliases and strict
+role-requirement concurrency tags; these need separately reviewed support rather
+than silent skips. Empty/overlapping selections, incomplete execution, skips or
+expected failures cannot satisfy this verification checkpoint.
+
+#### Commands, only after the corresponding approvals
+
+Database-free checks need no MySQL account or server:
+
+```powershell
+.\.venv\Scripts\python.exe -B -m unittest config.test_integration_test_harness config.test_role_requirement_test_harness
+.\.venv\Scripts\python.exe -B -O -m unittest config.test_integration_test_harness config.test_role_requirement_test_harness
+```
+
+After separate account/grant/media setup and connected-preflight authorization:
+
+```powershell
+.\.venv\Scripts\python.exe -B -m config.integration_test_runner --preflight-only
+```
+
+Only after explicit schema-creation, migration, test-write/reset authorization:
+
+```powershell
+.\.venv\Scripts\python.exe -B -m config.integration_test_runner api.v1.test_notifications notifications.tests api.v1.test_certificate_management assessments.test_question_editor --noinput --parallel=1
+```
+
+Use the secure entry point instead of an ordinary test command. No command above
+authorizes the next stage implicitly. The initial preflight is a snapshot; actual
+execution repeats it and refuses any existing schema. This does not establish
+live QA, browser, Android or release acceptance.
+
+#### Release-critical selection (source inventory, 2026-11-23)
+
+| Module / class | Lifecycle | Test methods |
+| --- | --- | ---: |
+| `api.v1.test_notifications.NotificationAPITests` | TestCase | 22 |
+| `api.v1.test_notifications.NotificationReadConcurrencyTests` | TransactionTestCase | 1 |
+| `notifications.tests.NotificationTests` | TestCase | 19 |
+| `notifications.tests.NotificationConcurrencyTests` | TransactionTestCase | 1 |
+| `api.v1.test_certificate_management.CertificateManagementContractTests` | SimpleTestCase | 17 |
+| `api.v1.test_certificate_management.CertificateManagementAPITests` | TestCase | 14 |
+| `assessments.test_question_editor.QuestionEditorTests` | SimpleTestCase | 10 |
+| `assessments.test_question_editor.QuestionEditorPersistenceTests` | TestCase | 3 |
+
+The command selects 87 tests: 60 database-backed and 27 database-free. These are
+discovered/source counts, **not MySQL pass claims**. Apply the complete installed
+migration graph to the fresh schema, including application role/permission data
+migrations, Django auth/contenttypes/sessions/admin and SimpleJWT token blacklist.
+No external fixture dump or live QA data is required. `CurriculumTestCase` builds
+synthetic curriculum data and supplies a separate temporary media override;
+concurrency classes establish their own curriculum and temporary media.
+
+None of these classes requests sequence resets, serialized rollback or partial
+app flushing. Database tests use returned primary keys; fixed IDs in mocked
+contracts and invalid-ID probes are not sequence prerequisites. DELETE cleanup
+retains AUTO_INCREMENT positions and does not rerun role data migrations. Keep
+normal ordering: role-dependent TestCase classes run before the two flush-based
+concurrency classes, which do not require those roles. Do not split/rerun labels
+inside a retained schema. Each later run needs a fresh approved identity.
+
+SEC-01 is covered by a database-free regression: direct runner authorization is
+inside private output redaction, including failures before configuration is
+assigned. Authorization failures expose a fixed safe exception without the
+original exception chain; the existing approval conditions remain unchanged.
+Direct `preflight_only()` uses the same boundary. This does not establish real
+MySQL migration, grant or concurrency compatibility.
+
+#### Retention and cleanup policy
+
+The operator owns retained schemas, accounts and media. Cleanup requires separate
+approval naming the exact schema/GUID, account and media directory, confirmation
+that all test connections have exited, and an operator/DBA identity check before
+any removal. Never use wildcard cleanup, DROP/recreate an existing schema to
+rerun tests, or expand test-account privileges to perform cleanup. No automatic
+cleanup script or retention deadline is installed here.
+
+Sharing the MySQL instance shares CPU, memory and disk capacity. Coordinate test
+windows away from demonstrations. No MySQL/Django/Tailscale restart, QA record
+change, server-global configuration change or shared-media access is required.
+
 The normal backend profile is MySQL (`config.settings`). The explicit
 `config.test_settings` fallback uses in-memory SQLite; it does not verify MySQL
 row locks. CI uses a disposable MySQL 8 service and runs the complete Django suite.
@@ -448,8 +664,9 @@ gates; source tests or the reported green CI do not satisfy them:
   private storage ACLs and denial of public private-media aliases.
 - Runtime/migration/backup account grants, remote MySQL certificate verification,
   actual ffprobe version/execution, and reviewed dependency vulnerabilities.
-- Cross-worker API and web-login rate limiting. Current in-process throttles and
-  absence of a web-login throttle require edge/shared enforcement before exposure.
+- Real cross-worker website, admin and API login-admission tests, with trusted
+  proxy handling, shared-office NAT checks, and edge protection for refresh and
+  floods.
 - Authorized protected-media range/HEAD/error checks, certificate access and
   revocation checks, and sustained worker/network/decoder capacity measurements.
 - Completed off-host encrypted DB/media recovery pairs, independently checked

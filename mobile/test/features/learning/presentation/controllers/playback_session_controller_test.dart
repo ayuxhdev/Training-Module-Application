@@ -373,6 +373,603 @@ void main() {
     );
   });
 
+  group('conservative cleanup during backward observations', () {
+    Future<void> startAtSavedEnd() async {
+      when(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => progress(resume: 12));
+      await controller.start();
+    }
+
+    void expectZeroClose() {
+      verify(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          0,
+          completedNormally: false,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      verifyNever(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          12,
+          completedNormally: any(named: 'completedNormally'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+    }
+
+    for (final failure in [
+      ApiError.timeout(),
+      ApiError.networkFailure(),
+      ApiError(message: 'Rejected observation.', statusCode: 400),
+      ApiError(message: 'Forbidden observation.', statusCode: 403),
+      ApiError(message: 'Conflicting observation.', statusCode: 409),
+    ]) {
+      test(
+        'backward observation failure ${failure.statusCode ?? failure.code} cannot close forward',
+        () async {
+          await startAtSavedEnd();
+          when(
+            () => repository.submitPlaybackHeartbeat(
+              1,
+              2,
+              7,
+              0,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenThrow(failure);
+          await controller.heartbeat(0);
+          expect(container.read(provider).phase, PlaybackPhase.failed);
+          expect(container.read(provider).progress?.watchedSeconds ?? 0, 0);
+          if (failure.statusCode == null) {
+            expectZeroClose();
+          } else {
+            verifyNever(
+              () => repository.endPlaybackSession(
+                any(),
+                any(),
+                any(),
+                any(),
+                completedNormally: any(named: 'completedNormally'),
+                cancelToken: any(named: 'cancelToken'),
+              ),
+            );
+          }
+          expect(container.read(provider).sessionId, isNull);
+        },
+      );
+    }
+
+    test(
+      'zero-start mismatch limits cleanup before any observation or playback',
+      () async {
+        when(
+          () => repository.startPlaybackSession(
+            1,
+            2,
+            position: 0,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async => progress(resume: 12));
+        await controller.start(position: 0);
+        await controller.close(position: 12);
+        expectZeroClose();
+        expect(container.read(provider).progress!.watchedSeconds, 0);
+      },
+    );
+
+    test('close requested while a backward observation is pending retains its ceiling', () async {
+      await startAtSavedEnd();
+      final response = Completer<LessonProgress>();
+      when(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          0,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => response.future);
+      final pending = controller.heartbeat(0);
+      await Future<void>.value();
+      final close = controller.close(position: 12);
+      response.complete(progress());
+      await Future.wait([pending, close]);
+      expectZeroClose();
+      expect(container.read(provider).phase, PlaybackPhase.ended);
+    });
+
+    test(
+      'lost cleanup responses retain the ceiling across explicit retries',
+      () async {
+        await startAtSavedEnd();
+        when(
+          () => repository.submitPlaybackHeartbeat(
+            1,
+            2,
+            7,
+            0,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenThrow(ApiError.timeout());
+        final positions = <double>[];
+        when(
+          () => repository.endPlaybackSession(
+            1,
+            2,
+            7,
+            any(),
+            completedNormally: false,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((call) async {
+          positions.add(call.positionalArguments[3] as double);
+          if (positions.length <= 2) throw ApiError.timeout();
+          return progress();
+        });
+        await controller.heartbeat(0);
+        await controller.close(position: 12);
+        await controller.start();
+        verify(
+          () => repository.startPlaybackSession(
+            1,
+            2,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+        expect(container.read(provider).progress!.watchedSeconds, 0);
+        await controller.close(position: 12);
+        expect(positions, [0, 0, 0]);
+        expect(container.read(provider).phase, PlaybackPhase.ended);
+        await controller.start();
+        await controller.close(position: 3);
+        expect(positions, [0, 0, 0, 3]);
+      },
+    );
+
+    test(
+      'expiry closes at zero and ignores a late response claiming coverage',
+      () async {
+        late void Function() expire;
+        await runZoned(
+          startAtSavedEnd,
+          zoneSpecification: ZoneSpecification(
+            createTimer: (self, parent, zone, duration, callback) {
+              expire = callback;
+              return parent.createTimer(zone, const Duration(days: 1), () {});
+            },
+          ),
+        );
+        final response = Completer<LessonProgress>();
+        when(
+          () => repository.submitPlaybackHeartbeat(
+            1,
+            2,
+            7,
+            0,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) => response.future);
+        final pending = controller.heartbeat(0);
+        await Future<void>.value();
+        expire();
+        await Future<void>.delayed(Duration.zero);
+        expect(container.read(provider).error!.code, 'session_expired');
+        expectZeroClose();
+        response.complete(progress(resume: 12, watched: 12, completed: true));
+        await pending;
+        expect(container.read(provider).progress!.watchedSeconds, 0);
+        expect(container.read(provider).progress!.completed, isFalse);
+      },
+    );
+
+    test('a superseded backward response cannot expose old progress to another account', () async {
+      await startAtSavedEnd();
+      final response = Completer<LessonProgress>();
+      when(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          0,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => response.future);
+      final pending = controller.heartbeat(0);
+      await Future<void>.value();
+      auth.change(AuthAuthenticated(employee('B')));
+      response.complete(progress(resume: 12, watched: 12, completed: true));
+      await pending;
+      expect(container.read(provider).phase, PlaybackPhase.idle);
+      expect(container.read(provider).progress, isNull);
+      expect(container.read(provider).sessionId, isNull);
+    });
+
+    test('backward observation uses the accepted clock even when verified resume is lower', () async {
+      await controller.start();
+      final backward = Completer<LessonProgress>();
+      when(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((call) async {
+        if (call.positionalArguments[3] == 12) return progress();
+        return backward.future;
+      });
+      await controller.heartbeat(12);
+      expect(container.read(provider).lastObservationPosition, 12);
+      expect(container.read(provider).progress!.resumePosition, 0);
+      final pending = controller.heartbeat(10);
+      await Future<void>.value();
+      final close = controller.close(position: 12);
+      backward.complete(progress());
+      await Future.wait([pending, close]);
+      expectZeroClose();
+      expect(container.read(provider).progress!.watchedSeconds, 0);
+    });
+
+    test('queued backward observation retains its ceiling until pending close completes', () async {
+      await controller.start();
+      final forward = Completer<LessonProgress>();
+      final backward = Completer<LessonProgress>();
+      when(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          any(),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (call) => call.positionalArguments[3] == 12
+            ? forward.future
+            : backward.future,
+      );
+      final first = controller.heartbeat(12);
+      final second = controller.heartbeat(10);
+      final close = controller.close(position: 12);
+      forward.complete(progress());
+      backward.complete(progress());
+      await Future.wait([first, second, close]);
+      expectZeroClose();
+      expect(container.read(provider).phase, PlaybackPhase.ended);
+      expect(container.read(provider).progress!.watchedSeconds, 0);
+    });
+
+    test(
+      'confirmed repair permits later real observations and normal closure',
+      () async {
+        await startAtSavedEnd();
+        when(
+          () => repository.submitPlaybackHeartbeat(
+            1,
+            2,
+            7,
+            any(),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((call) async {
+          final position = call.positionalArguments[3] as double;
+          return progress(resume: position, watched: position);
+        });
+        await controller.heartbeat(0);
+        expect(container.read(provider).progress!.watchedSeconds, 0);
+        await controller.heartbeat(2);
+        expect(container.read(provider).progress!.watchedSeconds, 2);
+        await controller.close(position: 3);
+        verify(
+          () => repository.endPlaybackSession(
+            1,
+            2,
+            7,
+            3,
+            completedNormally: false,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+      },
+    );
+  });
+
+  group('session-owned cleanup ceilings', () {
+    for (final retireByHeartbeat in [false, true]) {
+      test(
+        'retired ${retireByHeartbeat ? 'heartbeat' : 'close'} ceiling cannot constrain a queued successor close',
+        () async {
+          when(
+            () => repository.startPlaybackSession(
+              1,
+              2,
+              position: 0,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenAnswer((_) async => progress(resume: 12));
+          await controller.start(position: 0);
+          if (retireByHeartbeat) {
+            when(
+              () => repository.submitPlaybackHeartbeat(
+                1,
+                2,
+                7,
+                0,
+                cancelToken: any(named: 'cancelToken'),
+              ),
+            ).thenThrow(ApiError(message: 'Retired session.', statusCode: 404));
+            await controller.heartbeat(0);
+          } else {
+            when(
+              () => repository.endPlaybackSession(
+                1,
+                2,
+                7,
+                any(),
+                completedNormally: false,
+                cancelToken: any(named: 'cancelToken'),
+              ),
+            ).thenThrow(ApiError(message: 'Retired session.', statusCode: 404));
+            await controller.close(position: 12);
+          }
+          expect(container.read(provider).sessionId, isNull);
+          final successor = Completer<LessonProgress>();
+          when(
+            () => repository.startPlaybackSession(
+              1,
+              2,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenAnswer((_) => successor.future);
+          when(
+            () => repository.endPlaybackSession(
+              1,
+              2,
+              8,
+              any(),
+              completedNormally: false,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).thenAnswer(
+            (_) async => progress(session: 8, resume: 6, watched: 6),
+          );
+          final starting = controller.start();
+          await Future<void>.value();
+          final closing = controller.close(position: 6);
+          successor.complete(progress(session: 8, resume: 6, watched: 6));
+          await Future.wait([starting, closing]);
+          verify(
+            () => repository.endPlaybackSession(
+              1,
+              2,
+              8,
+              6,
+              completedNormally: false,
+              cancelToken: any(named: 'cancelToken'),
+            ),
+          ).called(1);
+          expect(container.read(provider).phase, PlaybackPhase.ended);
+        },
+      );
+    }
+
+    test('queued normal close uses the latest acknowledged observation instead of a superseded ceiling', () async {
+      when(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => progress(resume: 20, watched: 20));
+      await controller.start();
+      final backward = Completer<LessonProgress>();
+      when(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          15,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => backward.future);
+      when(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          18,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => progress(resume: 18, watched: 20));
+      final first = controller.heartbeat(15);
+      final second = controller.heartbeat(18);
+      final closing = controller.close(position: 18, completedNormally: true);
+      backward.complete(progress(resume: 15, watched: 20));
+      await Future.wait([first, second, closing]);
+      verify(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          18,
+          completedNormally: true,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+      // Only the response may award credit, not the requested terminal position.
+      expect(container.read(provider).progress!.completed, isFalse);
+    });
+
+    test('committed backward observation with a lost response closes at the same position without local credit', () async {
+      when(
+        () => repository.startPlaybackSession(
+          1,
+          2,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => progress(resume: 20, watched: 20));
+      await controller.start();
+      var serverPosition = 20.0;
+      when(
+        () => repository.submitPlaybackHeartbeat(
+          1,
+          2,
+          7,
+          15,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async {
+        serverPosition = 15;
+        throw ApiError.timeout();
+      });
+      final closedPositions = <double>[];
+      when(
+        () => repository.endPlaybackSession(
+          1,
+          2,
+          7,
+          any(),
+          completedNormally: false,
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((call) async {
+        final position = call.positionalArguments[3] as double;
+        closedPositions.add(position);
+        expect(position, serverPosition);
+        if (closedPositions.length == 1) throw ApiError.timeout();
+        return progress(resume: position, watched: 20);
+      });
+      await controller.heartbeat(15);
+      expect(container.read(provider).progress!.watchedSeconds, 20);
+      await Future.wait([
+        controller.close(position: 20),
+        controller.close(position: 20),
+      ]);
+      expect(closedPositions, [15, 15]);
+      expect(container.read(provider).progress!.watchedSeconds, 20);
+      expect(container.read(provider).progress!.completed, isFalse);
+      // Actual server range arithmetic is checked separately, without a database.
+    });
+
+    test(
+      'late close response cannot replace another account session',
+      () async {
+        await controller.start();
+        final oldClose = Completer<LessonProgress>();
+        when(
+          () => repository.endPlaybackSession(
+            1,
+            2,
+            7,
+            any(),
+            completedNormally: false,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) => oldClose.future);
+        final closing = controller.close();
+        await Future<void>.value();
+        auth.change(AuthAuthenticated(employee('B')));
+        when(
+          () => repository.startPlaybackSession(
+            1,
+            2,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async => progress(session: 8));
+        await controller.start();
+        oldClose.complete(progress(watched: 100, resume: 100, completed: true));
+        await closing;
+        expect(container.read(provider).sessionId, 8);
+        expect(container.read(provider).phase, PlaybackPhase.active);
+        expect(container.read(provider).progress!.watchedSeconds, 0);
+      },
+    );
+
+    test(
+      'late expired heartbeat cannot mutate a replacement session',
+      () async {
+        late void Function() expire;
+        await runZoned(
+          controller.start,
+          zoneSpecification: ZoneSpecification(
+            createTimer: (self, parent, zone, duration, callback) {
+              expire = callback;
+              return parent.createTimer(zone, const Duration(days: 1), () {});
+            },
+          ),
+        );
+        final oldHeartbeat = Completer<LessonProgress>();
+        when(
+          () => repository.submitPlaybackHeartbeat(
+            1,
+            2,
+            7,
+            0,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) => oldHeartbeat.future);
+        final pending = controller.heartbeat(0);
+        await Future<void>.value();
+        expire();
+        await Future<void>.delayed(Duration.zero);
+        expect(container.read(provider).error!.code, 'session_expired');
+        when(
+          () => repository.startPlaybackSession(
+            1,
+            2,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async => progress(session: 8));
+        await controller.start();
+        oldHeartbeat.complete(
+          progress(watched: 100, resume: 100, completed: true),
+        );
+        await pending;
+        expect(container.read(provider).sessionId, 8);
+        expect(container.read(provider).phase, PlaybackPhase.active);
+        expect(container.read(provider).progress!.watchedSeconds, 0);
+      },
+    );
+
+    test(
+      'late media failure for a retired session cannot close its successor',
+      () async {
+        await controller.start();
+        final media = Completer<ProtectedMediaRequest>();
+        when(() => repository.protectedMediaRequest(1, 2, 7))
+            .thenAnswer((_) => media.future);
+        final pending = controller.mediaRequest();
+        await controller.close();
+        when(
+          () => repository.startPlaybackSession(
+            1,
+            2,
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async => progress(session: 8));
+        await controller.start();
+        media.completeError(
+          ApiError(message: 'Old media denied.', statusCode: 403),
+        );
+        expect(await pending, isNull);
+        expect(container.read(provider).sessionId, 8);
+        expect(container.read(provider).phase, PlaybackPhase.active);
+        expect(container.read(provider).progress!.watchedSeconds, 0);
+      },
+    );
+  });
+
   test('lost close response blocks restart until explicit cleanup resolves the session', () async {
     await controller.start();
     when(

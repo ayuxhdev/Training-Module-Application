@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in temporarily unavailable</title>
+</head>
+<body>
+  <main>
+    <h1>Sign in temporarily unavailable</h1>
+    <p role="alert">{% if invalid_credentials %}Please enter a correct username and password.{% else %}Please wait and try again.{% endif %}</p>
+  </main>
+</body>
+</html>

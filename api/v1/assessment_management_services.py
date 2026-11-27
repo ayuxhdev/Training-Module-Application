@@ -1,14 +1,16 @@
 """Locked adapters for the website's assessment and question-bank forms."""
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
+from accounts.lifecycle_authorization import require_lifecycle_permission
+from api.capabilities import can_use_mobile
 from assessments.forms import (
-    AssessmentForm, AssessmentQuestionForm, QuestionForm,
-    QuestionOptionFormSet, QuestionRevisionForm,
+    AssessmentForm, AssessmentQuestionForm, DraftQuestionOptionFormSet,
+    QuestionForm, QuestionRevisionForm,
 )
 from assessments.models import (
     Assessment, AssessmentQuestion, Question, QuestionOption, QuestionRevision,
@@ -94,6 +96,13 @@ def _locked_revision(question_id, revision_id):
     )
 
 
+def _require_revision_actor(actor, revision):
+    current = require_lifecycle_permission(actor, "assessments.change_questionrevision", using=revision._state.db)
+    if not can_use_mobile(current):
+        raise PermissionDenied
+    return current
+
+
 def _option_formset(revision, changes):
     queryset = QuestionOption.objects.filter(question_revision=revision).order_by("position", "pk")
     existing = list(queryset)
@@ -119,7 +128,7 @@ def _option_formset(revision, changes):
     for index, row in enumerate(rows):
         for key, value in row.items():
             data[f"options-{index}-{'DELETE' if key == 'delete' else key}"] = value
-    formset = QuestionOptionFormSet(data=data, instance=revision, prefix="options", queryset=queryset)
+    formset = DraftQuestionOptionFormSet(data=data, instance=revision, prefix="options", queryset=queryset)
     for option, form in zip(existing, formset.initial_forms):
         if "text" not in updates.get(option.pk, {}):
             form.fields["text"].strip = False
@@ -129,6 +138,7 @@ def _option_formset(revision, changes):
 @transaction.atomic
 def update_revision(actor, question_id, revision_id, values):
     revision = _locked_revision(question_id, revision_id)
+    actor = _require_revision_actor(actor, revision)
     before = audit_snapshot(revision)
     data = {field: getattr(revision, field) for field in QuestionRevisionForm.Meta.fields}
     data.update({key: value for key, value in values.items() if key != "options"})
@@ -161,6 +171,7 @@ def update_revision(actor, question_id, revision_id, values):
 @transaction.atomic
 def freeze_revision(actor, question_id, revision_id, values):
     revision = _locked_revision(question_id, revision_id)
+    actor = _require_revision_actor(actor, revision)
     before = audit_snapshot(revision)
     validate_freezable_prompt(revision.prompt)
     revision.status = QuestionRevision.Status.FROZEN

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{% if revision %}Edit draft revision | {{ question.code }} (Rev {{ revision.revision_number }}){% else %}New revision | {{ question.code }}{% endif %} | Garden's Need Training{% endblock %}
 {% block content %}
 <style>
@@ -45,7 +46,7 @@
       </p>
     </aside>
 
-    <form method="post" class="form-stack">
+    <form method="post" class="form-stack" data-question-editor>
       {% csrf_token %}
 
       <div class="form-fields">
@@ -64,12 +65,25 @@
           </div>
         {% endif %}
 
-        {% for option_form in options %}
-          <fieldset class="assessment-question revision-option-fieldset">
-            <legend>Option {{ forloop.counter }}</legend>
-            {{ option_form.as_p }}
+        <div data-option-list>
+          {% for option_form in options %}
+            <fieldset class="assessment-question revision-option-fieldset" data-option-form>
+              <legend>Option {{ forloop.counter }}</legend>
+              {{ option_form.as_p }}
+              <button type="button" class="btn btn-secondary" data-remove-option hidden>Remove option</button>
+            </fieldset>
+          {% endfor %}
+        </div>
+        <template data-option-template>
+          <fieldset class="assessment-question revision-option-fieldset" data-option-form>
+            <legend>New option</legend>
+            {{ options.empty_form.as_p }}
+            <button type="button" class="btn btn-secondary" data-remove-option hidden>Remove option</button>
           </fieldset>
-        {% endfor %}
+        </template>
+        <button type="button" class="btn btn-secondary" data-add-option hidden>Add option</button>
+        <p class="muted" data-option-status role="status" aria-live="polite"></p>
+        <noscript><p class="muted">Enable JavaScript to add options or populate True/False labels automatically. Saved answers remain editable and server validation still applies.</p></noscript>
       {% endif %}
 
       <div class="action-list revision-form-actions">
@@ -79,4 +93,5 @@
     </form>
   </section>
 </div>
+{% if options %}<script src="{% static 'assessments/question_editor.js' %}" defer></script>{% endif %}
 {% endblock %}

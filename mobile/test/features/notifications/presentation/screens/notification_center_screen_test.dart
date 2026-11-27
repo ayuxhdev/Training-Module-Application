@@ -105,13 +105,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Finder findListViewScrollable() => find
+      .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
+      .first;
+
+  Finder findCardText(String text) =>
+      find.descendant(of: find.byType(Card), matching: find.text(text));
+
   Future<void> tapText(WidgetTester tester, String label) async {
     final finder = find.text(label);
     if (finder.evaluate().isEmpty) {
       await tester.scrollUntilVisible(
         finder,
         140,
-        scrollable: find.byType(Scrollable).last,
+        scrollable: findListViewScrollable(),
       );
     }
     await tester.ensureVisible(finder.first);
@@ -152,7 +159,7 @@ void main() {
       ).thenAnswer((_) async => noticePage(items: [notice(type: event.key)]));
       await mount(tester);
       expect(find.byIcon(event.value), findsOneWidget);
-      expect(find.text('Unread'), findsOneWidget);
+      expect(findCardText('Unread'), findsOneWidget);
       expect(find.text('Your training update 1.'), findsOneWidget);
     });
   }
@@ -165,7 +172,7 @@ void main() {
         () => repository.getUnreadCount(cancelToken: any(named: 'cancelToken')),
       ).thenAnswer((_) async => 0);
       await tapText(tester, 'Mark as read');
-      expect(find.text('Read'), findsOneWidget);
+      expect(findCardText('Read'), findsOneWidget);
       expect(find.text('Mark as read'), findsNothing);
       expect(find.text('0 unread · 1 notification'), findsOneWidget);
       expect(
@@ -230,7 +237,7 @@ void main() {
     ).thenAnswer((_) async => 0);
     await tester.tap(find.byTooltip('Mark all as read'));
     await tester.pumpAndSettle();
-    expect(find.text('Read'), findsOneWidget);
+    expect(findCardText('Read'), findsOneWidget);
     expect(find.text('Mark as read'), findsNothing);
     verify(() => repository.markAllRead(cancelToken: any(named: 'cancelToken')))
         .called(1);
@@ -276,7 +283,7 @@ void main() {
             repository.getPage(page: 1, cancelToken: any(named: 'cancelToken')),
       ).thenAnswer((_) async => noticePage(items: [notice(read: true)]));
       await tapText(tester, 'Refresh');
-      expect(find.text('Read'), findsOneWidget);
+      expect(findCardText('Read'), findsOneWidget);
       verify(
         () => repository.markRead(1, cancelToken: any(named: 'cancelToken')),
       ).called(1);
@@ -299,7 +306,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('Training update 2'),
         120,
-        scrollable: find.byType(Scrollable).last,
+        scrollable: findListViewScrollable(),
       );
       expect(find.text('Training update 2'), findsOneWidget);
       expect(find.text('Load more notifications'), findsNothing);
@@ -372,7 +379,7 @@ void main() {
               ),
             ).thenAnswer((_) async => noticePage(items: [notice(read: true)]));
             await tapText(tester, 'Refresh');
-            expect(find.text('Read'), findsOneWidget);
+            expect(findCardText('Read'), findsOneWidget);
             verify(
               () => repository.getPage(
                 page: 1,
@@ -530,10 +537,7 @@ void main() {
           expect(theme.brightness, brightness);
           final headingStyle = tester.widget<Text>(heading).style!;
           expect(headingStyle.color, theme.colorScheme.onSurface);
-          expect(
-            headingStyle.fontSize,
-            theme.textTheme.displayLarge!.fontSize,
-          );
+          expect(headingStyle.fontSize, theme.textTheme.displayLarge!.fontSize);
           final card = tester.widget<Card>(find.byType(Card).first);
           for (final (finder, background) in [
             (heading, theme.scaffoldBackgroundColor),
@@ -543,7 +547,7 @@ void main() {
             ),
             (find.text('Training update 1'), card.color!),
             (find.text('Your training update 1.'), card.color!),
-            (find.text('Unread'), card.color!),
+            (findCardText('Unread'), card.color!),
             (find.textContaining('Received '), card.color!),
           ]) {
             final paragraph = tester.renderObject<RenderParagraph>(
@@ -657,4 +661,492 @@ void main() {
       );
     }
   }
+
+  group('Notification Center Search, Filtering, and Pagination Parity', () {
+    testWidgets(
+      'All, Unread, and Read filter chips toggle visible notifications',
+      (tester) async {
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: NotificationReadFilter.all,
+            query: any(named: 'query'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => noticePage(
+            items: [notice(id: 1, read: false), notice(id: 2, read: true)],
+            count: 2,
+          ),
+        );
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: NotificationReadFilter.unread,
+            query: any(named: 'query'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async =>
+              noticePage(items: [notice(id: 1, read: false)], count: 1),
+        );
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: NotificationReadFilter.read,
+            query: any(named: 'query'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => noticePage(items: [notice(id: 2, read: true)], count: 1),
+        );
+        when(
+          () =>
+              repository.getUnreadCount(cancelToken: any(named: 'cancelToken')),
+        ).thenAnswer((_) async => 1);
+
+        await mount(tester);
+        final scrollable = findListViewScrollable();
+        expect(find.text('Training update 1'), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.text('Training update 2'),
+          120,
+          scrollable: scrollable,
+        );
+        expect(find.text('Training update 2'), findsOneWidget);
+
+        // Tap Unread chip
+        await tester.scrollUntilVisible(
+          find.widgetWithText(ChoiceChip, 'Unread'),
+          -120,
+          scrollable: scrollable,
+        );
+        await tester.tap(find.widgetWithText(ChoiceChip, 'Unread'));
+        await tester.pumpAndSettle();
+        expect(find.text('Training update 1'), findsOneWidget);
+        expect(find.text('Training update 2'), findsNothing);
+
+        // Tap Read chip
+        await tester.tap(find.widgetWithText(ChoiceChip, 'Read'));
+        await tester.pumpAndSettle();
+        expect(find.text('Training update 1'), findsNothing);
+        expect(find.text('Training update 2'), findsOneWidget);
+
+        // Tap All chip
+        await tester.tap(find.widgetWithText(ChoiceChip, 'All'));
+        await tester.pumpAndSettle();
+        expect(find.text('Training update 1'), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.text('Training update 2'),
+          120,
+          scrollable: scrollable,
+        );
+        expect(find.text('Training update 2'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Keyword search in title and message filters notifications with debounce',
+      (tester) async {
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: any(named: 'status'),
+            query: '',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => noticePage(
+            items: [
+              notice(id: 1, read: false),
+              TrainingNotification(
+                id: 2,
+                type: NotificationType.approaching,
+                title: 'Fire Safety Refresher',
+                message: 'Hazard chemical procedure update.',
+                assignmentId: 2,
+                createdAt: DateTime.utc(2026, 10, 18),
+                readAt: null,
+              ),
+            ],
+            count: 2,
+          ),
+        );
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: any(named: 'status'),
+            query: 'chemical',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => noticePage(
+            items: [
+              TrainingNotification(
+                id: 2,
+                type: NotificationType.approaching,
+                title: 'Fire Safety Refresher',
+                message: 'Hazard chemical procedure update.',
+                assignmentId: 2,
+                createdAt: DateTime.utc(2026, 10, 18),
+                readAt: null,
+              ),
+            ],
+            count: 1,
+          ),
+        );
+
+        await mount(tester);
+        final scrollable = findListViewScrollable();
+        expect(find.text('Training update 1'), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.text('Fire Safety Refresher'),
+          120,
+          scrollable: scrollable,
+        );
+        expect(find.text('Fire Safety Refresher'), findsOneWidget);
+
+        // Scroll back up to search field
+        await tester.scrollUntilVisible(
+          find.byType(TextField),
+          -120,
+          scrollable: scrollable,
+        );
+
+        // Enter search text
+        await tester.enterText(find.byType(TextField), 'chemical');
+        await tester.pump(const Duration(milliseconds: 100));
+        verifyNever(
+          () => repository.getPage(
+            page: 1,
+            status: any(named: 'status'),
+            query: 'chemical',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Training update 1'), findsNothing);
+        expect(find.text('Fire Safety Refresher'), findsOneWidget);
+        verify(
+          () => repository.getPage(
+            page: 1,
+            status: any(named: 'status'),
+            query: 'chemical',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+      },
+    );
+
+    testWidgets(
+      'search stays focused during delayed filtering and remains available to retry',
+      (tester) async {
+        final pending = Completer<NotificationPage>();
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: any(named: 'status'),
+            query: 'delayed',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) => pending.future);
+
+        await mount(tester);
+        final searchField = find.byType(TextField);
+        bool searchHasFocus() => tester
+            .widget<EditableText>(
+              find.descendant(
+                of: searchField,
+                matching: find.byType(EditableText),
+              ),
+            )
+            .focusNode
+            .hasFocus;
+        await tester.enterText(searchField, 'delayed');
+        await tester.pump(const Duration(milliseconds: 250));
+        await tester.pump();
+
+        expect(searchField, findsOneWidget);
+        expect(
+          tester.widget<TextField>(searchField).controller!.text,
+          'delayed',
+        );
+        expect(searchHasFocus(), isTrue);
+        expect(find.text('Updating notifications…'), findsOneWidget);
+
+        pending.completeError(ApiError.networkFailure(), StackTrace.current);
+        await tester.pumpAndSettle();
+        expect(searchField, findsOneWidget);
+        expect(
+          tester.widget<TextField>(searchField).controller!.text,
+          'delayed',
+        );
+        expect(searchHasFocus(), isTrue);
+        expect(find.text('Retry'), findsOneWidget);
+        expect(find.text('Training update 1'), findsNothing);
+        expect(find.text('No matching notifications'), findsNothing);
+
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: any(named: 'status'),
+            query: 'delayed',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async => noticePage(items: [notice(id: 2)], count: 1));
+        await tester.tap(find.text('Retry'));
+        await tester.pumpAndSettle();
+        expect(searchField, findsOneWidget);
+        expect(find.text('Training update 2'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'search changes hide cards until results for the new query arrive',
+      (tester) async {
+        final pending = Completer<NotificationPage>();
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: any(named: 'status'),
+            query: 'changed',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) => pending.future);
+
+        await mount(tester);
+        expect(find.text('Training update 1'), findsOneWidget);
+        await tester.enterText(find.byType(TextField), 'changed');
+        await tester.pump(const Duration(milliseconds: 250));
+        await tester.pump();
+
+        expect(find.byType(TextField), findsOneWidget);
+        expect(find.text('Training update 1'), findsNothing);
+        expect(find.text('No matching notifications'), findsNothing);
+        expect(find.text('Updating notifications…'), findsOneWidget);
+
+        pending.complete(noticePage(items: [notice(id: 2)], count: 1));
+        await tester.pumpAndSettle();
+        expect(find.text('Training update 1'), findsNothing);
+        expect(find.text('Training update 2'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '403 filter retry keeps prior results hidden and recovers after access returns',
+      (tester) async {
+        final retry = Completer<NotificationPage>();
+        var requests = 0;
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: any(named: 'status'),
+            query: 'restricted',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async {
+          requests++;
+          if (requests == 1) {
+            throw ApiError(message: 'Permission denied.', statusCode: 403);
+          }
+          if (requests == 2) return retry.future;
+          return noticePage(items: [notice(id: 2)], count: 1);
+        });
+
+        await mount(tester);
+        await tester.enterText(find.byType(TextField), 'restricted');
+        await tester.pump(const Duration(milliseconds: 250));
+        await tester.pumpAndSettle();
+        expect(find.text('Access denied'), findsOneWidget);
+        expect(find.text('Training update 1'), findsNothing);
+        expect(find.text('Retry'), findsOneWidget);
+
+        await tester.tap(find.text('Retry'));
+        await tester.pump();
+        expect(find.text('Training update 1'), findsNothing);
+        expect(find.text('Updating notifications…'), findsOneWidget);
+        retry.completeError(
+          ApiError(message: 'Permission denied.', statusCode: 403),
+          StackTrace.current,
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Access denied'), findsOneWidget);
+        expect(find.text('Training update 1'), findsNothing);
+
+        await tester.tap(find.text('Retry'));
+        await tester.pumpAndSettle();
+        expect(find.text('Training update 1'), findsNothing);
+        expect(find.text('Training update 2'), findsOneWidget);
+        expect(requests, 3);
+      },
+    );
+
+    testWidgets(
+      'Displays No unread notifications empty state when Unread has 0 matches',
+      (tester) async {
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: NotificationReadFilter.all,
+            query: any(named: 'query'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => noticePage(items: [notice(id: 1, read: true)], count: 1),
+        );
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: NotificationReadFilter.unread,
+            query: any(named: 'query'),
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async => noticePage(items: [], count: 0));
+        when(
+          () =>
+              repository.getUnreadCount(cancelToken: any(named: 'cancelToken')),
+        ).thenAnswer((_) async => 0);
+
+        await mount(tester);
+        await tester.tap(find.widgetWithText(ChoiceChip, 'Unread'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('No unread notifications'), findsOneWidget);
+        expect(
+          find.textContaining('You’re all caught up on your updates'),
+          findsOneWidget,
+        );
+        expect(find.text('View all notifications'), findsOneWidget);
+
+        await tapText(tester, 'View all notifications');
+        expect(find.text('Training update 1'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Displays No matching notifications empty state with clear action',
+      (tester) async {
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: any(named: 'status'),
+            query: 'nonexistent',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((_) async => noticePage(items: [], count: 0));
+        await mount(tester);
+        await tester.enterText(find.byType(TextField), 'nonexistent');
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+
+        expect(find.text('No matching notifications'), findsOneWidget);
+        expect(
+          find.textContaining('No notifications match "nonexistent"'),
+          findsOneWidget,
+        );
+
+        await tester.tap(
+          find.widgetWithText(ActionChip, 'Clear search and filters'),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Training update 1'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Pagination preserves active search and filter when loading more',
+      (tester) async {
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: NotificationReadFilter.unread,
+            query: 'Refresher',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => noticePage(
+            items: [notice(id: 1, read: false)],
+            more: true,
+            count: 2,
+          ),
+        );
+        when(
+          () => repository.getPage(
+            page: 2,
+            status: NotificationReadFilter.unread,
+            query: 'Refresher',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => noticePage(
+            items: [notice(id: 2, read: false)],
+            more: false,
+            count: 2,
+          ),
+        );
+
+        await mount(tester);
+        // Apply filter
+        await tester.tap(find.widgetWithText(ChoiceChip, 'Unread'));
+        await tester.pumpAndSettle();
+
+        // Apply search query
+        await tester.enterText(find.byType(TextField), 'Refresher');
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Training update 1'), findsOneWidget);
+        final scrollable = findListViewScrollable();
+        await tester.scrollUntilVisible(
+          find.text('Load more notifications'),
+          120,
+          scrollable: scrollable,
+        );
+        expect(find.text('Load more notifications'), findsOneWidget);
+
+        // Tap load more
+        await tapText(tester, 'Load more notifications');
+        await tester.scrollUntilVisible(
+          find.text('Training update 2'),
+          120,
+          scrollable: scrollable,
+        );
+        expect(find.text('Training update 1'), findsOneWidget);
+        expect(find.text('Training update 2'), findsOneWidget);
+        expect(find.text('Load more notifications'), findsNothing);
+
+        verify(
+          () => repository.getPage(
+            page: 2,
+            status: NotificationReadFilter.unread,
+            query: 'Refresher',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+      },
+    );
+
+    testWidgets(
+      'Account switch clears search query and resets filter selection',
+      (tester) async {
+        await mount(tester);
+        await tester.tap(find.widgetWithText(ChoiceChip, 'Unread'));
+        await tester.enterText(find.byType(TextField), 'Safety');
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+
+        auth.change(AuthAuthenticated(noticeEmployee('B')));
+        await tester.pumpAndSettle();
+
+        final searchField = tester.widget<TextField>(find.byType(TextField));
+        expect(searchField.controller?.text, isEmpty);
+        final allChip = tester.widget<ChoiceChip>(
+          find.widgetWithText(ChoiceChip, 'All'),
+        );
+        expect(allChip.selected, isTrue);
+      },
+    );
+  });
 }

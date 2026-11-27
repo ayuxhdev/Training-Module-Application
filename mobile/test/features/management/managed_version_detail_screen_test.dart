@@ -233,7 +233,7 @@ void main() {
     );
 
     testWidgets(
-      'shows restricted notice when account lacks view_trainingversion',
+      'omits version history when account lacks view_trainingversion',
       (tester) async {
         await launch(
           tester,
@@ -246,7 +246,7 @@ void main() {
         expect(find.text('View version history'), findsNothing);
         expect(
           find.text('Version history requires version view permissions.'),
-          findsOneWidget,
+          findsNothing,
         );
       },
     );
@@ -292,7 +292,7 @@ void main() {
     );
 
     testWidgets(
-      'shows Create draft version card when identity has training.add_trainingversion and navigates',
+      'creates a draft from version history when both permissions are granted',
       (tester) async {
         await launch(
           tester,
@@ -307,10 +307,10 @@ void main() {
           ),
         );
 
-        final card = find.text('Create draft version');
-        expect(card, findsOneWidget);
-
-        await tester.tap(card);
+        expect(find.text('Create draft version'), findsNothing);
+        await tester.tap(find.text('View version history'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('New draft version'));
         await tester.pumpAndSettle();
 
         expect(find.text('New draft version'), findsWidgets);
@@ -359,11 +359,11 @@ void main() {
         final createCard = find.text('Create draft version');
         expect(createCard, findsOneWidget);
 
-        // Version history remains restricted
+        // Creation remains accessible without adding a history shortcut.
         expect(find.text('View version history'), findsNothing);
         expect(
           find.text('Version history requires version view permissions.'),
-          findsOneWidget,
+          findsNothing,
         );
 
         // Tapping Create draft version opens authorized creation form
@@ -404,7 +404,7 @@ void main() {
     );
 
     testWidgets(
-      'permission matrix C: course-view, version-view, and version-add shows both actions without duplicates',
+      'permission matrix C: version history owns draft creation for course readers',
       (tester) async {
         await launch(
           tester,
@@ -421,7 +421,7 @@ void main() {
 
         expect(find.text('Course details'), findsWidgets);
         expect(find.text('View version history'), findsOneWidget);
-        expect(find.text('Create draft version'), findsOneWidget);
+        expect(find.text('Create draft version'), findsNothing);
         expect(
           find.text('Version history requires version view permissions.'),
           findsNothing,
@@ -445,7 +445,7 @@ void main() {
         expect(find.text('Create draft version'), findsNothing);
         expect(
           find.text('Version history requires version view permissions.'),
-          findsOneWidget,
+          findsNothing,
         );
       },
     );
@@ -468,12 +468,12 @@ void main() {
     );
 
     testWidgets(
-      'renders version pinning notice and version list with lifecycle badges',
+      'renders version list with lifecycle badges and no general policy card',
       (tester) async {
         await launch(tester, path: '/workspace/training/catalog/1/versions');
 
         expect(find.text('Version history'), findsWidgets);
-        expect(find.text('Version Pinning & Immutability'), findsOneWidget);
+        expect(find.text('Version Pinning & Immutability'), findsNothing);
         expect(find.text('Workplace Safety v2'), findsOneWidget);
         expect(find.text('Workplace Safety v1'), findsOneWidget);
         expect(find.text('PUBLISHED'), findsOneWidget);
@@ -587,7 +587,7 @@ void main() {
         expect(find.text('VERSION 2'), findsOneWidget);
         expect(find.text('Workplace Safety v2'), findsOneWidget);
         expect(find.text('PUBLISHED'), findsWidgets);
-        expect(find.text('MANAGEMENT VIEW'), findsOneWidget);
+        expect(find.text('MANAGEMENT VIEW'), findsNothing);
 
         // Lifecycle status summary
         expect(find.text('Lifecycle status'), findsOneWidget);
@@ -733,8 +733,8 @@ void main() {
           ),
         );
 
-        // Create module buttons (AppBar action and curriculum structure section)
-        expect(find.byTooltip('Create module'), findsOneWidget);
+        // Only the curriculum section offers module creation.
+        expect(find.byTooltip('Create module'), findsNothing);
         expect(
           find.widgetWithText(OutlinedButton, 'Create module'),
           findsOneWidget,
@@ -794,7 +794,11 @@ void main() {
         ),
       );
 
-      expect(find.byTooltip('Create module'), findsOneWidget);
+      expect(find.byTooltip('Create module'), findsNothing);
+      expect(
+        find.widgetWithText(OutlinedButton, 'Create module'),
+        findsOneWidget,
+      );
       expect(find.byTooltip('Edit module'), findsNothing);
       expect(find.byTooltip('Add text lesson'), findsNothing);
       expect(find.byTooltip('Add video lesson'), findsNothing);

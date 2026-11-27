@@ -69,14 +69,14 @@ class SystemAccountManagementTests(TestCase):
         self.assertFalse(user.user_permissions.exists())
         self.assertFalse(user.groups.exists())
 
-    def test_create_with_approved_groups_and_existing_employee_is_atomic_and_audited_after_commit(self):
+    def test_create_with_approved_groups_and_existing_employee_is_atomic_and_audited_synchronously(self):
         groups = list(Group.objects.filter(name__in=["Employee", "Manager"]).values_list("pk", flat=True))
         before = self.employee.reporting_manager_id, self.employee.is_active
-        with self.captureOnCommitCallbacks(execute=True) as callbacks:
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
             response = self.client.post(self.url("create"), self.create_data(groups=groups, employee=self.employee.pk))
-            self.assertFalse(AuditLog.objects.filter(action__startswith="accounts.user.").exists())
+            self.assertEqual(AuditLog.objects.filter(action__startswith="accounts.user.").count(), 2)
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(len(callbacks), 2)
+        self.assertEqual(callbacks, [])
         user = get_user_model().objects.get(username="new-stage2-user")
         self.employee.refresh_from_db()
         self.assertEqual(self.employee.user_id, user.pk)

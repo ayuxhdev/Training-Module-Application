@@ -14,13 +14,27 @@ class NotificationRepository {
 
   Future<NotificationPage> getPage({
     int page = 1,
+    NotificationReadFilter status = NotificationReadFilter.all,
+    String query = '',
     CancelToken? cancelToken,
   }) async {
     if (page <= 0) throw ArgumentError.value(page, 'page');
     try {
+      final queryParameters = <String, dynamic>{};
+      if (page > 1) {
+        queryParameters['page'] = page;
+      }
+      if (status != NotificationReadFilter.all) {
+        queryParameters['status'] = status.name;
+      }
+      final trimmed = query.trim();
+      if (trimmed.isNotEmpty) {
+        queryParameters['q'] = trimmed;
+      }
+
       final response = await apiClient.dio.get(
         '/notifications/',
-        queryParameters: page == 1 ? null : {'page': page},
+        queryParameters: queryParameters.isEmpty ? null : queryParameters,
         cancelToken: cancelToken,
       );
       if (cancelToken?.cancelError case final error?) throw error;

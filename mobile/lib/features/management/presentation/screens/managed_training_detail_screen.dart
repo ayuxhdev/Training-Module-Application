@@ -148,129 +148,28 @@ class ManagedTrainingDetailScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // Version History navigation
-              const SectionHeading(
-                'Version history',
-                subtitle: 'Immutability and lifecycle records for this course.',
-              ),
-              if (canVersions)
-                CustomCard(
-                  onTap: () => context.push(
-                    '/workspace/training/catalog/$trainingId/versions',
+              if (canVersions || canCreateVersion) ...[
+                const SizedBox(height: AppSpacing.lg),
+                const SectionHeading('Version history'),
+                if (canVersions)
+                  TrainingNavigationCard(
+                    title: 'View version history',
+                    description: 'Browse versions for this course.',
+                    icon: Icons.history_outlined,
+                    onTap: () => context.push(
+                      '/workspace/training/catalog/$trainingId/versions',
+                    ),
+                  )
+                else
+                  TrainingNavigationCard(
+                    title: 'Create draft version',
+                    description: 'Add a draft for this course.',
+                    icon: Icons.post_add_outlined,
+                    onTap: () => context.push(
+                      '/workspace/training/catalog/$trainingId/versions/new',
+                      extra: course,
+                    ),
                   ),
-                  semanticLabel: 'Browse version history for ${course.title}',
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          Icons.history_outlined,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'View version history',
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Inspect draft, published, and retired curriculum versions.',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right),
-                    ],
-                  ),
-                )
-              else
-                const CustomCard(
-                  child: Row(
-                    children: [
-                      Icon(Icons.lock_outline, size: 20),
-                      SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: Text(
-                          'Version history requires version view permissions.',
-                        ),
-                      ),
-                      StatusBadge(
-                        text: 'Restricted',
-                        status: BadgeStatus.neutral,
-                      ),
-                    ],
-                  ),
-                ),
-              if (canCreateVersion) ...[
-                const SizedBox(height: AppSpacing.sm),
-                CustomCard(
-                  onTap: () => context.push(
-                    '/workspace/training/catalog/$trainingId/versions/new',
-                    extra: course,
-                  ),
-                  semanticLabel: 'Create draft version for ${course.title}',
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          Icons.post_add_outlined,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onPrimaryContainer,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Create draft version',
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Author a new draft curriculum revision for this course.',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right),
-                    ],
-                  ),
-                ),
               ],
             ],
           ),

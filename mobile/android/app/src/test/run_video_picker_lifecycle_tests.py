@@ -8,6 +8,7 @@ compilation directory. Assertions run against that production implementation.
 import hashlib
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -32,6 +33,58 @@ def jar(cache, group, artifact, version):
     return str(matches[0])
 
 
+def is_capable_java(candidate: str) -> bool:
+    """Verifies that the candidate Java runtime is executable and capable of running JVM bytecode (Java 17+)."""
+    try:
+        proc = subprocess.run([candidate, "-version"], capture_output=True, text=True, timeout=5)
+        if proc.returncode != 0:
+            return False
+        combined = proc.stdout + proc.stderr
+        match = re.search(r'version\s+"(\d+)(?:\.(\d+))?', combined)
+        if match:
+            major = int(match.group(1))
+            if major == 1:
+                minor = match.group(2)
+                major = int(minor) if minor else 1
+            return major >= 17
+        return True
+    except Exception:
+        return False
+
+
+def find_java():
+    """Locate java binary across PATH, JAVA_HOME, JDK_HOME, and standard Android Studio installations, skipping incapable runtimes."""
+    exe = "java.exe" if os.name == "nt" else "java"
+    candidates = []
+    which_java = shutil.which("java")
+    if which_java:
+        candidates.append(which_java)
+    for env_var in ("JAVA_HOME", "JDK_HOME"):
+        val = os.environ.get(env_var)
+        if val:
+            cand = Path(val) / "bin" / exe
+            if cand.is_file():
+                candidates.append(str(cand))
+    candidates.extend([
+        str(Path(r"C:\Program Files\Android\Android Studio\jbr\bin") / exe),
+        str(Path(r"C:\Program Files\Android\Android Studio\jre\bin") / exe),
+        str(Path("/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin") / exe),
+        str(Path.home() / "android-studio/jbr/bin" / exe),
+    ])
+
+    # First pass: find candidate meeting capabilities (Java 17+)
+    for cand in candidates:
+        if os.path.isfile(cand) and is_capable_java(cand):
+            return cand
+
+    # Fallback pass: any existing candidate if none met capability check
+    for cand in candidates:
+        if os.path.isfile(cand):
+            return cand
+
+    raise RuntimeError("Java is unavailable. Please set JAVA_HOME or ensure java is in PATH.")
+
+
 def main():
     test_root = Path(__file__).resolve().parent
     kotlin_path = Path("kotlin/com/gardensneed/training")
@@ -54,13 +107,7 @@ def main():
     ]
     dependencies += [jar(cache, "org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", "1.8.0")]
     dependencies += [jar(cache, "org.jetbrains", "annotations", "13.0")]
-    java = shutil.which("java")
-    if not java and os.environ.get("JAVA_HOME"):
-        candidate = Path(os.environ["JAVA_HOME"]) / "bin" / ("java.exe" if os.name == "nt" else "java")
-        if candidate.is_file():
-            java = str(candidate)
-    if not java:
-        raise RuntimeError("Java is unavailable")
+    java = find_java()
     classpath = os.pathsep.join(dependencies)
     with tempfile.TemporaryDirectory(prefix="video-picker-jvm-") as directory:
         work = Path(directory)

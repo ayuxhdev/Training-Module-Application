@@ -2,7 +2,10 @@
 {% block title %}System Administration overview | Garden's Need Training{% endblock %}
 {% block system_content %}
 <section class="dashboard-section" aria-labelledby="account-statistics-heading">
-  <h2 id="account-statistics-heading" class="dashboard-section-heading">User account overview</h2>
+  <div class="management-section-copy">
+    <h2 id="account-statistics-heading">User account overview</h2>
+    <p class="muted">Counts describe Django User accounts. Staff and Superuser counts may overlap. Employee linking does not imply that the Employee is active.</p>
+  </div>
   <div class="dashboard-kpis">
     {% include "components/kpi_card.html" with label="Total user accounts" value=account_stats.total %}
     {% include "components/kpi_card.html" with label="Active accounts" value=account_stats.active %}
@@ -12,12 +15,13 @@
     {% include "components/kpi_card.html" with label="Linked to Employees" value=account_stats.linked %}
     {% include "components/kpi_card.html" with label="Without Employee links" value=account_stats.unlinked %}
   </div>
-  <p class="muted">Counts describe Django User accounts. Staff and Superuser counts may overlap. Employee linking does not imply that the Employee is active.</p>
 </section>
 <section class="org-panel" aria-labelledby="system-access-heading">
   <header class="org-panel-heading"><h2 id="system-access-heading">Account oversight and provisioning</h2></header>
-  <p>Review account status, assigned Groups and Employee links in the User Account Directory. Business Administrator membership does not grant access to this system area.</p>
-  <div class="record-actions"><a class="btn btn-primary" href="{% url 'accounts:system-user-list' %}">View user accounts</a></div>
-  {% if not user.is_staff %}<p class="muted">The separate Django admin additionally requires staff access.</p>{% endif %}
+  <div class="management-panel-body">
+    <p>Review account status, assigned Groups and Employee links in the User Account Directory. Business Administrator membership does not grant access to this system area.</p>
+    <div class="record-actions"><a class="btn btn-primary" href="{% url 'accounts:system-user-list' %}">View user accounts</a></div>
+    {% if not user.is_staff %}<p class="muted">The separate Django admin additionally requires staff access.</p>{% endif %}
+  </div>
 </section>
 {% endblock %}

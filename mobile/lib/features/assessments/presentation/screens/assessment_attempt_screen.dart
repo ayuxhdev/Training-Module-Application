@@ -10,6 +10,7 @@ import 'package:training_app/features/assessments/presentation/widgets/assessmen
 import 'package:training_app/core/presentation/components/error_view.dart';
 import 'package:training_app/core/presentation/components/api_error_view.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
+import 'package:training_app/core/presentation/formatters/date_labels.dart';
 import 'package:training_app/features/assessments/domain/models/assessment.dart';
 import 'package:training_app/features/assessments/presentation/controllers/assessment_controller.dart';
 
@@ -105,6 +106,9 @@ class _AssessmentAttemptScreenState
     final provider = assessmentAttemptProvider(widget.target);
     final state = ref.watch(provider);
     ref.listen(provider, (previous, next) {
+      if (previous?.attempt?.summary.id != next.attempt?.summary.id) {
+        _questionIndex = 0;
+      }
       if ((next.error != null && !identical(previous?.error, next.error)) ||
           (next.attempt?.summary.isClosed == true &&
               previous?.attempt?.summary.isClosed != true)) {
@@ -125,78 +129,86 @@ class _AssessmentAttemptScreenState
       AssessmentPhase.submitting,
       AssessmentPhase.reconciling,
     }.contains(state.phase);
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          attempt?.summary.isClosed == true
-              ? 'Assessment result'
-              : 'Assessment',
+    return PopScope(
+      canPop: !busy && !_confirming,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            attempt?.summary.isClosed == true
+                ? 'Assessment result'
+                : 'Assessment',
+          ),
         ),
-      ),
-      body: busy
-          ? LoadingView(
-              message: state.phase == AssessmentPhase.reconciling
-                  ? 'Checking submission with the server…'
-                  : 'Loading assessment…',
-            )
-          : state.error != null && [401, 403].contains(state.error!.statusCode)
-          ? ApiErrorView(error: state.error!)
-          : attempt == null
-          ? SingleChildScrollView(
-              child: ErrorView(
-                title: 'Assessment unavailable',
-                message: state.error?.message ?? 'Assessment unavailable. Return to training to check eligibility.',
-                onRetry: state.phase == AssessmentPhase.unavailable
-                    ? null
-                    : controller.retry,
-              ),
-            )
-          : ListView(
-              controller: _scroll,
-              padding: const EdgeInsets.all(16),
-              children: [
-                if (state.error != null) ...[
-                  Semantics(
-                    liveRegion: true,
-                    child: CinematicNotice(
-                      message: state.error!.message,
-                      isError: true,
-                      icon: Icons.error_outline_rounded,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (state.phase == AssessmentPhase.uncertain)
-                            const Text(
-                              'Submission is not confirmed. Check its status before trying again.',
+        body: busy
+            ? LoadingView(
+                message: state.phase == AssessmentPhase.submitting
+                    ? 'Submitting your assessment…'
+                    : state.phase == AssessmentPhase.reconciling
+                    ? 'Checking submission with the server…'
+                    : 'Loading assessment…',
+              )
+            : state.error != null && [401, 403].contains(state.error!.statusCode)
+            ? ApiErrorView(error: state.error!)
+            : attempt == null
+            ? SingleChildScrollView(
+                child: ErrorView(
+                  title: 'Assessment unavailable',
+                  message: state.error?.message ?? 'Assessment unavailable. Return to training to check eligibility.',
+                  onRetry: state.phase == AssessmentPhase.unavailable
+                      ? null
+                      : controller.retry,
+                ),
+              )
+            : ListView(
+                controller: _scroll,
+                padding: const EdgeInsets.all(16),
+                children: [
+                  if (state.error != null) ...[
+                    Semantics(
+                      liveRegion: true,
+                      child: CinematicNotice(
+                        message: state.error!.message,
+                        isError: true,
+                        icon: Icons.error_outline_rounded,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (state.phase == AssessmentPhase.uncertain)
+                              const Text(
+                                'Submission is not confirmed. Check its status before trying again.',
+                              ),
+                            OutlinedButton(
+                              onPressed: controller.retry,
+                              child: const Text('Check attempt status'),
                             ),
-                          OutlinedButton(
-                            onPressed: controller.retry,
-                            child: const Text('Check attempt status'),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (attempt.summary.isClosed)
+                    _result(context, attempt)
+                  else if (attempt.questions.isEmpty)
+                    const CinematicNotice(
+                      message: 'No questions are available. Return to training and reload the assessment.',
+                    )
+                  else
+                    _questions(context, state),
                   const SizedBox(height: 16),
-                ],
-                if (attempt.summary.isClosed)
-                  _result(context, attempt)
-                else if (attempt.questions.isEmpty)
-                  const CinematicNotice(
-                    message: 'No questions are available. Return to training and reload the assessment.',
-                  )
-                else
-                  _questions(context, state),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  onPressed: () => context.go(
-                    '/learning/assignments/${widget.target.assignmentId}',
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                    onPressed: () => context.go(
+                      '/learning/assignments/${widget.target.assignmentId}',
+                    ),
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Back to training'),
                   ),
-                  icon: const Icon(Icons.arrow_back),
-                  label: const Text('Back to training'),
-                ),
-              ],
-            ),
+                ],
+              ),
+      ),
     );
   }
 
@@ -293,6 +305,10 @@ class _AssessmentAttemptScreenState
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    tapTargetSize: MaterialTapTargetSize.padded,
+                  ),
                   onPressed:
                       state.canSubmit &&
                           state.selectedAnswers[question.id] != null &&
@@ -313,6 +329,10 @@ class _AssessmentAttemptScreenState
           runSpacing: 8,
           children: [
             OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(120, 48),
+                tapTargetSize: MaterialTapTargetSize.padded,
+              ),
               onPressed: index > 0
                   ? () => setState(() => _questionIndex = index - 1)
                   : null,
@@ -320,6 +340,10 @@ class _AssessmentAttemptScreenState
               label: const Text('Previous'),
             ),
             OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(120, 48),
+                tapTargetSize: MaterialTapTargetSize.padded,
+              ),
               onPressed: index < questions.length - 1
                   ? () => setState(() => _questionIndex = index + 1)
                   : null,
@@ -335,6 +359,9 @@ class _AssessmentAttemptScreenState
         ),
         const SizedBox(height: 12),
         FilledButton.icon(
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(48),
+          ),
           onPressed: state.canSubmit && !_confirming
               ? () => _submit(state)
               : null,
@@ -406,7 +433,7 @@ class _AssessmentAttemptScreenState
               Text('Passing score: ${summary.passPercentageSnapshot}%'),
               if (summary.submittedAt != null)
                 Text(
-                  'Submitted: ${summary.submittedAt!.toLocal()}',
+                  'Submitted: ${localDateLabel(summary.submittedAt!)}',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colors.onSurfaceVariant,
                   ),
@@ -417,6 +444,10 @@ class _AssessmentAttemptScreenState
                 runSpacing: 10,
                 children: [
                   OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                      tapTargetSize: MaterialTapTargetSize.padded,
+                    ),
                     onPressed: () => context.go(
                       '/learning/assignments/${widget.target.assignmentId}/assessments',
                     ),
@@ -424,6 +455,10 @@ class _AssessmentAttemptScreenState
                   ),
                   if (attempt.certificateId != null)
                     FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(48, 48),
+                        tapTargetSize: MaterialTapTargetSize.padded,
+                      ),
                       onPressed: () => context.push(
                         '/profile/certificates/${attempt.certificateId}',
                       ),
@@ -460,21 +495,23 @@ class _AssessmentAttemptScreenState
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          answer.pointsAwarded != null &&
-                                  double.tryParse(answer.pointsAwarded!) !=
-                                      null &&
-                                  double.parse(answer.pointsAwarded!) > 0
-                              ? Icons.check_circle_outline
-                              : Icons.radio_button_checked,
-                          size: 18,
-                          color:
-                              answer.pointsAwarded != null &&
-                                  double.tryParse(answer.pointsAwarded!) !=
-                                      null &&
-                                  double.parse(answer.pointsAwarded!) > 0
-                              ? colors.primary
-                              : colors.onSurfaceVariant,
+                        ExcludeSemantics(
+                          child: Icon(
+                            answer.pointsAwarded != null &&
+                                    double.tryParse(answer.pointsAwarded!) !=
+                                        null &&
+                                    double.parse(answer.pointsAwarded!) > 0
+                                ? Icons.check_circle_outline
+                                : Icons.radio_button_checked,
+                            size: 18,
+                            color:
+                                answer.pointsAwarded != null &&
+                                    double.tryParse(answer.pointsAwarded!) !=
+                                        null &&
+                                    double.parse(answer.pointsAwarded!) > 0
+                                ? colors.primary
+                                : colors.onSurfaceVariant,
+                          ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(

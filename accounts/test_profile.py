@@ -18,6 +18,7 @@ class ProfileTests(SimpleTestCase):
         self.user = User(pk=1, username="learner-one")
         # Permission checks in the shared shell are unrelated to profile access.
         self.user.has_perm = Mock(return_value=True)
+        self.enterContext(patch("notifications.templatetags.notification_tags.recipient_for_user", return_value=None))
 
     def request(self, user, method="get", suffix=""):
         request = getattr(self.factory, method)(reverse("accounts:profile") + suffix)

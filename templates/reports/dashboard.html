@@ -1,32 +1,46 @@
 {% extends "base.html" %}
 {% block title %}{% if role == "company" %}Company dashboard{% elif role == "manager" %}Team dashboard{% else %}Dashboard{% endif %} | Garden's Need Training{% endblock %}
 {% block content %}
-<div class="dashboard-workspace{% if role == 'company' or role == 'manager' %} management-dashboard management-dashboard--{{ role }}{% endif %}">
+<div class="dashboard-workspace{% if role == 'company' or role == 'manager' %} management-workspace management-dashboard management-dashboard--{{ role }}{% endif %}">
 {% if role == "unavailable" %}
   {% include "components/page_header.html" with title="Dashboard" supporting_text="Your training workspace" %}
   {% include "components/empty_state.html" with title="Dashboard unavailable" message="No dashboard is available for this account." %}
 {% elif role == "company" or role == "manager" %}
-  <div class="management-scope-heading">
-    <span class="management-scope-label">{% if role == "company" %}Company workspace{% else %}Team workspace{% endif %}</span>
+  <header class="page-header">
+    <div class="page-header-main">
+      <span class="management-scope-label">{% if role == "company" %}Company workspace{% else %}Team workspace{% endif %}</span>
+      {% if role == "company" %}
+        <h1>Company dashboard</h1>
+        <p class="muted">Company-wide training activity and workforce indicators</p>
+      {% else %}
+        <h1>Team dashboard</h1>
+        <p class="muted">Training activity and progress within your reporting scope</p>
+      {% endif %}
+    </div>
     <span class="management-overdue-count{% if metrics.overdue %} is-overdue{% endif %}">{% if metrics.overdue %}<span aria-hidden="true">!</span> {% endif %}{{ metrics.overdue }} overdue assignment{{ metrics.overdue|pluralize }}</span>
-  </div>
-  {% if role == "company" %}
-    {% include "components/page_header.html" with title="Company dashboard" supporting_text="Company-wide training activity and workforce indicators" %}
-  {% else %}
-    {% include "components/page_header.html" with title="Team dashboard" supporting_text="Training activity and progress within your reporting scope" %}
-  {% endif %}
+  </header>
 
   <p class="catalog-notice">
     {% if role == "company" %}<strong>Reporting scope:</strong> company-wide.
     {% else %}<strong>Reporting scope:</strong> employees in your authorized reporting team.{% endif %}
   </p>
 
+  <nav class="dashboard-quick-actions" aria-label="Management quick actions">
+    {% if perms.organization.view_employee %}
+      <a class="btn btn-secondary" href="{% url 'organization:employee-list' %}">Employee directory</a>
+    {% endif %}
+    <a class="btn btn-secondary" href="{% url 'training:assignment-list' %}">Team assignments</a>
+    <a class="btn btn-secondary" href="{% url 'reports:assignment-report' %}">Assignment report</a>
+  </nav>
+
   <section class="dashboard-section" aria-labelledby="dashboard-overview-heading">
-    <h2 class="dashboard-section-heading" id="dashboard-overview-heading">{% if role == "company" %}Workforce overview{% else %}Team overview{% endif %}</h2>
-    <p class="muted">
-      {% if role == "company" %}Current employee, department, published training and certificate counts.
-      {% else %}Active employees and certificates associated with assignments in your reporting scope.{% endif %}
-    </p>
+    <div class="management-section-copy">
+      <h2 id="dashboard-overview-heading">{% if role == "company" %}Workforce overview{% else %}Team overview{% endif %}</h2>
+      <p class="muted">
+        {% if role == "company" %}Current employee, department, published training and certificate counts.
+        {% else %}Active employees and certificates associated with assignments in your reporting scope.{% endif %}
+      </p>
+    </div>
     <div class="dashboard-summary{% if role == 'manager' %} dashboard-summary--team{% endif %}">
       {% if role == "company" %}
         {% include "components/kpi_card.html" with label="Active employees" value=active_employee_count %}

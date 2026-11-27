@@ -1,8 +1,13 @@
 from decimal import Decimal
 
-from django.db import transaction
+from django.core.exceptions import ValidationError
+from django.db import DatabaseError, transaction
 
 from .models import AuditLog
+
+
+class AuditWriteError(RuntimeError):
+	"""The required audit record could not be persisted."""
 
 
 AUDIT_FIELDS = {
@@ -45,7 +50,14 @@ def audit_snapshot(target):
 
 
 def record_event(actor, action, target, *, before=None, after=None, reason=""):
+	"""Write mandatory evidence on the target's connection before commit."""
+	using = target._state.db
+	if target.pk is None or target._state.adding or not using or not transaction.get_connection(using).in_atomic_block:
+		raise AuditWriteError("Required audit events must accompany a saved target in its transaction.")
 	actor = actor if getattr(actor, "is_authenticated", False) else None
+	if actor is not None and actor._state.db != using:
+		transaction.set_rollback(True, using=using)
+		raise AuditWriteError("The audit actor and target must use the same database.")
 	actor_label = actor.get_username()[:150] if actor else "System"
 	values = {
 		"actor": actor,
@@ -58,7 +70,10 @@ def record_event(actor, action, target, *, before=None, after=None, reason=""):
 		"reason": reason,
 	}
 
-	def write_event():
-		AuditLog.objects.create(**values)
-
-	transaction.on_commit(write_event, robust=True)
+	try:
+		AuditLog.objects.db_manager(using).create(**values)
+	except (DatabaseError, ValidationError):
+		# AuditLog.save() has its own savepoint. Roll back the caller's
+		# transaction as well, and keep storage details out of client errors.
+		transaction.set_rollback(True, using=using)
+		raise AuditWriteError("Required audit event could not be saved.") from None

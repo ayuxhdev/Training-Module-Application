@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -55,6 +56,9 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
   String? _owner;
   int _generation = 0;
   int? _sessionId;
+  // A backward request may commit before its response is lost. This ceiling
+  // only limits cleanup; it never changes server-confirmed progress or credit.
+  double? _cleanupCeiling;
   CancelToken _requests = CancelToken();
   Future<void> _queue = Future.value();
   Future<void>? _starting;
@@ -81,7 +85,7 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
       if (account == _owner) return;
       _cancelRequests();
       _owner = account;
-      _sessionId = null;
+      _retireSession();
       state = PlaybackSessionState(
         phase: account == null ? PlaybackPhase.unavailable : PlaybackPhase.idle,
       );
@@ -101,6 +105,11 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
     _queue = Future.value();
     _starting = null;
     _closing = null;
+  }
+
+  void _retireSession() {
+    _sessionId = null;
+    _cleanupCeiling = null;
   }
 
   bool _current(int generation) =>
@@ -124,11 +133,25 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
     int sessionId,
     Stopwatch observed, {
     double? position,
+    double? startingPosition,
   }) {
     if (progress.sessionId != sessionId) {
       throw const FormatException(
         'Playback response has a mismatched session.',
       );
+    }
+    final requested = position ?? startingPosition;
+    if (_closing != null && _cleanupCeiling != null) {
+      // Keep a queued close conservative, but let newer acknowledgements
+      // supersede an earlier backward bound. Neither value grants watch credit.
+      _cleanupCeiling = math.min(
+        requested ?? progress.resumePosition,
+        progress.resumePosition,
+      );
+    } else {
+      _cleanupCeiling = requested != null && progress.resumePosition > requested
+          ? requested
+          : null;
     }
     state = PlaybackSessionState(
       phase: _closing == null ? PlaybackPhase.active : PlaybackPhase.closing,
@@ -225,7 +248,7 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
           throw const FormatException('Missing playback session.');
         }
         _sessionId = sessionId;
-        _accept(progress, sessionId, observed);
+        _accept(progress, sessionId, observed, startingPosition: position);
       } catch (error) {
         if (_current(generation)) {
           await _fail(_error(error), generation, requests);
@@ -254,10 +277,12 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
           ? request
           : null;
     } catch (error) {
-      if (_current(generation)) {
-        await _enqueue(
-          (generation, requests) => _fail(_error(error), generation, requests),
-        );
+      if (_current(generation) && _sessionId == sessionId) {
+        await _enqueue((generation, requests) async {
+          if (_sessionId == sessionId) {
+            await _fail(_error(error), generation, requests);
+          }
+        });
       }
       return null;
     }
@@ -269,6 +294,17 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
     }
   }
 
+  void _limitCleanup(double position) {
+    final confirmed = state.progress?.resumePosition ?? 0;
+    // Verified resume can trail the accepted observation when coverage has gaps.
+    if (position < (state.lastObservationPosition ?? confirmed)) {
+      _cleanupCeiling = math.min(_cleanupCeiling ?? confirmed, position);
+    }
+  }
+
+  double _cleanupPosition(double position) =>
+      _cleanupCeiling == null ? position : math.min(position, _cleanupCeiling!);
+
   Future<void> heartbeat(double position) {
     _validatePosition(position);
     final sessionId = _sessionId;
@@ -277,8 +313,10 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
         _closing != null) {
       return Future.value();
     }
+    _limitCleanup(position);
     return _enqueue((generation, requests) async {
       if (_sessionId != sessionId) return;
+      _limitCleanup(position);
       try {
         final observed = Stopwatch()..start();
         final progress = await _repository.submitPlaybackHeartbeat(
@@ -338,7 +376,7 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
         lesson.assignmentId,
         lesson.lessonId,
         sessionId,
-        position,
+        _cleanupPosition(position),
         completedNormally: normal,
         cancelToken: requests,
       );
@@ -346,7 +384,7 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
       if (progress.sessionId != sessionId) {
         throw const FormatException('Mismatched closed session.');
       }
-      _sessionId = null;
+      _retireSession();
       state = PlaybackSessionState(
         phase: PlaybackPhase.ended,
         progress: progress,
@@ -364,7 +402,12 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
       final failure = _error(error);
       // A lost close response may be followed by 404 because the session is
       // already closed. Never restore it or automatically retry mutations.
-      if ([401, 403, 404, 409].contains(failure.statusCode)) _sessionId = null;
+      if ((failure.statusCode != null &&
+              failure.statusCode! >= 400 &&
+              failure.statusCode! < 500) ||
+          [401, 403, 404, 409].contains(failure.statusCode)) {
+        _retireSession();
+      }
       state = PlaybackSessionState(
         phase: PlaybackPhase.failed,
         progress: [401, 403].contains(failure.statusCode)
@@ -383,8 +426,11 @@ class PlaybackSessionController extends Notifier<PlaybackSessionState> {
   ) async {
     _expiry?.cancel();
     _observationTimer?.cancel();
-    if ([401, 403, 404, 409].contains(error.statusCode)) {
-      _sessionId = null;
+    if ((error.statusCode != null &&
+            error.statusCode! >= 400 &&
+            error.statusCode! < 500) ||
+        [401, 403, 404, 409].contains(error.statusCode)) {
+      _retireSession();
     } else if (_sessionId != null) {
       // A failed heartbeat is not evidence that its reported position was watched.
       await _closeSession(

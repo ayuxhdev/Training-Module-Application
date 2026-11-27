@@ -1,11 +1,13 @@
 """Transactional adapters for the existing website authoring forms."""
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Max
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
+from accounts.lifecycle_authorization import require_lifecycle_permission
+from api.capabilities import can_use_mobile
 from audit.services import audit_snapshot, record_event
 from training.forms import LessonForm, ModuleForm, TrainingForm, TrainingVersionForm
 from training.models import Lesson, Module, Training, TrainingVersion
@@ -127,6 +129,9 @@ def transition_version(actor, version_id, *, publish):
     # Use the same aggregate lock as curriculum/assessment authoring, and read
     # fresh state before changing it. Model.save() owns publication validation.
     version = get_object_or_404(TrainingVersion.objects.select_for_update(), pk=version_id)
+    actor = require_lifecycle_permission(actor, "training.change_trainingversion", using=version._state.db)
+    if not can_use_mobile(actor):
+        raise PermissionDenied
     expected = TrainingVersion.Status.DRAFT if publish else TrainingVersion.Status.PUBLISHED
     if version.status != expected:
         raise InvalidVersionTransition("This version's status has changed. Refresh it before trying again.")

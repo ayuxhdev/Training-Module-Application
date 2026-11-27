@@ -17,6 +17,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView, DetailView, FormView, ListView, UpdateView
 
+from accounts.lifecycle_authorization import require_lifecycle_permission
 from audit.mixins import AuditedFormMixin
 from audit.services import audit_snapshot, record_event
 from organization.models import Employee
@@ -41,11 +42,22 @@ def can_manage_assignments(user):
 	return user.is_superuser or user.has_perm(ASSIGNMENT_MANAGE_PERMISSION)
 
 
+def has_active_learner_identity(user):
+	return (
+		user.is_authenticated and user.is_active
+		and Employee.objects.filter(user=user, is_active=True).exists()
+	)
+
+
 class AssignmentAccessMixin(LoginRequiredMixin):
 	raise_exception = True
 
 	def dispatch(self, request, *args, **kwargs):
-		if not (can_manage_assignments(request.user) or request.user.groups.filter(name__in=["Manager", "Employee"]).exists()):
+		learner_access = (
+			request.user.groups.filter(name__in=["Trainer", "Supervisor"]).exists()
+			and has_active_learner_identity(request.user)
+		)
+		if not (can_manage_assignments(request.user) or request.user.groups.filter(name__in=["Manager", "Employee"]).exists() or learner_access):
 			raise PermissionDenied
 		return super().dispatch(request, *args, **kwargs)
 
@@ -635,14 +647,28 @@ class TrainingAssignmentListView(AssignmentAccessMixin, ListView):
 	context_object_name = "assignments"
 
 	def get_queryset(self):
+		# The default learner list requires the same identity as explicit personal scope.
+		if self.request.GET.get("scope") == "mine" or not (
+			can_manage_assignments(self.request.user)
+			or self.request.user.groups.filter(name="Manager").exists()
+		):
+			if not has_active_learner_identity(self.request.user):
+				raise PermissionDenied
+			employees = Employee.objects.filter(user=self.request.user, is_active=True)
+		else:
+			employees = assignment_scope(self.request.user)
 		queryset = TrainingAssignment.objects.select_related(
 			"employee", "training_version__training", "department_at_assignment", "job_role_at_assignment"
-		).filter(employee__in=assignment_scope(self.request.user)).order_by("due_at", "pk")
+		).filter(employee__in=employees).order_by("due_at", "pk")
 		return _with_assignment_overdue(queryset)
 
 	def get_context_data(self, **kwargs):
 		context = super().get_context_data(**kwargs)
-		context["can_assign_training"] = (
+		context["personal_assignments"] = (
+			self.request.GET.get("scope") == "mine"
+			or not (can_manage_assignments(self.request.user) or self.request.user.groups.filter(name="Manager").exists())
+		)
+		context["can_assign_training"] = not context["personal_assignments"] and (
 			can_assign_company_training(self.request.user) or can_assign_team_training(self.request.user)
 		)
 		return context
@@ -660,6 +686,85 @@ class TrainingAssignmentDetailView(AssignmentAccessMixin, DetailView):
 		).filter(employee__in=assignment_scope(self.request.user))
 		return _with_assignment_overdue(queryset)
 
+	def management_progress(self, assignment):
+		"""Read stored results for the already-scoped assignment; never start learning."""
+		from assessments.models import Assessment, AssessmentAttempt
+		from certifications.models import Certificate
+
+		modules = Module.objects.filter(training_version=assignment.training_version).only(
+			"id", "title", "position", "training_version_id",
+		).prefetch_related(Prefetch("lessons", queryset=Lesson.objects.only(
+			"id", "module_id", "title", "position", "content_type", "is_required",
+			"video_duration_seconds", "minimum_watch_percent",
+		))).order_by("position", "pk")
+		progress_by_lesson = {
+			progress.lesson_id: progress
+			for progress in LessonProgress.objects.filter(
+				assignment=assignment, lesson__module__training_version=assignment.training_version,
+			).select_related("lesson").only(
+				"lesson_id", "completed_at", "watched_ranges",
+				"lesson__content_type", "lesson__video_duration_seconds",
+			)
+		}
+		module_items = []
+		for module in modules:
+			lessons = []
+			for lesson in module.lessons.all():
+				progress = progress_by_lesson.get(lesson.pk)
+				lessons.append({
+					"title": lesson.title, "content_type": lesson.content_type,
+					"type_label": lesson.get_content_type_display(), "is_required": lesson.is_required,
+					"completed_at": progress.completed_at if progress else None,
+					"status": "Completed" if progress and progress.completed_at else (
+						"In progress" if progress else "Not started"
+					),
+					"coverage_percent": progress.progress_percent if progress else Decimal(0),
+					"watched_seconds": progress.watched_seconds if progress else Decimal(0),
+					"duration_seconds": lesson.video_duration_seconds,
+					"minimum_watch_percent": lesson.minimum_watch_percent,
+				})
+			module_items.append({
+				"title": module.title, "lessons": lessons, "lesson_count": len(lessons),
+				"completed_count": sum(bool(lesson["completed_at"]) for lesson in lessons),
+			})
+
+		latest_attempts = {}
+		for attempt in AssessmentAttempt.objects.filter(
+			assignment=assignment, assessment__training_version=assignment.training_version,
+		).only(
+			"assessment_id", "attempt_number", "status", "passed", "score_points",
+			"maximum_points", "submitted_at",
+		).order_by("assessment_id", "-attempt_number", "-pk"):
+			latest_attempts.setdefault(attempt.assessment_id, attempt)
+		assessment_items = []
+		for assessment in Assessment.objects.filter(training_version=assignment.training_version).only(
+			"id", "title", "kind", "is_required", "sequence",
+		).order_by("kind", "sequence", "pk"):
+			attempt = latest_attempts.get(assessment.pk)
+			assessment_items.append({
+				"title": assessment.title, "kind": assessment.get_kind_display(),
+				"is_required": assessment.is_required,
+				"status": attempt.get_status_display() if attempt else "Not attempted",
+				"attempt_number": attempt.attempt_number if attempt else None,
+				"has_score": bool(attempt and attempt.status in (
+					AssessmentAttempt.Status.SUBMITTED, AssessmentAttempt.Status.EXPIRED,
+				)),
+				"passed": attempt.passed if attempt else None,
+				"score_points": attempt.score_points if attempt else None,
+				"maximum_points": attempt.maximum_points if attempt else None,
+				"submitted_at": attempt.submitted_at if attempt else None,
+			})
+		try:
+			certificate = assignment.certificate
+		except Certificate.DoesNotExist:
+			certificate = None
+		return {
+			"modules": module_items, "assessments": assessment_items,
+			"certificate_status": ("Revoked" if certificate.revoked_at else "Issued") if certificate else "Not issued",
+			"certificate_issued_at": certificate.issued_at if certificate else None,
+			"certificate_revoked_at": certificate.revoked_at if certificate else None,
+		}
+
 	def get_context_data(self, **kwargs):
 		context = super().get_context_data(**kwargs)
 		assignment = self.object
@@ -675,6 +780,13 @@ class TrainingAssignmentDetailView(AssignmentAccessMixin, DetailView):
 		if not can_learn:
 			if lesson_id is not None:
 				raise Http404
+			user = self.request.user
+			if user.is_authenticated and user.is_active and (
+				can_manage_assignments(user) or (
+					user.groups.filter(name="Manager").exists() and has_active_learner_identity(user)
+				)
+			):
+				context["management_progress"] = self.management_progress(assignment)
 			return context
 		context["can_learn"] = True
 
@@ -740,6 +852,7 @@ class TrainingAssignmentCreateView(AuditedFormMixin, LoginRequiredMixin, Permiss
 		kwargs["user"] = self.request.user
 		return kwargs
 
+	@transaction.atomic
 	def form_valid(self, form):
 		try:
 			self.object = form.save(assigned_by=self.request.user)
@@ -1061,23 +1174,25 @@ class LessonUpdateView(DraftLessonMixin, UpdateView):
 		return reverse("training:version-detail", kwargs={"pk": self.object.module.training_version_id})
 
 
+@transaction.atomic
 def publish_version(request, pk):
 	if not request.user.is_authenticated or not request.user.has_perm("training.change_trainingversion"):
 		raise PermissionDenied
 	if request.method != "POST":
 		raise Http404
-	version = get_object_or_404(TrainingVersion, pk=pk, status=TrainingVersion.Status.DRAFT)
+	version = get_object_or_404(TrainingVersion.objects.select_for_update(), pk=pk, status=TrainingVersion.Status.DRAFT)
+	actor = require_lifecycle_permission(request.user, "training.change_trainingversion", using=version._state.db)
 	before = audit_snapshot(version)
 	version.status = TrainingVersion.Status.PUBLISHED
 	version.published_at = timezone.now()
-	version.published_by = request.user
+	version.published_by = actor
 	try:
 		version.save()
 	except ValidationError as exc:
 		version.refresh_from_db()
 		return render(request, "training/version_detail.html", {"version": version, "errors": exc}, status=400)
 	record_event(
-		request.user,
+		actor,
 		"training.trainingversion.published",
 		version,
 		before=before,
@@ -1086,17 +1201,19 @@ def publish_version(request, pk):
 	return redirect("training:version-detail", pk=version.pk)
 
 
+@transaction.atomic
 def retire_version(request, pk):
 	if not request.user.is_authenticated or not request.user.has_perm("training.change_trainingversion"):
 		raise PermissionDenied
 	if request.method != "POST":
 		raise Http404
-	version = get_object_or_404(TrainingVersion, pk=pk, status=TrainingVersion.Status.PUBLISHED)
+	version = get_object_or_404(TrainingVersion.objects.select_for_update(), pk=pk, status=TrainingVersion.Status.PUBLISHED)
+	actor = require_lifecycle_permission(request.user, "training.change_trainingversion", using=version._state.db)
 	before = audit_snapshot(version)
 	version.status = TrainingVersion.Status.RETIRED
 	version.save()
 	record_event(
-		request.user,
+		actor,
 		"training.trainingversion.retired",
 		version,
 		before=before,

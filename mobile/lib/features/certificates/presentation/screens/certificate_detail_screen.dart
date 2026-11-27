@@ -7,8 +7,11 @@ import 'package:training_app/core/presentation/components/custom_card.dart';
 import 'package:training_app/core/presentation/components/loading_view.dart';
 import 'package:training_app/core/presentation/formatters/date_labels.dart';
 import 'package:training_app/core/theme/app_spacing.dart';
+import 'package:training_app/features/certificates/data/repositories/certificate_repository.dart';
 import 'package:training_app/features/certificates/domain/models/certificate_detail.dart';
+import 'package:training_app/features/certificates/domain/models/certificate_print_data.dart';
 import 'package:training_app/features/certificates/presentation/controllers/certificate_controller.dart';
+import 'package:training_app/features/certificates/presentation/widgets/certificate_print_section.dart';
 import 'package:training_app/features/learning/presentation/controllers/learning_controller.dart';
 
 class CertificateDetailScreen extends ConsumerWidget {
@@ -75,9 +78,20 @@ class CertificateDetailScreen extends ConsumerWidget {
                               assignmentId: certificate.assignmentId,
                             ),
                             const SizedBox(height: AppSpacing.md),
-                            const CinematicNotice(
-                              message: "Need a printed copy? Sign in to the Garden's Need website, open this certificate and choose Print certificate.",
-                              icon: Icons.info_outline,
+                            CertificatePrintSection(
+                              refresh: (requests) async =>
+                                  CertificatePrintData.fromCertificateDetail(
+                                    await ref
+                                        .read(certificateRepositoryProvider)
+                                        .getCertificateDetail(
+                                          certificate.id,
+                                          cancelToken: requests,
+                                        ),
+                                  ),
+                              printData:
+                                  CertificatePrintData.fromCertificateDetail(
+                                    certificate,
+                                  ),
                             ),
                             const SizedBox(height: AppSpacing.md),
                             OutlinedButton.icon(

@@ -85,11 +85,19 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'accounts.login_rate_limit.LoginAdmissionMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
+
+# Burst capacity / refill per minute. Trust client forwarding only when the
+# configured peers are verified to sanitize it and the app origin is isolated.
+LOGIN_LIMIT_SOURCE = os.environ.get('LOGIN_LIMIT_SOURCE', '30/60')
+LOGIN_LIMIT_SOURCE_ACCOUNT = os.environ.get('LOGIN_LIMIT_SOURCE_ACCOUNT', '5/5')
+LOGIN_LIMIT_ACCOUNT = os.environ.get('LOGIN_LIMIT_ACCOUNT', '20/4')
+LOGIN_LIMIT_TRUSTED_PROXIES = os.environ.get('LOGIN_LIMIT_TRUSTED_PROXIES', '')
 
 TEMPLATES = [
     {
@@ -208,6 +216,9 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
+    # Bind access/refresh credentials to the current password hash. Existing
+    # tokens without this claim intentionally require a fresh sign-in.
+    'CHECK_REVOKE_TOKEN': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 

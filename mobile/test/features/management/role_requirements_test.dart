@@ -1929,9 +1929,7 @@ void main() {
 
         // Verified: create-only screen is rendered without fetching requirements list
         expect(
-          find.text(
-            'Your account has permission to configure mandatory training for job roles. Tap below to create a requirement.',
-          ),
+          find.text('Choose a job role and a published version.'),
           findsOneWidget,
         );
         expect(
@@ -2059,19 +2057,18 @@ void main() {
         );
 
         // Verify training management screen displays role requirements entry point
-        expect(find.text('Manage role requirements'), findsOneWidget);
+        expect(find.text('Role requirements'), findsOneWidget);
 
         // Tap card to navigate to role requirements
-        await tester.tap(find.text('Manage role requirements'));
+        await tester.tap(find.text('Role requirements'));
         await tester.pumpAndSettle();
 
         expect(router.state.uri.path, '/workspace/training/role-requirements');
         expect(
-          find.text(
-            'Your account has permission to configure mandatory training for job roles. Tap below to create a requirement.',
-          ),
+          find.widgetWithText(FilledButton, 'Add role requirement'),
           findsOneWidget,
         );
+        expect(find.byTooltip('Add requirement'), findsNothing);
       },
     );
 

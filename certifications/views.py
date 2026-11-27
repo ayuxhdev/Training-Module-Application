@@ -1,5 +1,4 @@
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
@@ -8,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from accounts.lifecycle_authorization import require_lifecycle_permission
 from audit.models import AuditLog
 from organization.models import Employee
 from training.models import TrainingAssignment
@@ -74,11 +74,9 @@ def revoke_certificate(request, pk):
 		# Match issuance, the API and Certificate.save(): Assignment before Certificate.
 		get_object_or_404(TrainingAssignment.objects.select_for_update(), pk=reference.assignment_id)
 		certificate = get_object_or_404(Certificate.objects.select_for_update(), pk=pk)
-		# Permissions/account status may have changed while waiting. Do not reuse
-		# request.user's permission cache or impose mobile-only eligibility on the web.
-		actor = get_user_model().objects.filter(pk=request.user.pk, is_active=True).first()
-		if actor is None or not _has_certificate_permission(actor, CHANGE_CERTIFICATES_PERMISSION):
-			raise PermissionDenied
+		actor = require_lifecycle_permission(
+			request.user, CHANGE_CERTIFICATES_PERMISSION, using=certificate._state.db,
+		)
 		if certificate.revoked_at:
 			return HttpResponse("This certificate is already revoked.", status=409)
 		before = {"revoked_at": None}
@@ -89,8 +87,7 @@ def revoke_certificate(request, pk):
 			certificate.save()
 		except ValidationError as exc:
 			return HttpResponseBadRequest(str(exc))
-		# Required evidence belongs to this transaction. The shared audit helper
-		# writes after commit and cannot roll back revocation on audit failure.
+		# Preserve the revocation event's explicit snapshots in this transaction.
 		AuditLog.objects.create(
 			actor=actor,
 			actor_label_snapshot=actor.get_username()[:150],

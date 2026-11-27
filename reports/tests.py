@@ -208,7 +208,7 @@ class ReportingTests(CurriculumTestCase):
 		).status_code, 302)
 		self.assertContains(coordinator_client.get("/reports/assignments/"), "Revoked")
 
-	def test_dashboard_shortcut_removal_preserves_role_navigation_and_selected_state(self):
+	def test_dashboard_preserves_role_navigation_and_selected_state(self):
 		for group_name, role in (("Administrator", "company"), ("Training Coordinator", "company"), ("Manager", "manager"), ("Employee", "employee")):
 			with self.subTest(role=group_name):
 				user = self.group_user(f"dashboard-navigation-{group_name}", group_name)
@@ -219,12 +219,13 @@ class ReportingTests(CurriculumTestCase):
 				navigation = html.split('id="primary-navigation"', 1)[1].split("</nav>", 1)[0]
 				main = html.split('<main id="main-content"', 1)[1].split("</main>", 1)[0]
 				self.assertEqual(response.context["role"], role)
-				self.assertNotIn("dashboard-quick-actions", main)
+				self.assertEqual('aria-label="Management quick actions"' in main, role != "employee")
 				self.assertEqual(navigation.count('aria-current="page"'), 1)
 				self.assertIn(f'href="{reverse("reports:dashboard")}" aria-current="page"', navigation)
 				for route in ("training:assignment-list", "certifications:certificate-list"):
 					self.assertEqual(navigation.count(f'href="{reverse(route)}"'), 1)
-					self.assertNotIn(f'href="{reverse(route)}"', main)
+					in_quick_actions = route == "training:assignment-list" and role != "employee"
+					self.assertEqual(f'href="{reverse(route)}"' in main, in_quick_actions)
 				management_routes = {
 					"organization:employee-list": "organization.view_employee",
 					"organization:department-list": "organization.view_department",

@@ -1,9 +1,11 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import update_last_login
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
+from django.utils.crypto import constant_time_compare
 from rest_framework import serializers
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import APIException, AuthenticationFailed
 from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.serializers import (
     TokenObtainPairSerializer,
@@ -12,13 +14,21 @@ from rest_framework_simplejwt.serializers import (
 )
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.utils import get_md5_hash_password
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 
+from accounts.login_rate_limit import normalize_username
 from api.capabilities import can_use_mobile
 
 
 class InactiveEmployeeError(AuthenticationFailed):
     default_code = "inactive_employee"
+
+
+class LoginAdmissionUnavailable(APIException):
+    status_code = 503
+    default_code = "service_unavailable"
+    default_detail = "Sign-in is temporarily unavailable. Try again later."
 
 
 def _lock_refresh_token(token):
@@ -32,6 +42,16 @@ def _lock_refresh_token(token):
 
 class EmployeeTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
+        try:
+            username = normalize_username(attrs[self.username_field])
+        except DjangoValidationError as error:
+            raise serializers.ValidationError({self.username_field: error.messages}) from None
+        admit = self.context.get("admit_username")
+        if admit is None:
+            raise LoginAdmissionUnavailable
+        admit(username)
+        attrs[self.username_field] = username
+
         # 1. Authenticate credentials and base Django user without issuing tokens
         TokenObtainSerializer.validate(self, attrs)
 
@@ -87,9 +107,9 @@ class EmployeeTokenRefreshSerializer(TokenRefreshSerializer):
         # 3. Look up user safely without unhandled DoesNotExist (preventing HTTP 500)
         User = get_user_model()
         try:
-            user = User.objects.get(**{api_settings.USER_ID_FIELD: user_id})
+            # Same User -> OutstandingToken lock order as password changes.
+            user = User.objects.select_for_update().get(**{api_settings.USER_ID_FIELD: user_id})
             _lock_refresh_token(refresh)
-            user.refresh_from_db()
         except (User.DoesNotExist, ValueError, TypeError):
             raise AuthenticationFailed("User not found.", code="user_not_found")
 
@@ -102,6 +122,14 @@ class EmployeeTokenRefreshSerializer(TokenRefreshSerializer):
             raise AuthenticationFailed("User is inactive.", code="no_active_account")
         if not can_use_mobile(user):
             raise InactiveEmployeeError("This account no longer has mobile access.")
+
+        # SimpleJWT's refresh serializer does not check the password claim.
+        # Validate it under the User lock before issuing/rotating any child.
+        if api_settings.CHECK_REVOKE_TOKEN and not constant_time_compare(
+            str(refresh.payload.get(api_settings.REVOKE_TOKEN_CLAIM, "")),
+            get_md5_hash_password(user.password),
+        ):
+            raise AuthenticationFailed("Your password changed. Sign in again.", code="password_changed")
 
         # 6. Proceed with standard rotation and blacklisting
         return super().validate(attrs)

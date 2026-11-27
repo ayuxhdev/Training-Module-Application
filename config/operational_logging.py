@@ -7,7 +7,10 @@ import logging
 import traceback
 
 
-EVENTS = {"readiness_failed", "reminders_started", "reminders_completed", "reminders_failed"}
+EVENTS = {
+    "readiness_failed", "reminders_started", "reminders_completed", "reminders_failed",
+    "login_admission_limited", "login_admission_unavailable",
+}
 
 
 class OperationalJSONFormatter(logging.Formatter):

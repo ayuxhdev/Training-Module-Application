@@ -119,22 +119,39 @@ class AssessmentAttemptSummary {
     if (passed != null && passed is! bool) {
       throw const FormatException('Invalid passed.');
     }
+    final status = switch (json['status']) {
+      'IN_PROGRESS' => AttemptStatus.inProgress,
+      'SUBMITTED' => AttemptStatus.submitted,
+      'EXPIRED' => AttemptStatus.expired,
+      'ABANDONED' => AttemptStatus.abandoned,
+      _ => throw const FormatException('Invalid attempt status.'),
+    };
+    final submittedAt = _optionalDate(json, 'submitted_at');
+    final scorePoints = json['score_points'] == null
+        ? null
+        : _decimal(json, 'score_points');
+    // Validate the API's result shape; only the server determines the grade.
+    final validResult = switch (status) {
+      AttemptStatus.inProgress =>
+        submittedAt == null && scorePoints == null && passed == null,
+      AttemptStatus.submitted =>
+        submittedAt != null && scorePoints != null && passed != null,
+      AttemptStatus.expired =>
+        submittedAt != null && scorePoints != null && passed == false,
+      AttemptStatus.abandoned =>
+        submittedAt != null && scorePoints == null && passed == null,
+    };
+    if (!validResult) {
+      throw const FormatException('Inconsistent assessment result fields.');
+    }
     return AssessmentAttemptSummary(
       id: _integer(json, 'id'),
       attemptNumber: _integer(json, 'attempt_number'),
-      status: switch (json['status']) {
-        'IN_PROGRESS' => AttemptStatus.inProgress,
-        'SUBMITTED' => AttemptStatus.submitted,
-        'EXPIRED' => AttemptStatus.expired,
-        'ABANDONED' => AttemptStatus.abandoned,
-        _ => throw const FormatException('Invalid attempt status.'),
-      },
+      status: status,
       startedAt: _date(json, 'started_at'),
       deadlineAt: _optionalDate(json, 'deadline_at'),
-      submittedAt: _optionalDate(json, 'submitted_at'),
-      scorePoints: json['score_points'] == null
-          ? null
-          : _decimal(json, 'score_points'),
+      submittedAt: submittedAt,
+      scorePoints: scorePoints,
       maximumPoints: _decimal(json, 'maximum_points'),
       passPercentageSnapshot: _decimal(json, 'pass_percentage_snapshot'),
       passed: passed as bool?,

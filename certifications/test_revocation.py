@@ -10,23 +10,28 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from threading import Event
 from types import SimpleNamespace
+from unittest import skipUnless
 from unittest.mock import Mock, patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import DatabaseError, connection, models, transaction
+from django.db import DatabaseError, OperationalError, connection, models, transaction
 from django.test import Client, RequestFactory, SimpleTestCase, override_settings
 from django.urls import include, path
 from django.utils import timezone
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from assessments.models import (
     Assessment, AssessmentAttempt, AssessmentQuestion, AttemptAnswer,
     Question, QuestionOption, QuestionRevision,
 )
 from audit.models import AuditLog
+from api.v1.certificate_management_views import CertificateRevocationView
 from api.v1.test_m21_concurrency import MySQLConcurrencyFixtures
 from config.model_test_utils import CurriculumTestCase
+from config.role_requirement_test_config import ENGINE, require_verified_database
 from training.models import Lesson, LessonProgress, Module, Training, TrainingAssignment, TrainingVersion
 
 from . import views
@@ -48,6 +53,7 @@ class WebsiteRevocationContractTests(SimpleTestCase):
         self.certificate = SimpleNamespace(
             pk=7, assignment_id=15, revoked_at=None, save=Mock(),
             _meta=SimpleNamespace(label_lower="certifications.certificate"),
+            _state=SimpleNamespace(db="default"),
         )
         self.order = []
         self.inside_transaction = False
@@ -66,14 +72,12 @@ class WebsiteRevocationContractTests(SimpleTestCase):
             self.order.append((queryset.model, queryset.query.select_for_update))
             return self.certificate if queryset.model is Certificate else SimpleNamespace(pk=15)
 
-        users = Mock()
-        users.objects.filter.return_value.first.return_value = self.actor
         with patch.object(views.transaction, "atomic", atomic), \
              patch.object(views, "get_object_or_404", side_effect=resolve) as lookup, \
-             patch.object(views, "get_user_model", return_value=users, create=True), \
+             patch.object(views, "require_lifecycle_permission", return_value=self.actor) as authority, \
              patch.object(AuditLog.objects, "create") as audit, \
              patch("audit.services.transaction.on_commit") as deferred:
-            yield lookup, audit, deferred, users
+            yield lookup, audit, deferred, authority
 
     def request(self, reason=" Issued in error ", actor=None):
         request = self.factory.post("/certificates/7/revoke/", {"reason": reason})
@@ -93,13 +97,13 @@ class WebsiteRevocationContractTests(SimpleTestCase):
             deferred.assert_not_called()
 
     def test_success_writes_one_server_derived_event_before_transaction_exit(self):
-        with self.mocks() as (_, audit, deferred, users):
+        with self.mocks() as (_, audit, deferred, authority):
             audit.side_effect = lambda **kwargs: self.assertTrue(self.inside_transaction)
             response = views.revoke_certificate(self.request(), 7)
             self.assertEqual(response.status_code, 302)
             self.assertEqual(response.url, "/certificates/7/")
             self.certificate.save.assert_called_once_with()
-            users.objects.filter.assert_called_once_with(pk=12, is_active=True)
+            authority.assert_called_once_with(self.actor, views.CHANGE_CERTIFICATES_PERMISSION, using="default")
             audit.assert_called_once_with(
                 actor=self.actor, actor_label_snapshot="website-revoker",
                 action="certifications.certificate.revoked", entity_type="certifications.certificate",
@@ -126,13 +130,12 @@ class WebsiteRevocationContractTests(SimpleTestCase):
             deferred.assert_not_called()
 
     def test_permission_loss_or_deactivation_after_lock_wait_denies_mutation(self):
-        for actor in (None, SimpleNamespace(is_superuser=False, has_perm=lambda permission: False)):
-            with self.subTest(actor=actor), self.mocks() as (_, audit, _, users):
-                users.objects.filter.return_value.first.return_value = actor
-                with self.assertRaises(PermissionDenied):
-                    views.revoke_certificate(self.request(), 7)
-                self.certificate.save.assert_not_called()
-                audit.assert_not_called()
+        with self.mocks() as (_, audit, _, authority):
+            authority.side_effect = PermissionDenied
+            with self.assertRaises(PermissionDenied):
+                views.revoke_certificate(self.request(), 7)
+            self.certificate.save.assert_not_called()
+            audit.assert_not_called()
 
     def test_initial_denial_and_invalid_reasons_do_not_resolve_certificate(self):
         unauthorized = SimpleNamespace(is_authenticated=True, is_superuser=False, has_perm=lambda permission: False)
@@ -251,10 +254,16 @@ class WebsiteRevocationDatabaseTests(CurriculumTestCase):
         self.assertFalse(self.events().exists())
 
 
+@skipUnless(
+    settings.DATABASES.get("default", {}).get("ENGINE") == ENGINE
+    and hasattr(settings, "INTEGRATION_TEST_CONFIG"),
+    "Requires the explicitly approved guarded MySQL integration profile.",
+)
 class WebsiteRevocationConcurrencyTests(MySQLConcurrencyFixtures):
     """Real row locks and commits; exact owned cleanup, never TransactionTestCase.flush."""
 
     def setUp(self):
+        require_verified_database(connection, settings)
         super().setUp()
         self.owned = []
         self.addCleanup(self.cleanup_curriculum)
@@ -305,13 +314,27 @@ class WebsiteRevocationConcurrencyTests(MySQLConcurrencyFixtures):
         return instance
 
     def cleanup_curriculum(self):
+        require_verified_database(connection, settings)
         for model, pk in reversed(self.owned):
             models.QuerySet(model, using="default").filter(pk=pk)._raw_delete("default")
+
+    def worker(self, operation, observe=None):
+        def verified():
+            require_verified_database(connection, settings)
+            return operation()
+        return super().worker(verified, observe)
 
     def revoke(self, actor, reason):
         request = RequestFactory().post(f"/certificates/{self.certificate.pk}/revoke/", {"reason": reason})
         request.user = actor
         return views.revoke_certificate(request, self.certificate.pk)
+
+    def revoke_api(self, actor, reason):
+        request = APIRequestFactory().post(
+            f"/api/v1/management/certificates/{self.certificate.pk}/revoke/", {"reason": reason}, format="json",
+        )
+        force_authenticate(request, user=actor)
+        return CertificateRevocationView.as_view()(request, pk=self.certificate.pk)
 
     def test_simultaneous_revocations_serialize_and_keep_one_event_and_first_state(self):
         held, boundary, finished, release = (Event() for _ in range(4))
@@ -375,3 +398,85 @@ class WebsiteRevocationConcurrencyTests(MySQLConcurrencyFixtures):
         self.certificate.refresh_from_db()
         self.assertIsNone(self.certificate.revoked_at)
         self.assertFalse(AuditLog.objects.filter(action="certifications.certificate.revoked", entity_id=str(self.certificate.pk)).exists())
+
+    def test_api_denies_cached_direct_grant_removed_before_assignment_lock(self):
+        actor = self.create_user("stale-permission")
+        permission = Permission.objects.get(content_type__app_label="certifications", codename="change_certificate")
+        actor.user_permissions.add(permission)
+        self.assertTrue(actor.has_perm(views.CHANGE_CERTIFICATES_PERMISSION))
+        awaiting_assignment = Event()
+
+        def observe(execute, sql, params, many, context):
+            if "FOR UPDATE" in sql.upper() and TrainingAssignment._meta.db_table in sql:
+                awaiting_assignment.set()
+            return execute(sql, params, many, context)
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with transaction.atomic():
+                TrainingAssignment.objects.select_for_update().get(pk=self.certificate.assignment_id)
+                pending = pool.submit(self.worker, lambda: self.revoke_api(actor, "Stale grant"), observe)
+                self.assertTrue(awaiting_assignment.wait(15), "API request did not reach the assignment lock.")
+                actor.user_permissions.remove(permission)
+            self.assertEqual(pending.result(timeout=20).status_code, 403)
+        self.assertTrue(actor.has_perm(views.CHANGE_CERTIFICATES_PERMISSION))
+        self.certificate.refresh_from_db()
+        self.assertIsNone(self.certificate.revoked_at)
+        self.assertFalse(AuditLog.objects.filter(action="certifications.certificate.revoked", entity_id=str(self.certificate.pk)).exists())
+
+    def assert_authority_row_locked(self, queryset):
+        with self.assertRaises(OperationalError) as error, transaction.atomic():
+            queryset.select_for_update(nowait=True).get()
+        self.assertEqual(error.exception.args[0], 3572)
+
+    def assert_mutation_commits_before_grant_removal(self, revoke, expected_status):
+        actor = self.create_user("granted-revoker")
+        users = get_user_model()
+        permission = Permission.objects.get(content_type__app_label="certifications", codename="change_certificate")
+        group = Group.objects.create(name=self.marker)
+        self.addCleanup(Group.objects.filter(pk=group.pk).delete)
+        group.permissions.add(permission)
+        actor.groups.add(group)
+        grant = Group.permissions.through.objects.filter(group_id=group.pk, permission_id=permission.pk)
+        membership = users.groups.through.objects.filter(user_id=actor.pk, group_id=group.pk)
+        authorized, removing, release = Event(), Event(), Event()
+        save_certificate = Certificate.save
+
+        def pause_before_save(certificate, *args, **kwargs):
+            authorized.set()
+            if not release.wait(15):
+                raise AssertionError("Certificate mutation was not released.")
+            return save_certificate(certificate, *args, **kwargs)
+
+        def observe_removal(execute, sql, params, many, context):
+            if "DELETE" in sql.upper() and Group.permissions.through._meta.db_table in sql:
+                removing.set()
+            return execute(sql, params, many, context)
+
+        with patch.object(Certificate, "save", pause_before_save), ThreadPoolExecutor(max_workers=2) as pool:
+            mutation = pool.submit(self.worker, lambda: revoke(actor, "Authorized before removal"))
+            try:
+                self.assertTrue(authorized.wait(15), "Mutation did not reach the save boundary.")
+                self.assert_authority_row_locked(users.objects.filter(pk=actor.pk))
+                self.assert_authority_row_locked(Group.objects.filter(pk=group.pk))
+                self.assert_authority_row_locked(grant)
+                self.assert_authority_row_locked(membership)
+                removal = pool.submit(self.worker, lambda: group.permissions.remove(permission), observe_removal)
+                self.assertTrue(removing.wait(15), "Revocation did not reach the locked permission grant.")
+            finally:
+                release.set()
+            self.assertEqual(mutation.result(timeout=20).status_code, expected_status)
+            removal.result(timeout=20)
+        self.certificate.refresh_from_db()
+        self.assertIsNotNone(self.certificate.revoked_at)
+        self.assertEqual(self.certificate.revoked_by_id, actor.pk)
+        self.assertEqual(self.certificate.revocation_reason, "Authorized before removal")
+        self.assertFalse(grant.exists())
+        self.assertEqual(AuditLog.objects.filter(
+            action="certifications.certificate.revoked", entity_id=str(self.certificate.pk), actor=actor,
+        ).count(), 1)
+
+    def test_website_revocation_commits_before_waiting_group_grant_removal(self):
+        self.assert_mutation_commits_before_grant_removal(self.revoke, 302)
+
+    def test_api_revocation_commits_before_waiting_group_grant_removal(self):
+        self.assert_mutation_commits_before_grant_removal(self.revoke_api, 200)

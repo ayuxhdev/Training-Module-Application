@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{% if shell_role == "manager" %}Team assignments{% elif shell_role == "employee" %}My assignments{% else %}Training assignments{% endif %} | Garden's Need Training{% endblock %}
+{% block title %}{% if personal_assignments %}My assignments{% elif shell_role == "manager" %}Team assignments{% elif shell_role == "employee" %}My assignments{% else %}Training assignments{% endif %} | Garden's Need Training{% endblock %}
 {% block content %}
 <style>
   .assignment-catalog-table {
@@ -60,9 +60,10 @@
 <div class="catalog-workspace">
   <header class="page-header">
     <div class="page-header-main">
-      <h1>{% if shell_role == 'manager' %}Team assignments{% elif shell_role == 'employee' %}My assignments{% else %}Training assignments{% endif %}</h1>
+      <h1>{% if personal_assignments %}My assignments{% elif shell_role == 'manager' %}Team assignments{% elif shell_role == 'employee' %}My assignments{% else %}Training assignments{% endif %}</h1>
       <p class="muted">
-        {% if shell_role == 'manager' %}Training assigned within your authorized team scope.
+        {% if personal_assignments %}Your assigned training, deadlines and completion dates.
+        {% elif shell_role == 'manager' %}Training assigned within your authorized team scope.
         {% elif shell_role == 'employee' %}Your assigned training, deadlines and completion dates.
         {% else %}Training assigned to employees, with current status and deadlines.{% endif %}
       </p>
@@ -80,15 +81,15 @@
 
   <section class="catalog-panel" aria-labelledby="assignment-list-heading">
     <header class="catalog-panel-heading">
-      <h2 id="assignment-list-heading">{% if shell_role == 'employee' %}Your training{% elif shell_role == 'manager' %}Team training{% else %}Assignment register{% endif %}</h2>
+      <h2 id="assignment-list-heading">{% if personal_assignments or shell_role == 'employee' %}Your training{% elif shell_role == 'manager' %}Team training{% else %}Assignment register{% endif %}</h2>
       <p>Assignments are shown within your current access scope.</p>
     </header>
     <p class="table-scroll-hint" aria-hidden="true">&larr;&rarr; Scroll horizontally to view all columns</p>
-    <div class="table-scroll catalog-table-scroll" role="region" aria-label="{% if shell_role == 'employee' %}Your training assignments{% elif shell_role == 'manager' %}Team training assignments{% else %}Training assignments{% endif %}" tabindex="0">
+    <div class="table-scroll catalog-table-scroll" role="region" aria-label="{% if personal_assignments or shell_role == 'employee' %}Your training assignments{% elif shell_role == 'manager' %}Team training assignments{% else %}Training assignments{% endif %}" tabindex="0">
       <table class="catalog-table assignment-catalog-table">
         <thead>
           <tr>
-            {% if shell_role != 'employee' %}<th scope="col" class="col-employee">Employee</th>{% endif %}
+            {% if not personal_assignments and shell_role != 'employee' %}<th scope="col" class="col-employee">Employee</th>{% endif %}
             <th scope="col" class="col-training">Training</th>
             <th scope="col" class="col-status">Status</th>
             <th scope="col" class="col-date">Assigned</th>
@@ -100,13 +101,13 @@
         <tbody>
         {% for assignment in assignments %}
           <tr>
-            {% if shell_role != 'employee' %}
+            {% if not personal_assignments and shell_role != 'employee' %}
               <th scope="row" class="col-employee">
                 {{ assignment.employee.display_name }}
                 <span class="catalog-description">{{ assignment.employee.employee_code }}</span>
               </th>
             {% endif %}
-            {% if shell_role == 'employee' %}
+            {% if personal_assignments or shell_role == 'employee' %}
               <th scope="row" class="col-training">
                 <strong>{{ assignment.training_version.training.catalog_title }}</strong>
                 <span class="catalog-description">{{ assignment.training_version.title }} · Version {{ assignment.training_version.version_number }}</span>
@@ -132,12 +133,13 @@
               {% elif assignment.status == 'IN_PROGRESS' %}<span class="muted">In progress</span>
               {% else %}<span class="muted">No completion date</span>{% endif %}
             </td>
-            <td class="catalog-table-actions col-actions"><a class="btn btn-secondary" href="{% url 'training:assignment-detail' assignment.pk %}" aria-label="View assignment: {{ assignment.training_version.training.catalog_title }}{% if shell_role != 'employee' %} for {{ assignment.employee.display_name }}{% endif %}">View</a></td>
+            <td class="catalog-table-actions col-actions"><a class="btn btn-secondary" href="{% url 'training:assignment-detail' assignment.pk %}" aria-label="View assignment: {{ assignment.training_version.training.catalog_title }}{% if not personal_assignments and shell_role != 'employee' %} for {{ assignment.employee.display_name }}{% endif %}">View</a></td>
           </tr>
         {% empty %}
           <tr>
-            <td class="catalog-empty" colspan="{% if shell_role == 'employee' %}6{% else %}7{% endif %}">
-              {% if shell_role == 'manager' %}There are no training assignments in your authorized team scope.
+            <td class="catalog-empty" colspan="{% if personal_assignments or shell_role == 'employee' %}6{% else %}7{% endif %}">
+              {% if personal_assignments %}You do not have any training assignments yet.
+              {% elif shell_role == 'manager' %}There are no training assignments in your authorized team scope.
               {% elif shell_role == 'employee' %}You do not have any training assignments yet.
               {% else %}No training assignments have been created yet.{% endif %}
             </td>

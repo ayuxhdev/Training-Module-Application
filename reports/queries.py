@@ -4,7 +4,7 @@ from django.utils import timezone
 from assessments.models import AssessmentAttempt
 from organization.models import Employee
 from training.models import TrainingAssignment, TrainingVersion
-from training.views import assignment_scope, can_manage_assignments
+from training.views import assignment_scope, can_manage_assignments, has_active_learner_identity
 
 
 OPEN_STATUSES = (TrainingAssignment.Status.ASSIGNED, TrainingAssignment.Status.IN_PROGRESS)
@@ -16,8 +16,8 @@ def dashboard_role(user):
 		return "company"
 	if user.groups.filter(name="Manager").exists():
 		return "manager" if Employee.objects.filter(user=user, is_active=True).exists() else None
-	if user.groups.filter(name="Employee").exists():
-		return "employee" if Employee.objects.filter(user=user, is_active=True).exists() else None
+	if user.groups.filter(name__in=["Employee", "Trainer", "Supervisor"]).exists():
+		return "employee" if has_active_learner_identity(user) else None
 	return None
 
 

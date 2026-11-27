@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:training_app/core/errors/api_error.dart';
-import 'package:training_app/core/presentation/components/status_badge.dart';
 import 'package:training_app/core/router/app_router.dart';
 import 'package:training_app/core/theme/app_theme.dart';
 import 'package:training_app/features/auth/domain/models/auth_state.dart';
@@ -14,6 +13,7 @@ import 'package:training_app/features/dashboard/domain/models/dashboard_data.dar
 import 'package:training_app/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:training_app/features/management/data/repositories/management_repository.dart';
 import 'package:training_app/features/management/domain/models/management_models.dart';
+import 'package:training_app/features/management/presentation/components/curriculum_components.dart';
 import 'package:training_app/features/notifications/presentation/controllers/notification_controller.dart';
 
 import 'management_fixtures.dart';
@@ -30,22 +30,47 @@ void main() {
   late ManagementTestAuth auth;
   late GoRouter router;
 
-  setUpAll(() {
-    registerFallbackValue(ReferenceKind.departments);
-  });
+  Future<ManagementPage<AssignableTrainingVersion>> assignableVersions() =>
+      repository.assignableTrainingVersions(
+        page: any(named: 'page'),
+        pageSize: any(named: 'pageSize'),
+        search: any(named: 'search'),
+        cancelToken: any(named: 'cancelToken'),
+      );
+
+  AuthenticatedIdentity account(Set<String> permissions) => managementIdentity(
+    capabilities: {'management_workspace', ...permissions},
+  );
 
   setUp(() {
     repository = MockManagementRepository();
     when(() => repository.dashboard(cancelToken: any(named: 'cancelToken')))
         .thenAnswer((_) async => dashboardFixture(team: false));
+    when(assignableVersions).thenAnswer((_) async => assignableVersionPage());
     when(
-      () => repository.assignableTrainingVersions(
+      () => repository.questions(
         page: any(named: 'page'),
         pageSize: any(named: 'pageSize'),
         search: any(named: 'search'),
+        isActive: any(named: 'isActive'),
         cancelToken: any(named: 'cancelToken'),
       ),
-    ).thenAnswer((_) async => assignableVersionPage());
+    ).thenAnswer(
+      (_) async => ManagementPage(items: [], count: 0, hasMore: false),
+    );
+    when(
+      () => repository.roleRequirements(
+        page: any(named: 'page'),
+        pageSize: any(named: 'pageSize'),
+        search: any(named: 'search'),
+        jobRoleId: any(named: 'jobRoleId'),
+        trainingVersionId: any(named: 'trainingVersionId'),
+        isActive: any(named: 'isActive'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer(
+      (_) async => ManagementPage(items: [], count: 0, hasMore: false),
+    );
     when(
       () => repository.trainings(
         page: any(named: 'page'),
@@ -138,894 +163,319 @@ void main() {
     return container;
   }
 
-  group('Training Management navigation and workspace entry', () {
-    testWidgets(
-      'WorkspaceScreen displays Training Management entry point for authorized coordinator',
-      (tester) async {
-        await launch(tester);
+  const home = '/workspace/training';
+  const allTools = {
+    'training.view_training',
+    'training.add_training',
+    'training.change_training',
+    'training.view_trainingversion',
+    'training.add_trainingversion',
+    'training.change_trainingversion',
+    'training.add_trainingassignment',
+    'training.add_module',
+    'training.add_lesson',
+    'assessments.view_question',
+    'training.view_roletrainingrequirement',
+  };
 
-        expect(find.text('Training management'), findsOneWidget);
-        expect(
-          find.text(
-            'Course catalog, version lifecycle, and curriculum authoring.',
-          ),
-          findsOneWidget,
-        );
+  Future<void> tapText(WidgetTester tester, String label) async {
+    final target = find.text(label);
+    await tester.ensureVisible(target);
+    await tester.tap(target);
+    await tester.pumpAndSettle();
+  }
 
-        await tester.tap(find.text('Training management'));
-        await tester.pumpAndSettle();
+  testWidgets(
+    'workspace opens a compact hub without developer-facing content',
+    (tester) async {
+      await launch(tester, identity: account(allTools));
+      await tapText(tester, 'Training management');
 
-        expect(find.text('CURRICULUM & CATALOG'), findsOneWidget);
-        expect(find.text('Authoring capabilities'), findsOneWidget);
-        expect(find.text('Version lifecycle'), findsOneWidget);
-        expect(find.text('Authoring operations'), findsOneWidget);
-      },
-    );
+      expect(router.state.matchedLocation, home);
+      expect(find.byType(TrainingNavigationCard), findsNWidgets(4));
+      for (final label in [
+        'Course catalog',
+        'Training versions',
+        'Question bank',
+        'Role requirements',
+      ]) {
+        expect(find.text(label), findsOneWidget);
+      }
+      for (final obsolete in [
+        'Authoring capabilities',
+        'Authoring operations',
+        'Version lifecycle',
+        'Published assignable versions',
+        'Create course',
+        'Edit course',
+        'Upload video',
+      ]) {
+        expect(find.text(obsolete), findsNothing);
+      }
+      expect(find.textContaining('Stage 2'), findsNothing);
+      expect(find.byType(ActionChip), findsNothing);
+      verifyNever(assignableVersions);
+    },
+  );
 
-    testWidgets(
-      'WorkspaceScreen hides Training Management entry point for team-only manager',
-      (tester) async {
-        final teamManager = managementIdentity(
-          team: true,
-          capabilities: {
-            'team_workspace',
-            'team_assignment',
-            'organization.view_employee',
-          },
-        );
+  for (final entry in {
+    'Course catalog': '$home/catalog',
+    'Training versions': '$home/versions',
+    'Question bank': '$home/questions',
+    'Role requirements': '$home/role-requirements',
+  }.entries) {
+    testWidgets('${entry.key} opens the existing destination', (tester) async {
+      await launch(tester, path: home, identity: account(allTools));
 
-        await launch(tester, identity: teamManager);
+      await tapText(tester, entry.key);
 
-        expect(find.text('Training management'), findsNothing);
-      },
-    );
-
-    testWidgets(
-      'WorkspaceScreen hides Training Management entry point for directory-only viewer',
-      (tester) async {
-        final viewer = managementIdentity(
-          capabilities: {'organization.view_employee'},
-        );
-
-        await launch(tester, identity: viewer);
-
-        expect(find.text('Training management'), findsNothing);
-      },
-    );
-
-    testWidgets('Router blocks unauthorized access to /workspace/training', (
-      tester,
-    ) async {
-      final viewer = managementIdentity(
-        capabilities: {'organization.view_employee'},
-      );
-
-      await launch(tester, identity: viewer, path: '/workspace/training');
-
-      // Blocked path redirects to homePath ('/profile')
-      expect(find.text('CURRICULUM & CATALOG'), findsNothing);
+      expect(router.state.matchedLocation, entry.value);
+      if (entry.key == 'Course catalog') {
+        expect(find.byTooltip('New course'), findsOneWidget);
+      }
     });
-  });
-
-  group('Mixed-role capability behavior', () {
-    testWidgets(
-      'Mixed-role manager with training permissions sees Training Management',
-      (tester) async {
-        final mixedRole = managementIdentity(
-          team: true,
-          capabilities: {
-            'team_workspace',
-            'team_assignment',
-            'training.view_training',
-            'training.add_training',
-            'organization.view_employee',
-          },
-        );
-
-        await launch(tester, identity: mixedRole);
-
-        expect(find.text('Training management'), findsOneWidget);
-
-        await tester.tap(find.text('Training management'));
-        await tester.pumpAndSettle();
-
-        expect(find.text('CURRICULUM & CATALOG'), findsOneWidget);
-        expect(
-          find.widgetWithText(StatusBadge, 'AUTHORING PERMITTED'),
-          findsOneWidget,
-        );
-      },
-    );
-
-    testWidgets('Read-only catalog viewer sees Catalog view status badge', (
-      tester,
-    ) async {
-      final readOnly = managementIdentity(
-        capabilities: {'management_workspace', 'training.view_training'},
-      );
-
-      await launch(tester, identity: readOnly, path: '/workspace/training');
-
-      expect(find.widgetWithText(StatusBadge, 'CATALOG VIEW'), findsOneWidget);
-    });
-
-    testWidgets(
-      'Training-only account without workspace capabilities accesses /workspace and Management destination',
-      (tester) async {
-        final trainingOnly = managementIdentity(
-          capabilities: {'training.view_training'},
-        );
-
-        await launch(tester, identity: trainingOnly, path: '/workspace');
-
-        expect(find.text('Management'), findsOneWidget);
-        expect(find.text('Training management'), findsOneWidget);
-
-        await tester.tap(find.text('Training management'));
-        await tester.pumpAndSettle();
-
-        expect(find.text('CURRICULUM & CATALOG'), findsOneWidget);
-        expect(find.text('View only'), findsOneWidget);
-        expect(find.text('No version access'), findsOneWidget);
-        expect(find.text('Assignment restricted'), findsOneWidget);
-        expect(
-          find.text(
-            'Assignable versions list requires training assignment authority.',
-          ),
-          findsOneWidget,
-        );
-
-        verifyNever(
-          () => repository.assignableTrainingVersions(
-            page: any(named: 'page'),
-            pageSize: any(named: 'pageSize'),
-            search: any(named: 'search'),
-            cancelToken: any(named: 'cancelToken'),
-          ),
-        );
-      },
-    );
-
-    testWidgets(
-      'Version-only account without course permissions accesses Training Management with accurate grants',
-      (tester) async {
-        final versionOnly = managementIdentity(
-          capabilities: {'training.view_trainingversion'},
-        );
-
-        await launch(
-          tester,
-          identity: versionOnly,
-          path: '/workspace/training',
-        );
-
-        expect(find.text('CURRICULUM & CATALOG'), findsOneWidget);
-        expect(
-          find.widgetWithText(StatusBadge, 'CATALOG VIEW'),
-          findsOneWidget,
-        );
-        expect(find.text('No catalog access'), findsOneWidget);
-        expect(find.text('View versions only'), findsOneWidget);
-        expect(find.text('Assignment restricted'), findsOneWidget);
-        expect(
-          find.text(
-            'Your account has view-only curriculum access. Authoring and mutation controls remain restricted.',
-          ),
-          findsOneWidget,
-        );
-        expect(find.text('Create course'), findsNothing);
-        expect(find.text('New version'), findsNothing);
-        expect(find.text('Upload video'), findsNothing);
-
-        verifyNever(
-          () => repository.assignableTrainingVersions(
-            page: any(named: 'page'),
-            pageSize: any(named: 'pageSize'),
-            search: any(named: 'search'),
-            cancelToken: any(named: 'cancelToken'),
-          ),
-        );
-      },
-    );
-
-    testWidgets(
-      'Course add-only author sees Create only and Create course chip without edit permissions',
-      (tester) async {
-        final addOnly = managementIdentity(
-          capabilities: {'training.add_training'},
-        );
-
-        await launch(tester, identity: addOnly, path: '/workspace/training');
-
-        expect(
-          find.widgetWithText(StatusBadge, 'AUTHORING PERMITTED'),
-          findsOneWidget,
-        );
-        expect(find.text('Create only'), findsOneWidget);
-        expect(find.text('Create and edit'), findsNothing);
-        expect(find.text('No version access'), findsOneWidget);
-        expect(find.text('Create course'), findsOneWidget);
-        expect(find.text('New version'), findsNothing);
-        expect(find.text('Upload video'), findsNothing);
-
-        verifyNever(
-          () => repository.assignableTrainingVersions(
-            page: any(named: 'page'),
-            pageSize: any(named: 'pageSize'),
-            search: any(named: 'search'),
-            cancelToken: any(named: 'cancelToken'),
-          ),
-        );
-      },
-    );
-
-    testWidgets(
-      'Course edit-only author sees Edit only and Edit course chip without video upload',
-      (tester) async {
-        final editOnly = managementIdentity(
-          capabilities: {'training.change_training'},
-        );
-
-        await launch(tester, identity: editOnly, path: '/workspace/training');
-
-        expect(
-          find.widgetWithText(StatusBadge, 'AUTHORING PERMITTED'),
-          findsOneWidget,
-        );
-        expect(find.text('Edit only'), findsOneWidget);
-        expect(find.text('Create and edit'), findsNothing);
-        expect(find.text('Edit course'), findsOneWidget);
-        expect(find.text('Upload video'), findsNothing);
-        expect(find.text('Create course'), findsNothing);
-        expect(find.text('New version'), findsNothing);
-      },
-    );
-
-    testWidgets(
-      'Version add-only author sees Create versions only and New version chip without video upload',
-      (tester) async {
-        final versionAddOnly = managementIdentity(
-          capabilities: {'training.add_trainingversion'},
-        );
-
-        await launch(
-          tester,
-          identity: versionAddOnly,
-          path: '/workspace/training',
-        );
-
-        expect(
-          find.widgetWithText(StatusBadge, 'AUTHORING PERMITTED'),
-          findsOneWidget,
-        );
-        expect(find.text('Create versions only'), findsOneWidget);
-        expect(find.text('Create and edit versions'), findsNothing);
-        expect(find.text('New version'), findsOneWidget);
-        expect(find.text('Upload video'), findsNothing);
-        expect(find.text('Create course'), findsNothing);
-      },
-    );
-
-    testWidgets(
-      'Version edit-only author sees Edit versions only and Edit version chip without video upload',
-      (tester) async {
-        final versionEditOnly = managementIdentity(
-          capabilities: {'training.change_trainingversion'},
-        );
-
-        await launch(
-          tester,
-          identity: versionEditOnly,
-          path: '/workspace/training',
-        );
-
-        expect(
-          find.widgetWithText(StatusBadge, 'AUTHORING PERMITTED'),
-          findsOneWidget,
-        );
-        expect(find.text('Edit versions only'), findsOneWidget);
-        expect(find.text('Create and edit versions'), findsNothing);
-        expect(find.text('Edit version'), findsOneWidget);
-        expect(find.text('Upload video'), findsNothing);
-        expect(find.text('New version'), findsNothing);
-      },
-    );
-
-    testWidgets(
-      'Module view-only user sees View only for modules, Catalog view badge, and restricted authoring',
-      (tester) async {
-        final moduleViewer = managementIdentity(
-          capabilities: {'training.view_module'},
-        );
-
-        await launch(
-          tester,
-          identity: moduleViewer,
-          path: '/workspace/training',
-        );
-
-        expect(
-          find.widgetWithText(StatusBadge, 'CATALOG VIEW'),
-          findsOneWidget,
-        );
-        expect(find.text('No catalog access'), findsOneWidget);
-        expect(find.text('No version access'), findsOneWidget);
-        expect(find.text('View only'), findsOneWidget);
-        expect(find.text('No lesson access'), findsOneWidget);
-        expect(find.text('Assignment restricted'), findsOneWidget);
-        expect(
-          find.text(
-            'Your account has view-only curriculum access. Authoring and mutation controls remain restricted.',
-          ),
-          findsOneWidget,
-        );
-        expect(find.byType(ActionChip), findsNothing);
-
-        verifyNever(
-          () => repository.assignableTrainingVersions(
-            page: any(named: 'page'),
-            pageSize: any(named: 'pageSize'),
-            search: any(named: 'search'),
-            cancelToken: any(named: 'cancelToken'),
-          ),
-        );
-      },
-    );
-
-    testWidgets(
-      'Module create-only author sees Create module chip, Create only, and Authoring permitted',
-      (tester) async {
-        final moduleCreator = managementIdentity(
-          capabilities: {'training.add_module'},
-        );
-
-        await launch(
-          tester,
-          identity: moduleCreator,
-          path: '/workspace/training',
-        );
-
-        expect(
-          find.widgetWithText(StatusBadge, 'AUTHORING PERMITTED'),
-          findsOneWidget,
-        );
-        expect(find.text('No catalog access'), findsOneWidget);
-        expect(find.text('No version access'), findsOneWidget);
-        expect(find.text('Create only'), findsOneWidget);
-        expect(find.text('No lesson access'), findsOneWidget);
-        expect(find.text('Create module'), findsOneWidget);
-        expect(find.text('Edit module'), findsNothing);
-        expect(find.text('Create course'), findsNothing);
-        expect(find.text('New version'), findsNothing);
-        expect(find.text('Upload video'), findsNothing);
-
-        final chip = tester.widget<ActionChip>(
-          find.widgetWithText(ActionChip, 'Create module'),
-        );
-        expect(chip.onPressed, isNull);
-      },
-    );
-
-    testWidgets('Module edit-only author sees Edit module chip and Edit only', (
-      tester,
-    ) async {
-      final moduleEditor = managementIdentity(
-        capabilities: {'training.change_module'},
-      );
-
-      await launch(tester, identity: moduleEditor, path: '/workspace/training');
-
-      expect(
-        find.widgetWithText(StatusBadge, 'AUTHORING PERMITTED'),
-        findsOneWidget,
-      );
-      expect(find.text('Edit only'), findsOneWidget);
-      expect(find.text('Create and edit'), findsNothing);
-      expect(find.text('Edit module'), findsOneWidget);
-      expect(find.text('Create module'), findsNothing);
-      expect(find.text('Upload video'), findsNothing);
-
-      final chip = tester.widget<ActionChip>(
-        find.widgetWithText(ActionChip, 'Edit module'),
-      );
-      expect(chip.onPressed, isNull);
-    });
-
-    testWidgets(
-      'Lesson view-only user sees View only for lessons and Catalog view badge',
-      (tester) async {
-        final lessonViewer = managementIdentity(
-          capabilities: {'training.view_lesson'},
-        );
-
-        await launch(
-          tester,
-          identity: lessonViewer,
-          path: '/workspace/training',
-        );
-
-        expect(
-          find.widgetWithText(StatusBadge, 'CATALOG VIEW'),
-          findsOneWidget,
-        );
-        expect(find.text('No catalog access'), findsOneWidget);
-        expect(find.text('No version access'), findsOneWidget);
-        expect(find.text('No module access'), findsOneWidget);
-        expect(find.text('View only'), findsOneWidget);
-        expect(
-          find.text(
-            'Your account has view-only curriculum access. Authoring and mutation controls remain restricted.',
-          ),
-          findsOneWidget,
-        );
-        expect(find.byType(ActionChip), findsNothing);
-      },
-    );
-
-    testWidgets(
-      'Lesson create-only author sees Create lesson and Upload video chips',
-      (tester) async {
-        final lessonCreator = managementIdentity(
-          capabilities: {'training.add_lesson'},
-        );
-
-        await launch(
-          tester,
-          identity: lessonCreator,
-          path: '/workspace/training',
-        );
-
-        expect(
-          find.widgetWithText(StatusBadge, 'AUTHORING PERMITTED'),
-          findsOneWidget,
-        );
-        expect(find.text('Create only'), findsOneWidget);
-        expect(find.text('Create lesson'), findsOneWidget);
-        expect(find.text('Upload video'), findsOneWidget);
-        expect(find.text('Edit lesson'), findsNothing);
-        expect(find.text('Create course'), findsNothing);
-        expect(find.text('Create module'), findsNothing);
-
-        final createChip = tester.widget<ActionChip>(
-          find.widgetWithText(ActionChip, 'Create lesson'),
-        );
-        expect(createChip.onPressed, isNull);
-        final uploadChip = tester.widget<ActionChip>(
-          find.widgetWithText(ActionChip, 'Upload video'),
-        );
-        expect(uploadChip.onPressed, isNull);
-      },
-    );
-
-    testWidgets(
-      'Lesson edit-only author sees Edit lesson and Upload video chips',
-      (tester) async {
-        final lessonEditor = managementIdentity(
-          capabilities: {'training.change_lesson'},
-        );
-
-        await launch(
-          tester,
-          identity: lessonEditor,
-          path: '/workspace/training',
-        );
-
-        expect(
-          find.widgetWithText(StatusBadge, 'AUTHORING PERMITTED'),
-          findsOneWidget,
-        );
-        expect(find.text('Edit only'), findsOneWidget);
-        expect(find.text('Edit lesson'), findsOneWidget);
-        expect(find.text('Upload video'), findsOneWidget);
-        expect(find.text('Create lesson'), findsNothing);
-
-        final editChip = tester.widget<ActionChip>(
-          find.widgetWithText(ActionChip, 'Edit lesson'),
-        );
-        expect(editChip.onPressed, isNull);
-      },
-    );
-
-    testWidgets(
-      'Combined module and lesson author sees Create and edit for both and all module/lesson chips',
-      (tester) async {
-        final modLesAuthor = managementIdentity(
-          capabilities: {
-            'training.add_module',
-            'training.change_module',
-            'training.add_lesson',
-            'training.change_lesson',
-          },
-        );
-
-        await launch(
-          tester,
-          identity: modLesAuthor,
-          path: '/workspace/training',
-        );
-
-        expect(
-          find.widgetWithText(StatusBadge, 'AUTHORING PERMITTED'),
-          findsOneWidget,
-        );
-        // "Create and edit" appears for both Module management and Lesson management
-        expect(find.text('Create and edit'), findsNWidgets(2));
-        expect(find.text('No catalog access'), findsOneWidget);
-        expect(find.text('No version access'), findsOneWidget);
-        expect(find.text('Create module'), findsOneWidget);
-        expect(find.text('Edit module'), findsOneWidget);
-        expect(find.text('Create lesson'), findsOneWidget);
-        expect(find.text('Edit lesson'), findsOneWidget);
-        expect(find.text('Upload video'), findsOneWidget);
-        expect(find.text('Create course'), findsNothing);
-        expect(find.text('New version'), findsNothing);
-      },
-    );
-
-    testWidgets(
-      'Full curriculum author sees all 5 capability rows granted and all authoring chips disabled',
-      (tester) async {
-        final fullAuthor = managementIdentity(
-          capabilities: {
-            'training.view_training',
-            'training.add_training',
-            'training.change_training',
-            'training.view_trainingversion',
-            'training.add_trainingversion',
-            'training.change_trainingversion',
-            'training.view_module',
-            'training.add_module',
-            'training.change_module',
-            'training.view_lesson',
-            'training.add_lesson',
-            'training.change_lesson',
-            'training.add_trainingassignment',
-          },
-        );
-
-        await launch(tester, identity: fullAuthor, path: '/workspace/training');
-
-        expect(
-          find.widgetWithText(StatusBadge, 'AUTHORING PERMITTED'),
-          findsOneWidget,
-        );
-        expect(
-          find.widgetWithText(StatusBadge, 'ASSIGNMENT AUTHORITY'),
-          findsOneWidget,
-        );
-        // "Create and edit" appears for Course catalog, Module management, Lesson management
-        expect(find.text('Create and edit'), findsNWidgets(3));
-        expect(find.text('Create and edit versions'), findsOneWidget);
-        expect(find.text('Company-wide assignment'), findsOneWidget);
-
-        expect(find.text('Create course'), findsOneWidget);
-        expect(find.text('Edit course'), findsOneWidget);
-        expect(find.text('New version'), findsOneWidget);
-        expect(find.text('Edit version'), findsOneWidget);
-        expect(find.text('Create module'), findsOneWidget);
-        expect(find.text('Edit module'), findsOneWidget);
-        expect(find.text('Create lesson'), findsOneWidget);
-        expect(find.text('Edit lesson'), findsOneWidget);
-        expect(find.text('Upload video'), findsOneWidget);
-
-        // Create course chip is enabled in Stage 4; other chips remain disabled
-        final createCourseChip = tester.widget<ActionChip>(
-          find.widgetWithText(ActionChip, 'Create course'),
-        );
-        expect(createCourseChip.onPressed, isNotNull);
-
-        for (final widget in tester.widgetList<ActionChip>(
-          find.byType(ActionChip),
-        )) {
-          if (widget == createCourseChip) continue;
-          expect(widget.onPressed, isNull);
-        }
-
-        verify(
-          () => repository.assignableTrainingVersions(
-            page: 1,
-            pageSize: any(named: 'pageSize'),
-            search: any(named: 'search'),
-            cancelToken: any(named: 'cancelToken'),
-          ),
-        ).called(1);
-      },
-    );
-
-    testWidgets(
-      'tapping Create course action chip navigates to /workspace/training/catalog/new',
-      (tester) async {
-        final fullAuthor = managementIdentity(
-          capabilities: {
-            'management_workspace',
-            'training.view_training',
-            'training.add_training',
-            'training.view_trainingversion',
-            'training.add_trainingversion',
-            'training.change_trainingversion',
-            'training.view_module',
-            'training.add_module',
-            'training.change_module',
-            'training.view_lesson',
-            'training.add_lesson',
-            'training.change_lesson',
-            'training.add_trainingassignment',
-          },
-        );
-
-        await launch(tester, identity: fullAuthor, path: '/workspace/training');
-
-        final chipFinder = find.widgetWithText(ActionChip, 'Create course');
-        expect(chipFinder, findsOneWidget);
-        await tester.tap(chipFinder);
-        await tester.pumpAndSettle();
-
-        expect(find.text('New training course'), findsOneWidget);
-      },
-    );
-  });
-
-  group('TrainingManagementScreen live data integration and states', () {
-    testWidgets('renders published assignable versions when authorized', (
-      tester,
-    ) async {
-      when(
-        () => repository.assignableTrainingVersions(
-          page: 1,
-          pageSize: any(named: 'pageSize'),
-          search: any(named: 'search'),
-          cancelToken: any(named: 'cancelToken'),
-        ),
-      ).thenAnswer(
-        (_) async => ManagementPage.fromJson(
-          pageJson([
-            assignableVersionJson(
-              42,
-              trainingTitle: 'Agricultural Safety Standards',
-              title: 'Agricultural Safety Standards v1',
-            ),
-          ]),
-          AssignableTrainingVersion.fromJson,
-        ),
-      );
-
-      await launch(tester, path: '/workspace/training');
-
-      expect(find.text('Published assignable versions'), findsOneWidget);
-      expect(find.text('Agricultural Safety Standards v1'), findsOneWidget);
-      expect(find.text('VERSION 1'), findsOneWidget);
-      expect(find.widgetWithText(StatusBadge, 'PUBLISHED'), findsNWidgets(2));
-    });
-
-    testWidgets('renders empty state when no assignable versions exist', (
-      tester,
-    ) async {
-      when(
-        () => repository.assignableTrainingVersions(
-          page: 1,
-          pageSize: any(named: 'pageSize'),
-          search: any(named: 'search'),
-          cancelToken: any(named: 'cancelToken'),
-        ),
-      ).thenAnswer(
-        (_) async => ManagementPage.fromJson(
-          pageJson([]),
-          AssignableTrainingVersion.fromJson,
-        ),
-      );
-
-      await launch(tester, path: '/workspace/training');
-
-      expect(
-        find.text('No published training versions currently available.'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('renders error state and retries on tap', (tester) async {
-      var callCount = 0;
-      when(
-        () => repository.assignableTrainingVersions(
-          page: 1,
-          pageSize: any(named: 'pageSize'),
-          search: any(named: 'search'),
-          cancelToken: any(named: 'cancelToken'),
-        ),
-      ).thenAnswer((_) async {
-        callCount++;
-        if (callCount == 1) {
-          throw ApiError(
-            message: 'Failed to load assignable versions',
-            statusCode: 500,
-          );
-        }
-        return ManagementPage.fromJson(
-          pageJson([
-            assignableVersionJson(10, trainingTitle: 'Pesticide Handling'),
-          ]),
-          AssignableTrainingVersion.fromJson,
-        );
-      });
-
-      await launch(tester, path: '/workspace/training');
-
-      expect(find.text('Failed to load assignable versions'), findsOneWidget);
-
-      final retryButton = find.text('Retry');
-      expect(retryButton, findsOneWidget);
-
-      await tester.drag(find.byType(ListView), const Offset(0, -300));
-      await tester.pumpAndSettle();
-      await tester.tap(retryButton);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Pesticide Handling v1'), findsOneWidget);
-      expect(find.text('Failed to load assignable versions'), findsNothing);
-    });
-
-    testWidgets('Account switching to unauthorized user revokes access', (
-      tester,
-    ) async {
-      await launch(tester, path: '/workspace/training');
-
-      expect(find.text('Training management'), findsWidgets);
-
-      auth.setAuth(
-        AuthAuthenticated.identity(
-          managementIdentity(
-            username: 'unauthorized',
-            capabilities: {'organization.view_employee'},
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('CURRICULUM & CATALOG'), findsNothing);
-    });
-  });
-
-  group('Training catalog navigation entry', () {
-    testWidgets(
-      'shows Browse training catalog card and navigates when tapped',
-      (tester) async {
-        await launch(
-          tester,
-          path: '/workspace/training',
-          identity: managementIdentity(
-            capabilities: {'management_workspace', 'training.view_training'},
-          ),
-        );
-
-        expect(find.text('Browse training catalog'), findsOneWidget);
-
-        await tester.tap(find.text('Browse training catalog'));
-        await tester.pumpAndSettle();
-
-        expect(find.text('Training catalog'), findsOneWidget);
-        expect(find.byType(TextField), findsOneWidget);
-      },
-    );
-
-    testWidgets('hides Course catalog card when account lacks view_training', (
-      tester,
-    ) async {
+  }
+
+  testWidgets(
+    'course creators without browse access retain the creation path',
+    (tester) async {
       await launch(
         tester,
-        path: '/workspace/training',
-        identity: managementIdentity(
-          capabilities: {'management_workspace', 'training.add_module'},
-        ),
+        path: home,
+        identity: account({'training.add_training'}),
       );
 
-      expect(find.text('Browse training catalog'), findsNothing);
-    });
+      expect(find.text('Course catalog'), findsNothing);
+      await tapText(tester, 'Create course');
+
+      expect(router.state.matchedLocation, '$home/catalog/new');
+      expect(find.text('New training course'), findsOneWidget);
+    },
+  );
+
+  testWidgets('version readers without catalog access can browse versions', (
+    tester,
+  ) async {
+    await launch(
+      tester,
+      path: home,
+      identity: account({'training.view_trainingversion'}),
+    );
+
+    expect(find.text('Course catalog'), findsNothing);
+    await tapText(tester, 'Training versions');
+    expect(router.state.matchedLocation, '$home/versions');
+    expect(find.byTooltip('Assignable versions'), findsNothing);
+    verifyNever(assignableVersions);
   });
 
-  group('Training versions navigation entry', () {
-    testWidgets(
-      'shows Browse training versions card and navigates when tapped',
-      (tester) async {
-        await launch(
-          tester,
-          path: '/workspace/training',
-          identity: managementIdentity(
-            capabilities: {
-              'management_workspace',
-              'training.view_trainingversion',
-            },
-          ),
-        );
-
-        expect(find.text('Browse training versions'), findsOneWidget);
-        expect(find.text('Browse training catalog'), findsNothing);
-
-        await tester.tap(find.text('Browse training versions'));
-        await tester.pumpAndSettle();
-
-        expect(find.text('Training versions'), findsWidgets);
-      },
+  testWidgets('a catalog reader sees one shortcut and no authoring grants', (
+    tester,
+  ) async {
+    await launch(
+      tester,
+      path: home,
+      identity: account({'training.view_training'}),
     );
 
-    testWidgets(
-      'hides Training versions card when account lacks view_trainingversion',
-      (tester) async {
-        await launch(
-          tester,
-          path: '/workspace/training',
-          identity: managementIdentity(
-            capabilities: {
-              'management_workspace',
-              'training.view_training', // Course catalog only
-            },
-          ),
-        );
-
-        expect(find.text('Browse training catalog'), findsOneWidget);
-        expect(find.text('Browse training versions'), findsNothing);
-      },
-    );
-
-    testWidgets(
-      'shows both catalog and versions cards when account has both permissions',
-      (tester) async {
-        await launch(
-          tester,
-          path: '/workspace/training',
-          identity: managementIdentity(
-            capabilities: {
-              'management_workspace',
-              'training.view_training',
-              'training.view_trainingversion',
-            },
-          ),
-        );
-
-        expect(find.text('Browse training catalog'), findsOneWidget);
-        expect(find.text('Browse training versions'), findsOneWidget);
-      },
-    );
+    expect(find.text('Course catalog'), findsOneWidget);
+    expect(find.byType(TrainingNavigationCard), findsOneWidget);
+    for (final path in [
+      '$home/catalog/new',
+      '$home/versions',
+      '$home/questions',
+      '$home/role-requirements',
+    ]) {
+      router.go(path);
+      await tester.pumpAndSettle();
+      expect(router.state.matchedLocation, '/workspace');
+    }
+    verifyNever(assignableVersions);
   });
 
-  group('Dark, light, and responsive layouts', () {
-    testWidgets('renders cleanly in dark theme', (tester) async {
+  testWidgets('a learner without management access cannot open the hub', (
+    tester,
+  ) async {
+    await launch(
+      tester,
+      path: home,
+      identity: managementIdentity(
+        team: true,
+        capabilities: {'personal_learning'},
+      ),
+    );
+
+    expect(router.state.matchedLocation, '/dashboard');
+    expect(find.byType(TrainingNavigationCard), findsNothing);
+    verifyNever(assignableVersions);
+  });
+
+  testWidgets('team reporting alone does not expose training authoring', (
+    tester,
+  ) async {
+    await launch(
+      tester,
+      identity: managementIdentity(
+        team: true,
+        capabilities: {'team_workspace', 'assignment_report'},
+      ),
+    );
+    expect(find.text('Training management'), findsNothing);
+
+    router.go(home);
+    await tester.pumpAndSettle();
+    expect(router.state.matchedLocation, '/workspace');
+    verifyNever(assignableVersions);
+  });
+
+  testWidgets(
+    'granular module or lesson grants do not expose unrelated tools',
+    (tester) async {
       await launch(
         tester,
-        path: '/workspace/training',
-        themeMode: ThemeMode.dark,
+        path: home,
+        identity: account({'training.add_module', 'training.change_lesson'}),
+      );
+      expect(find.byType(TrainingNavigationCard), findsNothing);
+      expect(
+        find.text('No training tools are available for this account.'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'assignment-ready versions load only on request from the directory',
+    (tester) async {
+      await launch(tester, path: home, identity: account(allTools));
+
+      expect(find.text('Assignable versions'), findsNothing);
+      await tapText(tester, 'Training versions');
+      verifyNever(assignableVersions);
+
+      await tester.tap(find.byTooltip('Assignable versions'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Workplace safety v1'), findsOneWidget);
+      verify(assignableVersions).called(1);
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(router.state.matchedLocation, '$home/versions');
+      expect(find.text('Workplace safety v1'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'assignment grant keeps a fallback for users without version access',
+    (tester) async {
+      await launch(
+        tester,
+        path: home,
+        identity: account({
+          'training.view_training',
+          'training.add_trainingassignment',
+        }),
       );
 
-      expect(find.text('Training management'), findsWidgets);
-      expect(find.text('CURRICULUM & CATALOG'), findsOneWidget);
+      expect(find.text('Training versions'), findsNothing);
+      verifyNever(assignableVersions);
+      await tapText(tester, 'Assignable versions');
+
+      expect(find.text('Workplace safety v1'), findsOneWidget);
+      expect(find.textContaining('Version 1'), findsOneWidget);
+      verify(assignableVersions).called(1);
+    },
+  );
+
+  testWidgets('assignable version failures can be retried to an empty list', (
+    tester,
+  ) async {
+    var requests = 0;
+    when(assignableVersions).thenAnswer((_) async {
+      requests++;
+      if (requests == 1) {
+        throw ApiError(
+          message: 'Failed to load assignable versions',
+          statusCode: 503,
+        );
+      }
+      return ManagementPage(items: [], count: 0, hasMore: false);
     });
-
-    testWidgets(
-      'fits small screen (320x640 at 2.0x text scale) without overflow',
-      (tester) async {
-        await launch(
-          tester,
-          path: '/workspace/training',
-          size: const Size(320, 640),
-          textScale: 2.0,
-        );
-
-        expect(find.text('Training management'), findsWidgets);
-        expect(tester.takeException(), isNull);
-      },
+    await launch(
+      tester,
+      path: home,
+      identity: account({
+        'training.view_training',
+        'training.add_trainingassignment',
+      }),
     );
 
-    testWidgets(
-      'fits landscape screen (844x390 at 1.6x text scale) without overflow',
-      (tester) async {
-        await launch(
-          tester,
-          path: '/workspace/training',
-          size: const Size(844, 390),
-          textScale: 1.6,
-        );
-
-        expect(find.text('Training management'), findsWidgets);
-        expect(tester.takeException(), isNull);
-      },
+    await tapText(tester, 'Assignable versions');
+    expect(find.text('Failed to load assignable versions'), findsOneWidget);
+    await tapText(tester, 'Retry');
+    expect(
+      find.text('No published training versions currently available.'),
+      findsOneWidget,
     );
+    expect(requests, 2);
   });
+
+  testWidgets('an account change clears an open assignment-ready list', (
+    tester,
+  ) async {
+    await launch(
+      tester,
+      path: home,
+      identity: account({
+        'training.view_training',
+        'training.add_trainingassignment',
+      }),
+    );
+    await tapText(tester, 'Assignable versions');
+    expect(find.text('Workplace safety v1'), findsOneWidget);
+
+    auth.setAuth(
+      AuthAuthenticated.identity(
+        managementIdentity(
+          username: 'another-user',
+          capabilities: {'management_workspace', 'training.view_training'},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Workplace safety v1'), findsNothing);
+    verify(assignableVersions).called(1);
+  });
+
+  for (final theme in [ThemeMode.light, ThemeMode.dark]) {
+    testWidgets('${theme.name} layout fits narrow screens at 200% text', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        await launch(
+          tester,
+          path: home,
+          identity: account(allTools),
+          size: const Size(320, 520),
+          textScale: 2,
+          themeMode: theme,
+        );
+
+        final card = find.byType(TrainingNavigationCard).first;
+        expect(tester.getSize(card).height, greaterThanOrEqualTo(48));
+        expect(
+          Theme.of(tester.element(card)).brightness,
+          theme == ThemeMode.dark ? Brightness.dark : Brightness.light,
+        );
+        expect(find.bySemanticsLabel(RegExp('Course catalog')), findsOneWidget);
+        await tester.scrollUntilVisible(find.text('Role requirements'), 150);
+        expect(tester.takeException(), isNull);
+        expect(find.text('Role requirements').hitTestable(), findsOneWidget);
+      } finally {
+        semantics.dispose();
+      }
+    });
+  }
 }

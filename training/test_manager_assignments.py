@@ -1,14 +1,17 @@
 """Website-only team assignment authorization and transactional revalidation."""
 
 from datetime import time, timedelta
+from decimal import Decimal
+from types import SimpleNamespace
 from unittest import skipUnless
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group, Permission
+from django.contrib.auth.models import AnonymousUser, Group, Permission
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection
-from django.test import Client
+from django.template.loader import render_to_string
+from django.test import Client, RequestFactory, SimpleTestCase
 from django.utils import timezone
 
 from audit.models import AuditLog
@@ -17,6 +20,343 @@ from notifications.models import Notification
 from organization.models import Department, Employee, JobRole
 from training.forms import TrainingAssignmentForm
 from training.models import TrainingAssignment
+from training.views import TrainingAssignmentDetailView
+
+
+class ManagerProgressSummaryUnitTests(SimpleTestCase):
+    """Database-free presentation checks; hierarchy integration is tested below."""
+
+    def setUp(self):
+        from assessments.models import Assessment, AssessmentAttempt
+        from training.models import Lesson, LessonProgress, Module, Training, TrainingVersion
+
+        self.request = RequestFactory().get("/assignments/1/")
+        self.request.user = SimpleNamespace(
+            pk=10, is_authenticated=True, is_active=True, is_superuser=False,
+            has_perm=lambda permission: False, groups=MagicMock(),
+        )
+        self.request.user.groups.filter.return_value.exists.return_value = True
+        self.assignment = TrainingAssignment(
+            pk=1, employee=Employee(pk=2, user_id=20, is_active=True),
+            training_version=TrainingVersion(pk=3, status="PUBLISHED", title="Safety v1",
+                version_number=1, training=Training(pk=4, catalog_title="Safety")),
+            status="IN_PROGRESS",
+        )
+        self.assignment._state.fields_cache["certificate"] = None
+        self.module = Module(pk=5, title="Introduction", position=1)
+        self.lesson = Lesson(pk=6, module=self.module, title="Watch", content_type="VIDEO",
+            video_duration_seconds=100, minimum_watch_percent=90, is_required=True)
+        self.module._prefetched_objects_cache = {"lessons": [self.lesson]}
+        self.progress = LessonProgress(assignment=self.assignment, lesson=self.lesson,
+            watched_ranges=[[0, 20]], last_position_seconds=95)
+        self.assessment = Assessment(pk=7, title="Final", kind="FINAL", is_required=True)
+        self.attempt = AssessmentAttempt(assessment=self.assessment, assignment=self.assignment,
+            attempt_number=1, status="SUBMITTED", score_points=Decimal("1.00"),
+            maximum_points=Decimal("2.00"), passed=False, submitted_at=timezone.now())
+        self.rows = {
+            "training.views.Module.objects.filter": [self.module],
+            "training.views.LessonProgress.objects.filter": [self.progress],
+            "assessments.models.Assessment.objects.filter": [self.assessment],
+            "assessments.models.AssessmentAttempt.objects.filter": [self.attempt],
+        }
+
+    def context(self, *, active_identity=True):
+        from contextlib import ExitStack
+        from django.views.generic import DetailView
+
+        with ExitStack() as stack:
+            self.filters = {}
+            for target, rows in self.rows.items():
+                queryset = MagicMock()
+                for method in ("only", "prefetch_related", "select_related", "order_by"):
+                    getattr(queryset, method).return_value = queryset
+                queryset.__iter__.side_effect = lambda rows=rows: iter(rows)
+                self.filters[target] = stack.enter_context(patch(target, return_value=queryset))
+            stack.enter_context(patch("training.views.has_active_learner_identity", return_value=active_identity))
+            stack.enter_context(patch.object(DetailView, "get_context_data", return_value={"assignment": self.assignment}))
+            view = TrainingAssignmentDetailView()
+            view.request, view.object = self.request, self.assignment
+            return view.get_context_data()
+
+    def render(self, context):
+        request = RequestFactory().get("/assignments/1/")
+        request.user = AnonymousUser()
+        return render_to_string("training/assignment_detail.html", context, request=request)
+
+    def test_summary_uses_stored_coverage_not_resume_and_exposes_no_learner_actions(self):
+        context = self.context()
+        html = self.render(context)
+        self.assertIn("management_progress", context)
+        self.assertIn("20%", html)
+        self.assertIn("20.0 / 100 seconds", html)
+        self.assertIn("0 of 1 lessons completed", html)
+        self.assertIn("Not passed", html)
+        self.assertIn("1.00 / 2.00", html)
+        self.assertIn("Not issued", html)
+        for forbidden in ("95%", "<video", "Mark lesson complete", "View assessment", "data-progress-url", "/sessions/", "/replay/media/"):
+            self.assertNotIn(forbidden, html)
+        self.assertFalse(context.get("can_learn", False))
+
+    def test_empty_and_unstarted_progress_is_explicit(self):
+        self.rows["training.views.LessonProgress.objects.filter"] = []
+        self.rows["assessments.models.AssessmentAttempt.objects.filter"] = []
+        html = self.render(self.context())
+        self.assertIn("Not started", html)
+        self.assertIn("0%", html)
+        self.assertIn("Not attempted", html)
+        self.rows["training.views.Module.objects.filter"] = []
+        self.rows["assessments.models.Assessment.objects.filter"] = []
+        html = self.render(self.context())
+        self.assertIn("No lessons are available", html)
+        self.assertIn("No assessments are available", html)
+
+    def test_completion_uses_recorded_timestamp_not_percentage(self):
+        self.progress.watched_ranges = [[0, 95]]
+        self.assertIn("0 of 1 lessons completed", self.render(self.context()))
+        self.progress.completed_at = timezone.now()
+        self.assertIn("1 of 1 lessons completed", self.render(self.context()))
+
+    def test_unfinished_attempt_does_not_present_a_score_or_pass(self):
+        for status in ("IN_PROGRESS", "ABANDONED"):
+            with self.subTest(status=status):
+                self.attempt.status, self.attempt.passed, self.attempt.score_points = status, None, None
+                html = self.render(self.context())
+                self.assertNotIn("1.00 / 2.00", html)
+                self.assertNotIn("Not passed", html)
+
+    def test_revoked_certificate_status_has_no_unpermitted_link_or_reason(self):
+        from certifications.models import Certificate
+        self.assignment._state.fields_cache["certificate"] = Certificate(
+            pk=8, issued_at=timezone.now(), revoked_at=timezone.now(),
+            revocation_reason="Private revocation reason", certificate_number="PRIVATE-NUMBER",
+        )
+        html = self.render(self.context())
+        self.assertIn("Revoked", html)
+        for forbidden in ("Private revocation reason", "PRIVATE-NUMBER", "/certificates/8/", 'action="/certificates/'):
+            self.assertNotIn(forbidden, html)
+
+    def test_inactive_or_nonmanagement_viewer_gets_no_summary(self):
+        self.assertNotIn("management_progress", self.context(active_identity=False))
+        self.request.user.is_active = False
+        self.assertNotIn("management_progress", self.context())
+        self.request.user.is_active = True
+        self.request.user.groups.filter.return_value.exists.return_value = False
+        self.assertNotIn("management_progress", self.context())
+
+    def test_company_authority_does_not_require_a_learner_identity(self):
+        self.request.user.has_perm = lambda permission: permission == "training.add_trainingassignment"
+        self.assertIn("management_progress", self.context(active_identity=False))
+
+    def test_result_queries_stay_on_the_selected_assignment_and_pinned_version(self):
+        self.context()
+        self.filters["training.views.LessonProgress.objects.filter"].assert_called_once_with(
+            assignment=self.assignment, lesson__module__training_version=self.assignment.training_version,
+        )
+        self.filters["assessments.models.AssessmentAttempt.objects.filter"].assert_called_once_with(
+            assignment=self.assignment, assessment__training_version=self.assignment.training_version,
+        )
+        for target in ("training.views.Module.objects.filter", "assessments.models.Assessment.objects.filter"):
+            self.filters[target].assert_called_once_with(training_version=self.assignment.training_version)
+
+    def test_latest_attempt_and_localized_coverage_are_unambiguous(self):
+        from assessments.models import AssessmentAttempt
+        from django.test import override_settings
+
+        latest = AssessmentAttempt(assessment=self.assessment, assignment=self.assignment,
+            attempt_number=2, status="SUBMITTED", score_points=Decimal("2.00"),
+            maximum_points=Decimal("2.00"), passed=True, submitted_at=timezone.now())
+        self.rows["assessments.models.AssessmentAttempt.objects.filter"] = [latest, self.attempt]
+        self.progress.watched_ranges = [[0, 20.5]]
+        with override_settings(LANGUAGE_CODE="de"):
+            html = self.render(self.context())
+        self.assertIn('value="20.5"', html)
+        self.assertIn("Latest attempt: 2", html)
+        self.assertNotIn("Not passed", html)
+        self.assertIn("Passed", html)
+
+    def test_summary_labels_are_escaped_and_do_not_render_lesson_content(self):
+        self.lesson.title = '<script>alert("lesson")</script>'
+        self.lesson.body = "PRIVATE LESSON CONTENT"
+        self.lesson.video_file = "private/video.mp4"
+        html = self.render(self.context())
+        self.assertIn("&lt;script&gt;", html)
+        self.assertNotIn('<script>alert("lesson")</script>', html)
+        self.assertNotIn("PRIVATE LESSON CONTENT", html)
+        self.assertNotIn("private/video.mp4", html)
+
+    def test_lesson_query_parameter_remains_forbidden_for_management(self):
+        from django.http import Http404
+        self.request.GET = {"lesson": str(self.lesson.pk)}
+        with self.assertRaises(Http404):
+            self.context()
+
+
+class ManagerAssignmentProgressTests(CurriculumTestCase):
+    """Real hierarchy/result queries; run only on approved disposable MySQL."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.employee_user.groups.add(Group.objects.get(name="Employee"))
+        cls.user.groups.add(Group.objects.get(name="Training Coordinator"))
+        cls.manager_user = get_user_model().objects.create_user(username="progress-manager")
+        cls.manager_user.groups.add(Group.objects.get(name="Manager"))
+        cls.manager = Employee.objects.create(
+            employee_code="PROGRESS-MANAGER", display_name="Progress Manager",
+            department=cls.department, job_role=cls.role, date_joined=cls.now.date(), user=cls.manager_user,
+        )
+        cls.employee.reporting_manager = cls.manager
+        cls.employee.save()
+
+    def setUp(self):
+        self.client.force_login(self.manager_user)
+
+    def page(self, assignment=None):
+        return f"/assignments/{(assignment or self.assignment).pk}/"
+
+    def recipient_assignment(self, code, *, manager=None, user=None):
+        employee = Employee.objects.create(
+            employee_code=code, display_name=code, department=self.department, job_role=self.role,
+            date_joined=self.now.date(), reporting_manager=manager, user=user,
+        )
+        return TrainingAssignment.objects.create(
+            employee=employee, training_version=self.version, department_at_assignment=self.department,
+            job_role_at_assignment=self.role, assigned_by=self.user,
+        )
+
+    def test_direct_report_results_are_read_only_and_do_not_expose_learning_content(self):
+        from assessments.models import AssessmentAttempt, AttemptAnswer
+        from certifications.models import Certificate
+        from training.models import LessonProgress, VideoWatchSession
+
+        self.complete_lessons()
+        self.finish_attempt(self.quiz, correct=False)
+        models = (TrainingAssignment, LessonProgress, VideoWatchSession, AssessmentAttempt,
+                  AttemptAnswer, Certificate, AuditLog, Notification)
+        before = {model: list(model.objects.order_by("pk").values()) for model in models}
+        response = self.client.get(self.page())
+        self.assertContains(response, "Training progress summary")
+        self.assertContains(response, "2 of 2 lessons completed")
+        self.assertContains(response, "95%")
+        self.assertContains(response, "Not passed")
+        self.assertContains(response, "Not attempted")
+        for forbidden in ("Safety instructions", "Wear PPE?", "View assessment", "Mark lesson complete",
+                          'id="lesson-video"', "data-media-url", "/sessions/", "/replay/media/"):
+            self.assertNotContains(response, forbidden)
+        self.assertFalse(response.context.get("can_learn", False))
+        for model in models:
+            self.assertEqual(list(model.objects.order_by("pk").values()), before[model])
+
+    def test_direct_and_indirect_reports_are_visible_but_unrelated_same_department_is_not(self):
+        indirect = self.recipient_assignment("PROGRESS-INDIRECT", manager=self.employee)
+        unrelated = self.recipient_assignment("PROGRESS-FOREIGN")
+        self.assertContains(self.client.get(self.page(indirect)), "Training progress summary")
+        self.assertEqual(self.client.get(self.page(unrelated)).status_code, 404)
+        self.assertEqual(self.client.get(self.page(unrelated), {"scope": "company", "employee": self.employee.pk}).status_code, 404)
+        self.employee.reporting_manager = None
+        self.employee.save()
+        self.assertEqual(self.client.get(self.page()).status_code, 404)
+
+    def test_employee_trainer_and_supervisor_cannot_inspect_their_direct_reports(self):
+        subordinate = self.recipient_assignment("PROGRESS-SUBORDINATE", manager=self.employee)
+        for role in ("Employee", "Trainer", "Supervisor"):
+            with self.subTest(role=role):
+                self.employee_user.groups.set([Group.objects.get(name=role)])
+                self.client.force_login(self.employee_user)
+                self.assertEqual(self.client.get(self.page(subordinate)).status_code, 404)
+                response = self.client.get(self.page())
+                self.assertEqual(response.status_code, 200)
+                self.assertNotIn("management_progress", response.context)
+
+    def test_inactive_or_unlinked_manager_cannot_obtain_a_progress_summary(self):
+        self.manager.is_active = False
+        self.manager.deactivation_reason = "Isolated test deactivation"
+        self.manager.save()
+        self.manager_user.is_active = True
+        self.manager_user.save()
+        self.client.force_login(self.manager_user)
+        # Existing assignment-overview authority is unchanged; new progress access is denied.
+        response = self.client.get(self.page())
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("management_progress", response.context)
+        unlinked = get_user_model().objects.create_user(username="unlinked-progress-manager")
+        unlinked.groups.add(Group.objects.get(name="Manager"))
+        self.client.force_login(unlinked)
+        self.assertEqual(self.client.get(self.page()).status_code, 404)
+        self.manager_user.is_active = False
+        self.manager_user.save()
+        self.client.force_login(self.manager_user)
+        self.assertEqual(self.client.get(self.page()).status_code, 403)
+
+    def test_company_authority_remains_independent_of_employee_identity(self):
+        self.client.force_login(self.user)
+        self.assertContains(self.client.get(self.page()), "Training progress summary")
+
+    def test_summary_does_not_authorize_learning_mutations_or_media(self):
+        from django.urls import reverse
+        from assessments.models import AssessmentAttempt
+        from training.models import LessonProgress, VideoWatchSession
+
+        before = (LessonProgress.objects.count(), VideoWatchSession.objects.count(), AssessmentAttempt.objects.count())
+        operations = (
+            ("training:text-lesson-complete", {"assignment_pk": self.assignment.pk, "lesson_pk": self.text_lesson.pk}),
+            ("training:video-session-start", {"assignment_pk": self.assignment.pk, "lesson_pk": self.video_lesson.pk}),
+            ("assessments:attempt-start", {"assignment_pk": self.assignment.pk, "assessment_pk": self.quiz.pk}),
+        )
+        for name, kwargs in operations:
+            with self.subTest(route=name):
+                self.assertEqual(self.client.post(reverse(name, kwargs=kwargs), {}).status_code, 404)
+        replay = reverse("training:video-replay-media", kwargs={"assignment_pk": self.assignment.pk, "lesson_pk": self.video_lesson.pk})
+        self.assertEqual(self.client.get(replay).status_code, 404)
+        self.assertEqual((LessonProgress.objects.count(), VideoWatchSession.objects.count(), AssessmentAttempt.objects.count()), before)
+
+    def test_mixed_role_manager_keeps_own_learner_controls(self):
+        own = TrainingAssignment.objects.create(
+            employee=self.manager, training_version=self.version, department_at_assignment=self.department,
+            job_role_at_assignment=self.role, assigned_by=self.user,
+        )
+        response = self.client.get(self.page(own))
+        self.assertTrue(response.context["can_learn"])
+        self.assertNotIn("management_progress", response.context)
+        self.assertContains(response, "Mark lesson complete")
+        self.assertContains(response, "View assessment")
+
+    def test_pinned_retired_version_is_used_and_lesson_parameters_stay_forbidden(self):
+        draft = self.new_version()
+        self.version.status = "RETIRED"
+        self.version.save()
+        response = self.client.get(self.page(), {"training_version_id": draft.pk})
+        self.assertContains(response, "Safety v1")
+        self.assertNotContains(response, draft.title)
+        self.assertContains(response, "Training progress summary")
+        for lesson_id in (self.video_lesson.pk, 999999, "invalid"):
+            self.assertEqual(self.client.get(self.page(), {"lesson": lesson_id}).status_code, 404)
+        self.assertEqual(self.client.get("/assignments/999999/").status_code, 404)
+
+    def test_latest_assessment_result_and_issued_revoked_certificate_preserve_permissions(self):
+        from certifications.services import issue_completed_assignment_certificate
+
+        self.complete_lessons()
+        self.finish_attempt(self.quiz, correct=False)
+        self.finish_attempt(self.quiz, correct=True)
+        self.finish_attempt(self.final)
+        self.assignment.status = "COMPLETED"
+        self.assignment.completed_at = timezone.now()
+        self.assignment.save()
+        certificate = issue_completed_assignment_certificate(self.assignment.pk, actor=self.user)
+        response = self.client.get(self.page())
+        self.assertEqual(response.context["management_progress"]["certificate_status"], "Issued")
+        self.assertContains(response, "Latest attempt: 2")
+        self.assertNotContains(response, "Not passed")
+        self.assertNotContains(response, f'href="/certificates/{certificate.pk}/"')
+        self.assertNotContains(response, certificate.certificate_number)
+        certificate.revoked_at = timezone.now()
+        certificate.revoked_by = self.user
+        certificate.revocation_reason = "Private isolated fixture reason"
+        certificate.save()
+        response = self.client.get(self.page())
+        self.assertEqual(response.context["management_progress"]["certificate_status"], "Revoked")
+        self.assertNotContains(response, certificate.revocation_reason)
 
 
 class ManagerWebsiteAssignmentTests(CurriculumTestCase):

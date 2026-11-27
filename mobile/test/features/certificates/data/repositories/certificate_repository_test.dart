@@ -4,37 +4,36 @@ import 'package:mocktail/mocktail.dart';
 import 'package:training_app/core/errors/api_error.dart';
 import 'package:training_app/core/network/dio_client.dart';
 import 'package:training_app/features/certificates/data/repositories/certificate_repository.dart';
+
 class _MockApiClient extends Mock implements ApiClient {}
+
 class _MockDio extends Mock implements Dio {}
 
 Map<String, dynamic> _certJson(int id) => {
-      'id': id,
-      'certificate_number': 'GN-CERT-$id',
-      'training_title': 'Training $id',
-      'version_number': 1,
-      'issued_at': '2024-01-0${id}T00:00:00Z',
-      'is_revoked': false,
-    };
+  'id': id,
+  'certificate_number': 'GN-CERT-$id',
+  'training_title': 'Training $id',
+  'version_number': 1,
+  'issued_at': '2024-01-0${id}T00:00:00Z',
+  'is_revoked': false,
+};
 
 Map<String, dynamic> _detailJson(int id) => {
-      'id': id,
-      'certificate_number': 'GN-DET-$id',
-      'training_title': 'Training Detail $id',
-      'version_number': 1,
-      'employee_name': 'Test Employee',
-      'employee_code': 'GN-EMP-001',
-      'issued_at': '2024-02-01T00:00:00Z',
-      'is_revoked': false,
-      'revoked_at': null,
-      'assignment_id': id * 10,
-      'has_document': false,
-    };
+  'id': id,
+  'certificate_number': 'GN-DET-$id',
+  'training_title': 'Training Detail $id',
+  'version_number': 1,
+  'employee_name': 'Test Employee',
+  'employee_code': 'GN-EMP-001',
+  'issued_at': '2024-02-01T00:00:00Z',
+  'is_revoked': false,
+  'revoked_at': null,
+  'assignment_id': id * 10,
+  'has_document': false,
+};
 
-Response<dynamic> _okResponse(dynamic data) => Response(
-      data: data,
-      statusCode: 200,
-      requestOptions: RequestOptions(),
-    );
+Response<dynamic> _okResponse(dynamic data) =>
+    Response(data: data, statusCode: 200, requestOptions: RequestOptions());
 
 void main() {
   late _MockApiClient mockApiClient;
@@ -54,8 +53,12 @@ void main() {
 
   group('getCertificates', () {
     test('returns empty list when API returns empty results', () async {
-      when(() => mockDio.get('/certificates/', cancelToken: any(named: 'cancelToken')))
-          .thenAnswer(
+      when(
+        () => mockDio.get(
+          '/certificates/',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
         (_) async => _okResponse({'count': 0, 'next': null, 'results': []}),
       );
 
@@ -64,8 +67,12 @@ void main() {
     });
 
     test('returns single-page list correctly', () async {
-      when(() => mockDio.get('/certificates/', cancelToken: any(named: 'cancelToken')))
-          .thenAnswer(
+      when(
+        () => mockDio.get(
+          '/certificates/',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
         (_) async => _okResponse({
           'count': 2,
           'next': null,
@@ -112,7 +119,10 @@ void main() {
 
     test('throws ApiError on DioException', () async {
       when(
-        () => mockDio.get('/certificates/', cancelToken: any(named: 'cancelToken')),
+        () => mockDio.get(
+          '/certificates/',
+          cancelToken: any(named: 'cancelToken'),
+        ),
       ).thenThrow(
         DioException(
           type: DioExceptionType.connectionError,
@@ -122,10 +132,7 @@ void main() {
       when(() => mockApiClient.mapExceptionToApiError(any()))
           .thenReturn(ApiError.networkFailure());
 
-      expect(
-        () => repository.getCertificates(),
-        throwsA(isA<ApiError>()),
-      );
+      expect(() => repository.getCertificates(), throwsA(isA<ApiError>()));
     });
   });
 
@@ -160,6 +167,34 @@ void main() {
       );
     });
 
+    test('rejects a different certificate ID in the detail response', () async {
+      when(
+        () => mockDio.get(
+          '/certificates/5/',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => _okResponse(_detailJson(6)));
+      final failure = ApiError.unexpected();
+      when(() => mockApiClient.mapExceptionToApiError(any()))
+          .thenReturn(failure);
+
+      await expectLater(
+        repository.getCertificateDetail(5),
+        throwsA(same(failure)),
+      );
+      final error = verify(
+        () => mockApiClient.mapExceptionToApiError(captureAny()),
+      ).captured.single;
+      expect(
+        error,
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          'Certificate response does not match the requested certificate.',
+        ),
+      );
+    });
+
     test('maps 404 DioException to ApiError', () async {
       when(
         () => mockDio.get(
@@ -171,15 +206,20 @@ void main() {
           type: DioExceptionType.badResponse,
           response: Response(
             statusCode: 404,
-            data: {'error': {'code': 'not_found', 'message': 'Not found.', 'fields': {}}},
+            data: {
+              'error': {
+                'code': 'not_found',
+                'message': 'Not found.',
+                'fields': {},
+              },
+            },
             requestOptions: RequestOptions(),
           ),
           requestOptions: RequestOptions(),
         ),
       );
-      when(() => mockApiClient.mapExceptionToApiError(any())).thenReturn(
-        ApiError(message: 'Not found.', statusCode: 404),
-      );
+      when(() => mockApiClient.mapExceptionToApiError(any()))
+          .thenReturn(ApiError(message: 'Not found.', statusCode: 404));
 
       await expectLater(
         repository.getCertificateDetail(999),

@@ -6,6 +6,7 @@ from unittest import skipUnless
 from unittest.mock import patch
 from uuid import uuid4
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.db import close_old_connections, connection, models
@@ -13,22 +14,23 @@ from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from audit.models import AuditLog
+from config.role_requirement_test_config import ENGINE, require_verified_database
 from training.models import Training, TrainingVersion
 
 from . import training_management_services as services
 from .training_management_views import TrainingVersionHistoryView
 
 
-@skipUnless(connection.vendor == "mysql", "MySQL row-lock concurrency tests require MySQL.")
+@skipUnless(
+    settings.DATABASES.get("default", {}).get("ENGINE") == ENGINE
+    and hasattr(settings, "INTEGRATION_TEST_CONFIG"),
+    "Requires the explicitly approved guarded MySQL integration profile.",
+)
 class TrainingCatalogConcurrencyTests(SimpleTestCase):
     databases = {"default"}
 
     def assert_isolated_database(self):
-        self.assertEqual(connection.vendor, "mysql")
-        self.assertEqual(connection.settings_dict["NAME"], "test_gardens_training")
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT DATABASE()")
-            self.assertEqual(cursor.fetchone()[0], "test_gardens_training")
+        require_verified_database(connection, settings)
 
     def setUp(self):
         self.assert_isolated_database()

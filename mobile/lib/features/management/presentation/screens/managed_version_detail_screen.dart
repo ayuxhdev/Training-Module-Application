@@ -155,21 +155,11 @@ class _ManagedVersionDetailScreenState
     final asyncVersion = ref.watch(managedVersionDetailProvider(versionId));
     final theme = Theme.of(context);
     final identity = auth.identity;
-    final isDraft = asyncVersion.asData?.value.status.toUpperCase() == 'DRAFT';
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Version details'),
         actions: [
-          if (isDraft && canCreateModules(identity))
-            IconButton(
-              tooltip: 'Create module',
-              onPressed: () => context.push(
-                '/workspace/training/versions/$versionId/modules/new',
-                extra: asyncVersion.asData?.value,
-              ),
-              icon: const Icon(Icons.add_box_outlined),
-            ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: () =>
@@ -197,9 +187,10 @@ class _ManagedVersionDetailScreenState
           final canCreateAss =
               status == 'DRAFT' && canCreateAssessments(identity);
           final lifecyclePolicy = switch (status) {
-            'PUBLISHED' => 'This version is PUBLISHED and immutable. Content cannot be edited or deleted. Active learner assignments are pinned to this version.',
-            'DRAFT' => 'This version is in DRAFT. Content, modules, lessons, and media can be configured before publication.',
-            'RETIRED' => 'This version is RETIRED. Existing learners may complete their training, but no new assignments can be made.',
+            'PUBLISHED' =>
+              'Read-only. Existing assignments stay linked to this version.',
+            'DRAFT' => 'Edit the curriculum before publishing.',
+            'RETIRED' => 'Existing learners can finish this version. New assignments are unavailable.',
             _ => 'Version status: $status',
           };
 
@@ -222,25 +213,11 @@ class _ManagedVersionDetailScreenState
                       ? version.description
                       : (version.trainingTitle ?? 'Curriculum structure'),
                   icon: Icons.layers_outlined,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      VersionLifecycleBadge(status: version.status),
-                      const StatusBadge(
-                        text: 'MANAGEMENT VIEW',
-                        status: BadgeStatus.info,
-                      ),
-                    ],
-                  ),
+                  child: VersionLifecycleBadge(status: version.status),
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
-                // Lifecycle and architecture summary
-                const SectionHeading(
-                  'Lifecycle status',
-                  subtitle: 'Garden’s Need enforces strict immutability and version rules.',
-                ),
+                const SectionHeading('Lifecycle status'),
                 CustomCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

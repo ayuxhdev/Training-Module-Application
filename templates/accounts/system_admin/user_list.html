@@ -4,7 +4,7 @@
 {% block system_content %}
 <section class="org-panel" aria-labelledby="account-search-heading">
   <header class="org-panel-heading"><h2 id="account-search-heading">Find accounts</h2></header>
-  <form method="get" class="form-stack">
+  <form method="get" class="form-stack management-search-form">
     {{ search_form.non_field_errors }}
     <p><label for="id_q">{{ search_form.q.label }}</label>
       <input type="search" id="id_q" name="q" maxlength="150" value="{{ search_form.q.value|default_if_none:'' }}" autocomplete="off" aria-describedby="account-search-help{% if search_form.q.errors %} account-search-errors{% endif %}"{% if search_form.q.errors %} aria-invalid="true"{% endif %}>
@@ -15,10 +15,18 @@
   </form>
 </section>
 <section class="org-panel" aria-labelledby="account-directory-heading">
-  <header class="org-panel-heading"><h2 id="account-directory-heading">User accounts</h2><p>{{ paginator.count }} matching account{{ paginator.count|pluralize }}</p></header>
+  <header class="org-panel-heading"><h2 id="account-directory-heading">User accounts</h2></header>
+  <div class="management-results-bar">
+    <p class="muted">{{ paginator.count }} matching account{{ paginator.count|pluralize }}</p>
+    <nav class="record-actions" aria-label="User account pages">
+      {% if page_obj.has_previous %}<a class="btn btn-secondary" href="?q={{ search_term|urlencode }}&amp;page={{ page_obj.previous_page_number }}">Previous page</a>{% endif %}
+      <p class="muted" aria-live="polite">Page {{ page_obj.number }} of {{ paginator.num_pages }}</p>
+      {% if page_obj.has_next %}<a class="btn btn-secondary" href="?q={{ search_term|urlencode }}&amp;page={{ page_obj.next_page_number }}">Next page</a>{% endif %}
+    </nav>
+  </div>
   <p class="management-scroll-hint" id="account-table-help">Scroll horizontally if needed. Keyboard: focus this table region and use the arrow keys.</p>
   <div class="table-scroll org-table-scroll management-table-region" role="region" aria-label="User accounts" aria-describedby="account-table-help" tabindex="0">
-    <table class="org-table">
+    <table class="org-table system-user-table">
       <thead><tr><th scope="col">Username</th><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Status</th><th scope="col">System access</th><th scope="col">Groups</th><th scope="col">Linked Employee</th><th scope="col">Last login</th><th scope="col">Actions</th></tr></thead>
       <tbody>
       {% for account in accounts %}
@@ -37,10 +45,5 @@
       </tbody>
     </table>
   </div>
-  <nav class="record-actions" aria-label="User account pages">
-    {% if page_obj.has_previous %}<a class="btn btn-secondary" href="?q={{ search_term|urlencode }}&amp;page={{ page_obj.previous_page_number }}">Previous page</a>{% endif %}
-    <p aria-live="polite">Page {{ page_obj.number }} of {{ paginator.num_pages }}</p>
-    {% if page_obj.has_next %}<a class="btn btn-secondary" href="?q={{ search_term|urlencode }}&amp;page={{ page_obj.next_page_number }}">Next page</a>{% endif %}
-  </nav>
 </section>
 {% endblock %}

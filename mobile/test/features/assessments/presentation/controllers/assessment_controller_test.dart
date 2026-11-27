@@ -201,6 +201,7 @@ void main() {
   for (final error in [
     ApiError.timeout(),
     ApiError.networkFailure(),
+    ApiError(message: 'Request timed out', statusCode: 408),
     ApiError(message: 'Already submitted', statusCode: 409),
     ApiError(message: 'Server unavailable', statusCode: 503),
   ]) {
@@ -289,6 +290,86 @@ void main() {
       expect(container.read(provider).error, isA<ApiError>());
     },
   );
+
+  test('reopening an uncertain attempt reads its result without starting another', () async {
+    await controller.startOrResume();
+    controller.selectAnswer(11, 21);
+    when(
+      () => repository.submitAttempt(
+        7,
+        any(),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenThrow(ApiError.timeout());
+    when(() => repository.getAttempt(7, cancelToken: any(named: 'cancelToken')))
+        .thenThrow(ApiError.networkFailure());
+    await controller.submit();
+    expect(container.read(provider).phase, AssessmentPhase.uncertain);
+
+    // The server may have committed the submission while its response was lost.
+    when(() => repository.getAttempt(7, cancelToken: any(named: 'cancelToken')))
+        .thenAnswer((_) async => attempt(status: 'SUBMITTED', passed: false));
+    await controller.startOrResume();
+
+    expect(
+      container.read(provider).attempt!.summary.status,
+      AttemptStatus.submitted,
+    );
+    expect(container.read(provider).attempt!.summary.passed, isFalse);
+    expect(container.read(provider).selectedAnswers, isEmpty);
+    verify(
+      () => repository.startOrResume(
+        1,
+        2,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+    verify(
+      () => repository.submitAttempt(
+        7,
+        any(),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+    verify(
+      () => repository.getAttempt(7, cancelToken: any(named: 'cancelToken')),
+    ).called(2);
+  });
+
+  test('failed reopen retains answers and only a server read enables submission again', () async {
+    await controller.startOrResume();
+    controller.selectAnswer(11, 21);
+    when(() => repository.getAttempt(7, cancelToken: any(named: 'cancelToken')))
+        .thenThrow(ApiError.networkFailure());
+    await controller.startOrResume();
+    expect(container.read(provider).canSubmit, isFalse);
+    expect(container.read(provider).selectedAnswers, {11: 21});
+    expect(container.read(provider).attempt!.summary.passed, isNull);
+    await controller.submit();
+    verifyNever(
+      () => repository.submitAttempt(
+        7,
+        any(),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+
+    when(() => repository.getAttempt(7, cancelToken: any(named: 'cancelToken')))
+        .thenAnswer((_) async => attempt());
+    await controller.retry();
+    expect(container.read(provider).canSubmit, isTrue);
+    expect(container.read(provider).selectedAnswers, {11: 21});
+    verify(
+      () => repository.startOrResume(
+        1,
+        2,
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).called(1);
+    verify(
+      () => repository.getAttempt(7, cancelToken: any(named: 'cancelToken')),
+    ).called(2);
+  });
 
   for (final code in [400, 401, 403]) {
     test(

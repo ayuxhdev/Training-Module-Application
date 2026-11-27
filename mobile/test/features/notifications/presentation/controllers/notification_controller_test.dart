@@ -273,6 +273,173 @@ void main() {
     },
   );
 
+  test(
+    'a successful mark-read refreshes count after a filter supersedes it',
+    () async {
+      await load();
+      final mutation = Completer<TrainingNotification>();
+      when(() => repository.markRead(1, cancelToken: any(named: 'cancelToken')))
+          .thenAnswer((_) => mutation.future);
+      final controller = container.read(notificationListProvider.notifier);
+      final pending = controller.markRead(1);
+      when(
+        () => repository.getPage(
+          page: 1,
+          status: NotificationReadFilter.all,
+          query: 'latest',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => noticePage(items: [notice(id: 2)], count: 1));
+      await controller.applyFilter(query: 'latest');
+      when(
+        () => repository.getUnreadCount(cancelToken: any(named: 'cancelToken')),
+      ).thenAnswer((_) async => 7);
+      mutation.complete(notice(read: true));
+      await pending;
+
+      expect(await container.read(notificationUnreadCountProvider.future), 7);
+      expect(
+        container.read(notificationListProvider).requireValue!.items.single.id,
+        2,
+      );
+    },
+  );
+
+  test(
+    'a successful mark-all refreshes count after a filter supersedes it',
+    () async {
+      await load();
+      final mutation = Completer<int>();
+      when(() => repository.markAllRead(cancelToken: any(named: 'cancelToken')))
+          .thenAnswer((_) => mutation.future);
+      final controller = container.read(notificationListProvider.notifier);
+      final pending = controller.markAllRead();
+      when(
+        () => repository.getPage(
+          page: 1,
+          status: NotificationReadFilter.all,
+          query: 'latest',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => noticePage(items: [notice(id: 2)], count: 1));
+      await controller.applyFilter(query: 'latest');
+      when(
+        () => repository.getUnreadCount(cancelToken: any(named: 'cancelToken')),
+      ).thenAnswer((_) async => 6);
+      mutation.complete(1);
+      await pending;
+
+      expect(await container.read(notificationUnreadCountProvider.future), 6);
+      expect(
+        container.read(notificationListProvider).requireValue!.items.single.id,
+        2,
+      );
+    },
+  );
+
+  test(
+    'filter errors and retries never expose cards from a different result set',
+    () async {
+      await load();
+      final pendingPage = Completer<NotificationPage>();
+      when(
+        () => repository.getPage(
+          page: 1,
+          status: NotificationReadFilter.all,
+          query: 'restricted',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => pendingPage.future);
+
+      final controller = container.read(notificationListProvider.notifier);
+      final firstRequest = controller.applyFilter(query: 'restricted');
+      expect(
+        container.read(notificationListProvider).requireValue!.items,
+        isEmpty,
+      );
+      pendingPage.completeError(
+        ApiError(message: 'Permission denied.', statusCode: 403),
+        StackTrace.current,
+      );
+      await firstRequest;
+      expect(
+        container.read(notificationListProvider).requireValue!.items,
+        isEmpty,
+      );
+      expect(
+        container
+            .read(notificationListProvider)
+            .requireValue!
+            .filterError
+            ?.statusCode,
+        403,
+      );
+
+      when(
+        () => repository.getPage(
+          page: 1,
+          status: NotificationReadFilter.all,
+          query: 'restricted',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenThrow(ApiError(message: 'Permission denied.', statusCode: 403));
+      await controller.applyFilter();
+      expect(
+        container.read(notificationListProvider).requireValue!.items,
+        isEmpty,
+      );
+
+      when(
+        () => repository.getPage(
+          page: 1,
+          status: NotificationReadFilter.all,
+          query: 'restricted',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => noticePage(items: [notice(id: 2)], count: 1));
+      await controller.applyFilter();
+      expect(
+        container
+            .read(notificationListProvider)
+            .requireValue!
+            .items
+            .map((item) => item.id),
+        [2],
+      );
+      expect(controller.activeQuery, 'restricted');
+    },
+  );
+
+  test('a superseded mutation cannot leave the new filter busy', () async {
+    await load();
+    final mutation = Completer<TrainingNotification>();
+    when(() => repository.markRead(1, cancelToken: any(named: 'cancelToken')))
+        .thenAnswer((_) => mutation.future);
+    when(
+      () => repository.getPage(
+        page: 1,
+        status: NotificationReadFilter.all,
+        query: 'latest',
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenThrow(ApiError.networkFailure());
+
+    final controller = container.read(notificationListProvider.notifier);
+    final pendingMutation = controller.markRead(1);
+    await controller.applyFilter(query: 'latest');
+    var feed = container.read(notificationListProvider).requireValue!;
+    expect(feed.busy, isFalse);
+    expect(feed.filterError, isNotNull);
+
+    mutation.complete(notice(read: true));
+    await pendingMutation;
+    feed = container.read(notificationListProvider).requireValue!;
+    expect(feed.busy, isFalse);
+    expect(feed.query, 'latest');
+    expect(feed.items, isEmpty);
+    expect(feed.filterError, isNotNull);
+  });
+
   test('successful mark-all followed by failed reload shows recovery, not stale read buttons', () async {
     await load();
     when(
@@ -474,5 +641,251 @@ void main() {
       );
     }
     verifyZeroInteractions(repository);
+  });
+
+  group('NotificationController - Server-Side Filtering and Search', () {
+    test(
+      'applyFilter sends server-side status and query and resets pagination',
+      () async {
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: NotificationReadFilter.unread,
+            query: 'safety',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => noticePage(
+            items: [notice(id: 10, type: 'OVERDUE')],
+            count: 1,
+            more: false,
+          ),
+        );
+        await load();
+        final controller = container.read(notificationListProvider.notifier);
+        await controller.applyFilter(
+          status: NotificationReadFilter.unread,
+          query: 'safety',
+        );
+        final feed = container.read(notificationListProvider).requireValue!;
+        expect(feed.status, NotificationReadFilter.unread);
+        expect(feed.query, 'safety');
+        expect(feed.items.single.id, 10);
+        expect(feed.count, 1);
+        expect(feed.nextPage, isNull);
+      },
+    );
+
+    test('marking unread refreshes page one without skipping the shifted last item', () async {
+      final firstPage = List.generate(20, (index) => notice(id: index + 1));
+      final refreshedPage = List.generate(
+        21,
+        (index) => index + 1,
+      ).where((id) => id != 10).map((id) => notice(id: id)).toList();
+      var unreadPageRequests = 0;
+      when(
+        () => repository.getPage(
+          page: 1,
+          status: NotificationReadFilter.unread,
+          query: 'safety',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async {
+        unreadPageRequests++;
+        return unreadPageRequests == 1
+            ? noticePage(items: firstPage, count: 21, more: true)
+            : noticePage(items: refreshedPage, count: 20);
+      });
+      when(
+        () => repository.markRead(10, cancelToken: any(named: 'cancelToken')),
+      ).thenAnswer((_) async => notice(id: 10, read: true));
+
+      await load();
+      final controller = container.read(notificationListProvider.notifier);
+      await controller.applyFilter(
+        status: NotificationReadFilter.unread,
+        query: 'safety',
+      );
+      expect(
+        container
+            .read(notificationListProvider)
+            .requireValue!
+            .items
+            .map((item) => item.id)
+            .toList(),
+        List.generate(20, (index) => index + 1),
+      );
+
+      when(
+        () => repository.getUnreadCount(cancelToken: any(named: 'cancelToken')),
+      ).thenAnswer((_) async => 20);
+      await controller.markRead(10);
+      final feed = container.read(notificationListProvider).requireValue!;
+      final ids = feed.items.map((item) => item.id).toList();
+      expect(ids, refreshedPage.map((item) => item.id).toList());
+      expect(ids.toSet(), hasLength(20));
+      expect(ids, contains(21));
+      expect(ids, isNot(contains(10)));
+      expect(feed.count, 20);
+      expect(feed.nextPage, isNull);
+      expect(feed.status, NotificationReadFilter.unread);
+      expect(feed.query, 'safety');
+      expect(await container.read(notificationUnreadCountProvider.future), 20);
+
+      await controller.loadMore();
+      verify(
+        () => repository.markRead(10, cancelToken: any(named: 'cancelToken')),
+      ).called(1);
+      verifyNever(
+        () => repository.getPage(
+          page: 2,
+          status: NotificationReadFilter.unread,
+          query: 'safety',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      );
+    });
+
+    test(
+      'loadMore preserves active status and query to server repository',
+      () async {
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: NotificationReadFilter.read,
+            query: 'fire',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => noticePage(
+            items: [notice(id: 5, read: true)],
+            count: 2,
+            more: true,
+          ),
+        );
+        when(
+          () => repository.getPage(
+            page: 2,
+            status: NotificationReadFilter.read,
+            query: 'fire',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async => noticePage(
+            items: [notice(id: 6, read: true)],
+            count: 2,
+            more: false,
+          ),
+        );
+        await load();
+        final controller = container.read(notificationListProvider.notifier);
+        await controller.applyFilter(
+          status: NotificationReadFilter.read,
+          query: 'fire',
+        );
+        await controller.loadMore();
+        final feed = container.read(notificationListProvider).requireValue!;
+        expect(feed.items.map((e) => e.id), [5, 6]);
+        expect(feed.status, NotificationReadFilter.read);
+        expect(feed.query, 'fire');
+        verify(
+          () => repository.getPage(
+            page: 2,
+            status: NotificationReadFilter.read,
+            query: 'fire',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).called(1);
+      },
+    );
+
+    test(
+      'rapid filter changes cancel and ignore stale in-flight responses',
+      () async {
+        await load();
+        final slowPage = Completer<NotificationPage>();
+        late CancelToken slowToken;
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: NotificationReadFilter.unread,
+            query: 'first',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer((call) {
+          slowToken = call.namedArguments[#cancelToken] as CancelToken;
+          return slowPage.future;
+        });
+        when(
+          () => repository.getPage(
+            page: 1,
+            status: NotificationReadFilter.read,
+            query: 'second',
+            cancelToken: any(named: 'cancelToken'),
+          ),
+        ).thenAnswer(
+          (_) async =>
+              noticePage(items: [notice(id: 99, read: true)], count: 1),
+        );
+
+        final controller = container.read(notificationListProvider.notifier);
+        final first = controller.applyFilter(
+          status: NotificationReadFilter.unread,
+          query: 'first',
+        );
+        expect(
+          container.read(notificationListProvider).requireValue!.items,
+          isEmpty,
+        );
+        final second = controller.applyFilter(
+          status: NotificationReadFilter.read,
+          query: 'second',
+        );
+        expect(slowToken.isCancelled, isTrue);
+        slowPage.complete(noticePage(items: [notice(id: 1)]));
+        await Future.wait([first, second]);
+
+        final feed = container.read(notificationListProvider).requireValue!;
+        expect(feed.status, NotificationReadFilter.read);
+        expect(feed.query, 'second');
+        expect(feed.items.single.id, 99);
+      },
+    );
+
+    test('account switch invalidates a pending filter and ignores its late response', () async {
+      await load();
+      final oldPage = Completer<NotificationPage>();
+      when(
+        () => repository.getPage(
+          page: 1,
+          status: NotificationReadFilter.unread,
+          query: 'old account',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) => oldPage.future);
+      final controller = container.read(notificationListProvider.notifier);
+      final pending = controller.applyFilter(
+        status: NotificationReadFilter.unread,
+        query: 'old account',
+      );
+
+      when(
+        () => repository.getPage(
+          page: 1,
+          status: NotificationReadFilter.all,
+          query: '',
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((_) async => noticePage(items: [notice(id: 2)]));
+      auth.change(AuthAuthenticated(noticeEmployee('B')));
+      await container.read(notificationListProvider.future);
+      oldPage.complete(noticePage(items: [notice(id: 99)]));
+      await pending;
+
+      final feed = container.read(notificationListProvider).requireValue!;
+      expect(feed.status, NotificationReadFilter.all);
+      expect(feed.query, isEmpty);
+      expect(feed.items.single.id, 2);
+    });
   });
 }

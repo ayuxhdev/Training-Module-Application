@@ -269,8 +269,9 @@ class AuditPresentationTemplateTests(SimpleTestCase):
         self.assertNotIn('<th scope="row">Title</th>', overview)
         self.assertIn("Draft", overview)
         self.assertIn("Published", overview)
-        self.assertIn(escape(audit_json(entry.before_data)), html)
-        self.assertIn(escape(audit_json(entry.after_data)), html)
+        self.assertNotIn("<pre>", html)
+        self.assertNotIn(escape(audit_json(entry.before_data)), html)
+        self.assertNotIn(escape(audit_json(entry.after_data)), html)
 
     def test_creation_is_a_two_column_recorded_snapshot_not_a_modification(self):
         html = self.render([event(after={"title": "Safety", "status": "DRAFT"},
@@ -283,6 +284,23 @@ class AuditPresentationTemplateTests(SimpleTestCase):
         self.assertNotIn('<th scope="col">Before</th>', overview)
         self.assertNotIn("Not recorded", overview)
         self.assertIn('aria-label="Recorded values" tabindex="0"', overview)
+
+    def test_nested_values_are_readable_in_summary_and_exact_in_raw_snapshots(self):
+        entry = event(
+            {"details": {"groups": []}},
+            {"details": {"groups": ["Operations", {"<unsafe>": ["Trainer", None]}]}},
+        )
+        html = self.render([entry])
+        overview = self.overview(html)
+        self.assertIn('<dl class="audit-value-map">', overview)
+        self.assertIn('<ol class="audit-value-list">', overview)
+        self.assertIn("<dt>&lt;unsafe&gt;</dt>", overview)
+        self.assertNotIn("<unsafe>", overview)
+        for value in ("Empty list", "Operations", "Trainer", "Not set"):
+            self.assertIn(value, overview)
+        self.assertNotIn("<pre>", html)
+        self.assertNotIn(escape(audit_json(entry.before_data)), html)
+        self.assertNotIn(escape(audit_json(entry.after_data)), html)
 
     def test_partial_snapshots_explain_comparison_is_unavailable(self):
         for before, after, label in (({}, {"status": "PUBLISHED"}, "after"),
@@ -377,9 +395,10 @@ class AuditPresentationTemplateTests(SimpleTestCase):
         original = deepcopy(vars(entry))
         html = self.render([entry])
         blocks = PreContents(html).blocks
-        self.assertEqual(len(blocks), 2)
-        self.assertEqual(json.loads(blocks[0]), entry.before_data)
-        self.assertEqual(json.loads(blocks[1]), entry.after_data)
+        self.assertEqual(blocks, [])
+        self.assertNotIn("<pre>", html)
+        self.assertNotIn("Original before data", html)
+        self.assertNotIn("Original after data", html)
         technical = html.split('<details class="audit-raw">', 1)[1]
         self.assertIn("training.trainingversion.published", technical)
         self.assertIn("training.trainingversion", technical)

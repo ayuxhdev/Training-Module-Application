@@ -5,8 +5,9 @@ created only after preflight, never reused, and retained even if migrations fail
 No DROP privilege is accepted. Cleanup/provisioning need separate owner approval.
 """
 
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import os
+import threading
 from unittest.mock import patch
 
 from django.conf import settings
@@ -18,7 +19,7 @@ from django.test.runner import DiscoverRunner
 from django.test.utils import iter_test_cases
 
 from .role_requirement_test_config import (
-    UnsafeTestTarget, mark_verified, preflight, validate_execution_approval,
+    UnsafeTestTarget, mark_verified, preflight, validate_config_approval, validate_execution_approval,
     validate_database, validate_settings, verify_identity,
 )
 
@@ -38,17 +39,130 @@ CONCURRENCY_METHODS = frozenset({
 })
 CONCURRENCY_IDS = frozenset(f"{CONCURRENCY_CLASS}.{method}" for method in CONCURRENCY_METHODS)
 _active_runner = None
+_runner_lock = threading.Lock()
+
+
+def connection_failure(connection, error, stage):
+    """Describe a failed gate without propagating driver messages or locals."""
+    from django.db import Error as DjangoDatabaseError
+    from MySQLdb import Error as DriverError
+
+    def details(failure, category):
+        code = None
+        if isinstance(failure, (DjangoDatabaseError, DriverError)) and failure.args:
+            candidate = failure.args[0]
+            if type(candidate) is int and 0 < candidate <= 65535:
+                code = candidate
+        return f"stage={category}, exception={type(failure).__name__}, mysql_error_code={code}"
+
+    diagnostic = details(error, stage)
+    try:
+        connection.close()
+    except Exception as cleanup_error:
+        diagnostic += "; " + details(cleanup_error, "connection_close")
+    return UnsafeTestTarget(
+        "Disposable connection identity verification failed; no fallback attempted. " + diagnostic
+    )
 
 
 def require_authorized_connection(connection):
     runner = _active_runner
     if runner is None or runner.config is not validate_settings(settings):
         raise UnsafeTestTarget("Database access requires the active guarded runner.")
-    validate_execution_approval(os.environ, runner.config.owner)
+    validate_config_approval(os.environ, runner.config)
     runner.validate_connection(connection)
 
 
-class RoleRequirementTestRunner(DiscoverRunner):
+class GuardedMySQLRunner(DiscoverRunner):
+    """Shared lifecycle; only explicit profile subclasses authorize execution."""
+
+    def _run_guarded(self, labels, **kwargs):
+        with self._guarded_lifecycle():
+            return super().run_tests(labels, **kwargs)
+
+    @contextmanager
+    def _guarded_lifecycle(self):
+        if type(self).__module__ + "." + type(self).__name__ != self.config.runner:
+            raise UnsafeTestTarget("The configured guarded runner must own execution.")
+        with ExitStack() as stack:
+            if _active_runner is not None or not _runner_lock.acquire(blocking=False):
+                raise UnsafeTestTarget("Another guarded runner already owns this process.")
+            stack.callback(_runner_lock.release)
+            self.stack = stack
+            self.phase = "discovery"
+            self.original_connect = BaseDatabaseWrapper.connect
+            mark_verified(None)
+            self.stack.enter_context(patch(__name__ + "._active_runner", self))
+            # This affects only this private runner process, including its threads.
+            self.stack.enter_context(patch.object(
+                BaseDatabaseWrapper, "connect",
+                lambda connection: self.connect_checked(connection),
+            ))
+            try:
+                yield
+            finally:
+                mark_verified(None)
+                self.phase = "finished"
+                connections.close_all()
+
+    def validate_connection(self, connection):
+        maintenance = connection.alias == "__no_db__" and self.phase == "preflight"
+        if not maintenance and (connection.alias != "default" or self.phase not in {"migrating", "running"}):
+            raise UnsafeTestTarget("Database access outside the verified test lifecycle.")
+        validate_database(self.config, connection.settings_dict, maintenance=maintenance)
+        return maintenance
+
+    def connect_checked(self, connection):
+        maintenance = self.validate_connection(connection)
+        stage = "django_connection_initialization"
+        try:
+            self.original_connect(connection)
+            stage = "server_identity"
+            # Verify through the DB-API cursor before returning a usable connection.
+            cursor = connection.connection.cursor()
+            try:
+                verify_identity(cursor, self.config, None if maintenance else self.config.database)
+            finally:
+                cursor.close()
+        except Exception as error:
+            raise connection_failure(connection, error, stage) from None
+
+    def setup_databases(self, **kwargs):
+        validate_settings(settings, setup=True)
+        if set(kwargs.get("aliases", ())) != {"default"} or kwargs.get("serialized_aliases"):
+            raise UnsafeTestTarget("Only one non-serialized disposable database is supported.")
+        self.phase = "preflight"
+        connection = connections["default"]
+        # This maintenance connection selects no database and holds the owner
+        # advisory lock until the entire run (including failures) has ended.
+        cursor = self.stack.enter_context(connection._nodb_cursor())
+        preflight(cursor, self.config)
+        self.preflight_complete(cursor)
+        cursor.execute(
+            f"CREATE DATABASE `{self.config.database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
+        )
+        # CREATE errors propagate: no DROP, IF NOT EXISTS, retry or reuse path.
+        self.phase = "migrating"
+        mark_verified(self.config)
+        with connection.cursor() as selected:
+            verify_identity(selected, self.config, self.config.database)
+        call_command(
+            "migrate", database="default", interactive=False,
+            verbosity=max(self.verbosity - 1, 0), run_syncdb=True,
+        )
+        self.phase = "running"
+        return self.config.database
+
+    def teardown_databases(self, old_config, **kwargs):
+        # Deliberately never invoke Django's destroy_test_db(), even on failure.
+        self.phase = "teardown"
+        connections.close_all()
+
+    def preflight_complete(self, cursor):
+        pass
+
+
+class RoleRequirementTestRunner(GuardedMySQLRunner):
     def run_tests(self, test_labels=None, **kwargs):
         self.config = validate_settings(settings, setup=True)
         if self.parallel not in (0, 1) or not self.keepdb or self.interactive or self.debug_sql:
@@ -61,22 +175,7 @@ class RoleRequirementTestRunner(DiscoverRunner):
         labels = tuple(test_labels or TEST_MODULES)
         if labels != TEST_MODULES:
             raise UnsafeTestTarget("Only the two complete role-requirement modules are supported.")
-        self.phase = "discovery"
-        self.original_connect = BaseDatabaseWrapper.connect
-        mark_verified(None)
-        with ExitStack() as self.stack:
-            self.stack.enter_context(patch(__name__ + "._active_runner", self))
-            # This affects only this private runner process, including its threads.
-            self.stack.enter_context(patch.object(
-                BaseDatabaseWrapper, "connect",
-                lambda connection: self.connect_checked(connection),
-            ))
-            try:
-                return super().run_tests(labels, **kwargs)
-            finally:
-                mark_verified(None)
-                self.phase = "finished"
-                connections.close_all()
+        return self._run_guarded(labels, **kwargs)
 
     def build_suite(self, test_labels=None, **kwargs):
         suite = super().build_suite(test_labels, **kwargs)
@@ -109,54 +208,3 @@ class RoleRequirementTestRunner(DiscoverRunner):
         if not failures:
             self.log("Required concurrency coverage: 6/6 passed without skips.")
         return failures
-
-    def validate_connection(self, connection):
-        maintenance = connection.alias == "__no_db__" and self.phase == "preflight"
-        if not maintenance and (connection.alias != "default" or self.phase not in {"migrating", "running"}):
-            raise UnsafeTestTarget("Database access outside the verified test lifecycle.")
-        validate_database(self.config, connection.settings_dict, maintenance=maintenance)
-        return maintenance
-
-    def connect_checked(self, connection):
-        maintenance = self.validate_connection(connection)
-        try:
-            self.original_connect(connection)
-            # Verify through the DB-API cursor before returning a usable connection.
-            cursor = connection.connection.cursor()
-            try:
-                verify_identity(cursor, self.config, None if maintenance else self.config.database)
-            finally:
-                cursor.close()
-        except Exception:
-            connection.close()
-            raise UnsafeTestTarget("Disposable connection identity verification failed; no fallback attempted.") from None
-
-    def setup_databases(self, **kwargs):
-        validate_settings(settings, setup=True)
-        if set(kwargs.get("aliases", ())) != {"default"} or kwargs.get("serialized_aliases"):
-            raise UnsafeTestTarget("Only one non-serialized disposable database is supported.")
-        self.phase = "preflight"
-        connection = connections["default"]
-        # This maintenance connection selects no database and holds the owner
-        # advisory lock until the entire run (including failures) has ended.
-        cursor = self.stack.enter_context(connection._nodb_cursor())
-        preflight(cursor, self.config)
-        cursor.execute(
-            f"CREATE DATABASE `{self.config.database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
-        )
-        # CREATE errors propagate: no DROP, IF NOT EXISTS, retry or reuse path.
-        self.phase = "migrating"
-        mark_verified(self.config)
-        with connection.cursor() as selected:
-            verify_identity(selected, self.config, self.config.database)
-        call_command(
-            "migrate", database="default", interactive=False,
-            verbosity=max(self.verbosity - 1, 0), run_syncdb=True,
-        )
-        self.phase = "running"
-        return self.config.database
-
-    def teardown_databases(self, old_config, **kwargs):
-        # Deliberately never invoke Django's destroy_test_db(), even on failure.
-        self.phase = "teardown"
-        connections.close_all()

@@ -228,6 +228,12 @@ class ManagementPresentationTests(SimpleTestCase):
         self.assertIn('aria-describedby="report-table-help"', html)
         self.assertNotIn('id="report-table-help" aria-hidden="true"', html)
         self.assertEqual([field["name"] for field in Controls(html).fields], list(form.fields))
+        self.assertRegex(
+            html,
+            r'<label class="report-checkbox-control" for="id_overdue_only">\s*'
+            r'<input[^>]*\btype="checkbox"[^>]*\bid="id_overdue_only"[^>]*>\s*'
+            r'<span>Overdue only</span>\s*</label>',
+        )
 
     def test_assignment_report_pagination_links_preserve_filters_and_are_accessible(self):
         form = AssignmentReportFilterForm(assignment_queryset=TrainingAssignment.objects.none())
