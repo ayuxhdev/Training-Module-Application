@@ -19,8 +19,10 @@
     {% endif %}
   </header>
   <section class="catalog-panel" aria-labelledby="notification-filters-heading">
-    <h2 id="notification-filters-heading">Find notifications</h2>
-    <form method="get" action="{% url 'notifications:inbox' %}" class="form-stack">
+    <header class="catalog-panel-heading">
+      <h2 id="notification-filters-heading">Find notifications</h2>
+    </header>
+    <form method="get" action="{% url 'notifications:inbox' %}" class="form-stack catalog-form">
       {% if filter_form.errors %}<p class="catalog-validation" role="alert">Please correct the notification filters.</p>{% endif %}
       <div class="catalog-fields">
         {% for field in filter_form %}
