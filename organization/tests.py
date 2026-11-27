@@ -547,7 +547,7 @@ class EmptyOrganizationPageTests(TestCase):
         client = Client()
         client.force_login(self.coordinator)
         for path, empty_state in (
-            ("/employees/", "No employees available."),
+            ("/employees/", "No employees match the current filters."),
             ("/departments/", "No departments available."),
             ("/job-roles/", "No job roles available."),
         ):

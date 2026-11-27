@@ -263,11 +263,13 @@ class AssessmentManagementAPITests(CurriculumTestCase):
         self.assertEqual(self.client.post(self.revision_url() + "freeze/", {}, format="json").status_code, 400)
         self.assertEqual(self.snapshot(), before)
         options = self.prepare_options()
-        self.client.patch(self.revision_url(), {"options": [{"id": options[1]["id"], "is_correct": True}]}, format="json")
+        response = self.client.patch(self.revision_url(), {"options": [{"id": options[1]["id"], "is_correct": True}]}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
         before = self.snapshot()
         self.assertEqual(self.client.post(self.revision_url() + "freeze/", {}, format="json").status_code, 400)
         self.assertEqual(self.snapshot(), before)
-        self.client.patch(self.revision_url(), {"options": [{"id": options[1]["id"], "is_correct": False}]}, format="json")
+        response = self.client.patch(self.revision_url(), {"options": [{"id": options[1]["id"], "is_correct": False}]}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
         with self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(self.revision_url() + "freeze/", {}, format="json")
         self.assertEqual(response.status_code, 200, response.data)
@@ -279,7 +281,8 @@ class AssessmentManagementAPITests(CurriculumTestCase):
         self.assertEqual(self.snapshot(), before)
 
     def test_true_false_freeze_uses_existing_model_rules(self):
-        self.client.patch(self.revision_url(), {"question_type": "TRUE_FALSE", "options": self.options()}, format="json")
+        response = self.client.patch(self.revision_url(), {"question_type": "TRUE_FALSE", "options": self.options()}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(self.client.post(self.revision_url() + "freeze/", {}, format="json").status_code, 400)
         options = list(self.bank_revision.options.order_by("position"))
         response = self.client.patch(self.revision_url(), {"options": [
@@ -550,21 +553,26 @@ class AssessmentManagementAPITests(CurriculumTestCase):
 
     def test_omitted_option_text_preserves_formatting_and_noop_audit(self):
         self.prepare_options()
+        events = AuditLog.objects.filter(action="assessments.questionrevision.updated")
+        preparation = events.get()
         option = self.bank_revision.options.get(position=1)
         option.text = "   Existing answer\n\n"
         option.save()
         before = self.snapshot()
-        with self.captureOnCommitCallbacks(execute=True) as callbacks:
+        with self.captureOnCommitCallbacks() as callbacks:
             response = self.client.patch(self.revision_url(), {}, format="json")
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["options"][0]["text"], option.text)
         self.assertEqual(callbacks, [])
         self.assertEqual(self.snapshot(), before)
-        with self.captureOnCommitCallbacks(execute=True):
+        with self.captureOnCommitCallbacks() as callbacks:
             response = self.client.patch(self.revision_url(), {"prompt": "Another prompt"}, format="json")
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["options"][0]["text"], option.text)
-        event = AuditLog.objects.get(action="assessments.questionrevision.updated")
+        self.assertEqual(callbacks, [])
+        event = events.exclude(pk=preparation.pk).get()
+        self.assertEqual(event.entity_id, str(self.bank_revision.pk))
+        self.assertEqual(event.after_data["changed_fields"], ["prompt"])
         self.assertFalse(event.after_data["options_updated"])
 
     def test_failure_after_option_write_rolls_back_revision_options_and_audit(self):

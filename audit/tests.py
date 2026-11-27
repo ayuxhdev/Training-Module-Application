@@ -406,7 +406,13 @@ class AuditWorkflowTests(CurriculumTestCase):
             rendered.index("training.trainingversion.published"),
             rendered.index("View complete event details"),
         )
-        self.assertContains(presentation, "&quot;status&quot;: &quot;PUBLISHED&quot;")
+        self.assertContains(presentation, """
+            <tr>
+                <th scope="row">Status</th>
+                <td><span class="audit-change-value">Draft</span></td>
+                <td><span class="audit-change-value">Published</span></td>
+            </tr>
+        """, html=True)
         self.assertNotContains(presentation, "{'status': 'DRAFT'}")
         self.assertContains(presentation, "&lt;b&gt;Approved &amp; verified&lt;/b&gt;")
         self.assertNotContains(presentation, "<b>Approved & verified</b>")

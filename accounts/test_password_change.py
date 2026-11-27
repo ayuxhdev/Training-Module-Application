@@ -17,7 +17,7 @@ from django.middleware.csrf import CsrfViewMiddleware
 from django.template.loader import render_to_string
 from django.test import Client, RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, ValidationError as DRFValidationError
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
@@ -97,7 +97,10 @@ class PasswordChangeContractTests(SimpleTestCase):
         self.assertEqual(serializer.validated_data, data)
         self.assertEqual(serializer.data, {})
         for invalid in (["not-an-object"], {**data, "user_id": 999}, {**data, "is_active": True}):
-            self.assertFalse(PasswordChangeSerializer(data=invalid).is_valid())
+            with self.assertRaises(DRFValidationError) as rejected:
+                PasswordChangeSerializer(data=invalid).is_valid(raise_exception=True)
+            self.assertEqual(set(rejected.exception.detail), {"non_field_errors"})
+            self.assertNotIn(OLD, str(rejected.exception.detail))
 
     def test_disabled_accounts_fail_eligibility_before_password_validation(self):
         self.user.is_active = False
@@ -283,10 +286,17 @@ class PasswordChangeDatabaseTests(TestCase):
         self.assertFalse(BlacklistedToken.objects.filter(token__jti=self.refresh["jti"]).exists())
 
     def test_arbitrary_target_and_extra_fields_are_rejected(self):
-        response = self.api.post(reverse("api:v1:auth-password-change"), self.api_data(user_id=self.other.pk), format="json")
-        self.assertEqual(response.status_code, 400)
+        url = reverse("api:v1:auth-password-change")
+        for data in (self.api_data(user_id=self.other.pk), [self.api_data()]):
+            response = self.api.post(url, data, format="json")
+            self.assertEqual(response.status_code, 400, response.data)
+            self.assertEqual(response.data["error"]["code"], "validation_error")
+            self.assertIn("non_field_errors", response.data["error"]["fields"])
         self.other.refresh_from_db()
+        self.user.refresh_from_db()
         self.assertTrue(self.other.check_password(OLD))
+        self.assertTrue(self.user.check_password(OLD))
+        self.assertFalse(BlacklistedToken.objects.filter(token__jti=self.refresh["jti"]).exists())
 
     def test_anonymous_session_only_and_inactive_user_api_denied(self):
         url = reverse("api:v1:auth-password-change")

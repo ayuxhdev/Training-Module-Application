@@ -2,7 +2,6 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.db.models import F
 from django.urls import reverse
 from django.utils import timezone
 
@@ -91,8 +90,9 @@ class NotificationInboxFilterTests(CurriculumTestCase):
             deduplication_key=notification_key(self.assignment, event_type),
         )
         if read:
-            Notification.objects.filter(pk=notification.pk).update(read_at=F("created_at"))
-            notification.refresh_from_db()
+            notification.refresh_from_db(fields=["created_at"])
+            notification.read_at = notification.created_at
+            notification.save()
         return notification
 
     def test_all_unread_and_read_filters_count_only_the_current_recipient(self):

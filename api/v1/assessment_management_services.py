@@ -9,8 +9,8 @@ from django.utils import timezone
 from accounts.lifecycle_authorization import require_lifecycle_permission
 from api.capabilities import can_use_mobile
 from assessments.forms import (
-    AssessmentForm, AssessmentQuestionForm, QuestionForm,
-    QuestionOptionFormSet, QuestionRevisionForm,
+    AssessmentForm, AssessmentQuestionForm, DraftQuestionOptionFormSet,
+    QuestionForm, QuestionRevisionForm,
 )
 from assessments.models import (
     Assessment, AssessmentQuestion, Question, QuestionOption, QuestionRevision,
@@ -128,7 +128,7 @@ def _option_formset(revision, changes):
     for index, row in enumerate(rows):
         for key, value in row.items():
             data[f"options-{index}-{'DELETE' if key == 'delete' else key}"] = value
-    formset = QuestionOptionFormSet(data=data, instance=revision, prefix="options", queryset=queryset)
+    formset = DraftQuestionOptionFormSet(data=data, instance=revision, prefix="options", queryset=queryset)
     for option, form in zip(existing, formset.initial_forms):
         if "text" not in updates.get(option.pk, {}):
             form.fields["text"].strip = False

@@ -95,7 +95,8 @@ class ForbiddenPageRegressionTests(SimpleTestCase):
         )
 
         with patch("config.context_processors.dashboard_role", return_value="manager"), \
-             patch("organization.models.Employee.objects.filter") as mock_emp:
+             patch("organization.models.Employee.objects.filter") as mock_emp, \
+             patch("notifications.templatetags.notification_tags.recipient_for_user", return_value=None):
             mock_emp.return_value.exists.return_value = False
             response = permission_denied(request, exception=PermissionDenied())
             content = response.content.decode("utf-8")
@@ -117,7 +118,8 @@ class ForbiddenPageRegressionTests(SimpleTestCase):
         )
 
         with patch("config.context_processors.dashboard_role", return_value="employee"), \
-             patch("organization.models.Employee.objects.filter") as mock_emp:
+             patch("organization.models.Employee.objects.filter") as mock_emp, \
+             patch("notifications.templatetags.notification_tags.recipient_for_user", return_value=None):
             mock_emp.return_value.exists.return_value = True
             response = permission_denied(request, exception=PermissionDenied())
             content = response.content.decode("utf-8")

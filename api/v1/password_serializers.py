@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 
 from rest_framework import serializers
+from rest_framework.settings import api_settings
 
 
 class PasswordChangeSerializer(serializers.Serializer):
@@ -9,8 +10,9 @@ class PasswordChangeSerializer(serializers.Serializer):
     confirm_password = serializers.CharField(write_only=True, trim_whitespace=False, max_length=4096)
 
     def to_internal_value(self, data):
+        error_key = api_settings.NON_FIELD_ERRORS_KEY
         if not isinstance(data, Mapping):
-            raise serializers.ValidationError("Request body must be an object.")
+            raise serializers.ValidationError({error_key: ["Request body must be an object."]})
         if set(data) - set(self.fields):
-            raise serializers.ValidationError("Only password fields are accepted.")
+            raise serializers.ValidationError({error_key: ["Only password fields are accepted."]})
         return super().to_internal_value(data)

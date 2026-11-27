@@ -102,6 +102,10 @@ class RefreshConcurrencyTests(MySQLConcurrencyFixtures):
         first_consuming, second_boundary, second_consuming, release = (Event() for _ in range(4))
         thread = local()
         blacklist = RefreshToken.blacklist
+        # Refresh locks the User before the token. Logout only locks the token,
+        # so a race involving logout does not contend on the User row.
+        lock_model = get_user_model() if first_action == second_action == "refresh" else OutstandingToken
+        lock_table = connection.ops.quote_name(lock_model._meta.db_table).lower()
 
         def consume(token):
             if thread.role == "first":
@@ -110,11 +114,10 @@ class RefreshConcurrencyTests(MySQLConcurrencyFixtures):
                     raise AssertionError("First consumer was not released")
             else:
                 second_consuming.set()
-                second_boundary.set()
             return blacklist(token)
 
         def observe(execute, sql, params, many, context):
-            if "FOR UPDATE" in sql.upper() and "token_blacklist_outstandingtoken" in sql.lower():
+            if "FOR UPDATE" in sql.upper() and lock_table in sql.lower():
                 second_boundary.set()
             return execute(sql, params, many, context)
 
@@ -127,7 +130,7 @@ class RefreshConcurrencyTests(MySQLConcurrencyFixtures):
             try:
                 self.assertTrue(first_consuming.wait(15), "First request did not reach consumption")
                 second = pool.submit(call, "second", second_action)
-                self.assertTrue(second_boundary.wait(15), "Second request did not reach the lock/consumption boundary")
+                self.assertTrue(second_boundary.wait(15), "Second request did not reach the contested row lock")
                 serialized = not second_consuming.is_set()
             finally:
                 release.set()

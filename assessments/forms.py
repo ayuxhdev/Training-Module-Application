@@ -60,6 +60,12 @@ QuestionOptionFormSet = inlineformset_factory(
 )
 
 
+# API draft edits can be incomplete. Freezing still validates the persisted answer set.
+DraftQuestionOptionFormSet = inlineformset_factory(
+    QuestionRevision, QuestionOption, form=QuestionOptionForm, extra=0, can_delete=True,
+)
+
+
 class AssessmentForm(forms.ModelForm):
     class Meta:
         model = Assessment

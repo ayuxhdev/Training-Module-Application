@@ -373,19 +373,23 @@ class AssessmentEndpointTests(CurriculumTestCase):
         self.assertEqual(client.get(response["Location"]).status_code, 200)
 
     def test_question_create_race_returns_form_error_without_orphan_revision(self):
-        save_form = QuestionForm.save
+        validate_form = QuestionForm.is_valid
 
-        def save_after_competing_create(form, *args, **kwargs):
-            Question.objects.create(code="RACE-QUESTION", topic="Winner", created_by=self.coordinator)
-            return save_form(form, *args, **kwargs)
+        def validate_before_competing_create(form):
+            valid = validate_form(form)
+            if valid:
+                # Keep the winner outside the losing question/revision transaction.
+                Question.objects.create(code="RACE-QUESTION", topic="Winner", created_by=self.coordinator)
+            return valid
 
-        with patch.object(QuestionForm, "save", save_after_competing_create):
+        with patch.object(QuestionForm, "is_valid", validate_before_competing_create):
             response = self.client_for(self.coordinator).post("/questions/new/", {
                 "code": "RACE-QUESTION", "topic": "Loser", "is_active": "on",
             })
         self.assertEqual(response.status_code, 200)
         self.assertIn("code", response.context["form"].errors)
         self.assertEqual(Question.objects.filter(code="RACE-QUESTION").count(), 1)
+        self.assertEqual(Question.objects.get(code="RACE-QUESTION").topic, "Winner")
         self.assertFalse(QuestionRevision.objects.filter(question__code="RACE-QUESTION").exists())
 
     def test_score_pass_and_client_grade_fields_are_server_controlled(self):

@@ -408,13 +408,16 @@ class ContentManagementViewTests(CurriculumTestCase):
         self.assertFalse(TrainingVersion.objects.filter(title="Duplicate version").exists())
 
     def test_training_create_handles_duplicate_saved_after_form_validation(self):
-        save_form = TrainingForm.save
+        validate_form = TrainingForm.is_valid
 
-        def save_after_competing_create(form, *args, **kwargs):
-            Training.objects.create(code="RACE-TRAINING", catalog_title="Winner", created_by=self.coordinator)
-            return save_form(form, *args, **kwargs)
+        def validate_before_competing_create(form):
+            valid = validate_form(form)
+            if valid:
+                # The winner must exist outside the losing request's write savepoint.
+                Training.objects.create(code="RACE-TRAINING", catalog_title="Winner", created_by=self.coordinator)
+            return valid
 
-        with patch.object(TrainingForm, "save", save_after_competing_create):
+        with patch.object(TrainingForm, "is_valid", validate_before_competing_create):
             with self.captureOnCommitCallbacks(execute=True):
                 response = self.client_for(self.coordinator).post("/trainings/new/", {
                     "code": "RACE-TRAINING", "catalog_title": "Loser",

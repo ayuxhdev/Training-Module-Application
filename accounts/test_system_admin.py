@@ -313,17 +313,22 @@ class SystemAdministrationTests(TestCase):
         for name in ("base", "dashboard", "user_list", "user_detail"):
             self.assertIsNotNone(get_template(f"accounts/system_admin/{name}.html"))
         response = self.client.get(reverse("accounts:system-user-list"))
-        for marker in ('href="#main-content"', 'tabindex="0"', 'aria-describedby="account-table-help"', 'scope="col"', 'scope="row"', 'class="appearance-control"', 'class="org-table"'):
+        for marker in ('href="#main-content"', 'tabindex="0"', 'aria-describedby="account-table-help"', 'scope="col"', 'scope="row"', 'class="appearance-control"'):
             self.assertContains(response, marker)
         class Headers(HTMLParser):
             count = 0
+            has_org_table = False
 
             def handle_starttag(self, tag, attrs):
-                if tag == "th" and dict(attrs).get("scope") == "col":
+                attributes = dict(attrs)
+                if tag == "table" and "org-table" in attributes.get("class", "").split():
+                    self.has_org_table = True
+                if tag == "th" and attributes.get("scope") == "col":
                     self.count += 1
 
         headers = Headers()
         headers.feed(response.content.decode())
+        self.assertTrue(headers.has_org_table)
         self.assertEqual(headers.count, 9)
         self.assertContains(response, 'colspan="9"', count=0)
         self.assertNotContains(response, "Edit account")
