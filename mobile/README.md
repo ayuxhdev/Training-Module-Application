@@ -1,17 +1,17 @@
-# training_app
+# Garden's Need Training for Android
 
-A new Flutter project.
+Flutter is the Android client for Administrator, Manager and Employee workflows.
+It uses the Django REST API and follows backend permissions and reporting scope.
+Native Android code supports the Flutter client.
 
-## Getting Started
+## Integration and release
 
-This project is a starting point for a Flutter application.
+Physical-device Android QA passed for the V1 integration checkpoint of
+27 November 2026. Merged main CI passed Flutter analysis, Flutter tests and the
+Android debug build. See the [checkpoint evidence](../docs/V1_INTEGRATION_CHECKPOINT.md).
 
-A few resources to get you started if this is your first Flutter project:
+Production signing and rollout are pending. Use company-controlled credentials
+and API origin `https://training.gardensneed.com` for the signed production build.
+Follow the [production runbook](../docs/V1_RELEASE_RUNBOOK.md).
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+See the [project README](../README.md) and [testing guide](../docs/TESTING.md).

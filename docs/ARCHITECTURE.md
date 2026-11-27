@@ -1,5 +1,7 @@
 # Architecture
 
+V1 application development and integration completed on 27 November 2026. Production deployment, signing and rollout remain pending. See the [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md). Historical local implementation and test notes describe their original runs. Flutter is the active Android client. Native Android code supports its platform integration.
+
 ## 1. Purpose
 
 This document describes the current architecture of the Garden's Need Training Module Application, the boundaries between its major components, and the architectural principles that govern future development.
@@ -197,10 +199,7 @@ explicit error recovery. Employee personal-learning routes remain unchanged.
 
 Separate local checkpoints passed **170/170 selected Django/MySQL tests**
 (**18/18 management API tests**) and **551/551 full Flutter tests**, with clean
-Flutter analysis. The test database and role bootstrap were retained. Android
-login/role runtime QA remains pending despite successful APK build/installation:
-emulator system responsiveness and host memory blocked verification. No CI or
-production-readiness claim is made for this uncommitted work.
+Flutter analysis. The test database and role bootstrap were retained. At that historical checkpoint, emulator responsiveness and host memory blocked runtime login/role QA. The V1 checkpoint records later physical-device QA and CI.
 
 Current completed foundation includes:
 
@@ -1298,7 +1297,7 @@ training title/version/deadline, never answers, scores, tokens or media links.
 
 No scheduler, retention cleanup, historical backfill or push/email/SMS integration
 is installed. Hourly scheduling and production activation are M20 dependencies.
-M18 implementation is complete and uncommitted; final acceptance/review is pending.
+M18 is integrated in V1. Production reminder scheduling and operational acceptance remain deployment gates.
 
 #### M18 acceptance evidence and operational boundary
 

@@ -1,9 +1,6 @@
 # Management Certificate API
 
-**Status:** This documents the certificate-management implementation currently
-present in the worktree. The Django and Flutter changes are uncommitted. This
-contract is not production-readiness evidence; real MySQL integration verification
-and release acceptance remain pending.
+**Status:** This API is part of integrated V1. See the [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md). Production certificate acceptance remains pending. Hindi/Devanagari certificate PDF shaping is deferred.
 
 Base path: `/api/v1/management/certificates/`
 
@@ -126,9 +123,4 @@ Unsupported methods return `405`.
 
 ## Verification limits
 
-The source includes database-free API contract tests and a database-backed API
-test class. The database-backed behavior—including actual MySQL locking,
-transaction rollback when audit persistence fails, and concurrent revocation—has
-not yet been verified against an approved disposable MySQL test database. Do not
-treat the uncommitted API or its contract tests as production-ready until that
-integration validation, CI coverage and release review are complete.
+Database-free API contract tests and MySQL validation are part of V1 verification. Refer to the [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md) for CI scope. Production certificate access, issuance and revocation remain deployment smoke-test areas. The broader Run 5 is deferred.

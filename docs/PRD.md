@@ -692,7 +692,7 @@ Flutter: 81 tests
 JavaScript playback: 3 tests
 ```
 
-These numbers are a current baseline, not permanent requirements. Future milestone work may change the test count.
+These are historical M15 counts. Use the [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md) for current integration evidence.
 
 Testing should include:
 
@@ -929,23 +929,9 @@ M14 - Flutter / Android Foundation
 M15 - Employee App Core
 ```
 
-### Current
+### Current release checkpoint
 
-```text
-M16 - Learning + Secure Video
-```
-
-### Planned
-
-```text
-M17 - Assessment + Certificates
-M18 - Notifications + Resilience
-M19 - Android Release Candidate
-M20 - Production + Deployment Hardening
-M21 - Final Bug Hunt + Security + Repository Review
-M22 - Readability + Refactor + Garden's Need Visual Polish
-M23 - Final Acceptance + Android V1 Release
-```
+V1 application development and integration completed on 27 November 2026. Production deployment, signing and rollout remain pending. See the [canonical roadmap](ROADMAP.md) and [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md).
 
 Milestone scope should not be silently skipped or expanded without an explicit decision.
 

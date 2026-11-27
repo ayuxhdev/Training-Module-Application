@@ -1,7 +1,8 @@
 # Garden's Need Training Module — V1 Production Deployment & Rollback Runbook
 
-**Target Internal Release Date:** November 26–27, 2026  
-**Document Status:** Operational Runbook (UNEXECUTED — Awaiting Infrastructure & Release Gate Approvals)  
+**Integration checkpoint:** 27 November 2026. See the [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md).
+
+**Deployment status:** Unexecuted. Production infrastructure and launch sign-off are pending.
 **Configuration Profile:** `DJANGO_SETTINGS_MODULE=config.production`  
 **WSGI Entry Point:** `config.wsgi:application`  
 **Application ID:** `com.gardensneed.training`
@@ -9,6 +10,14 @@
 ---
 
 ## A. Infrastructure Prerequisites
+
+Confirm management approval, hosting budget, release ownership and a rollout
+window. Prepare the company-controlled GitHub repository and verify the selected
+revision and required CI there.
+
+Keep the original development database, isolated QA database and production
+schema and media separate. Exclude synthetic QA users, content and fixtures
+from production.
 
 Before deploying the application, the system administrator and DBA must provision and verify the following host and network requirements:
 
@@ -645,13 +654,14 @@ If a critical failure occurs during deployment or pilot validation:
 
 Every item must be explicitly signed off by the release operator before declaring the release active:
 
-- [ ] **1. Code Freeze & Tag:** Git repository is clean; release commit is tagged and CI passes 100%.
+- [ ] **1. Approval and release revision:** Confirm management budget and rollout approval, company repository protection and CI on the selected release revision.
 - [ ] **2. Environment Security:** `DEBUG=false`, unique 50+ character `DJANGO_SECRET_KEY`, non-root MySQL user.
 - [ ] **3. Pre-Deployment Backup Verified:** `ops.mysql_backup` completed with valid `manifest.json` and matching media snapshot.
 - [ ] **4. Migrations Applied:** `python manage.py migrate` finished with 0 unapplied migrations.
-- [ ] **5. Static Assets Collected:** `STATIC_ROOT` contains `staticfiles.json` with hashed shell and player assets.
+- [ ] **5. Static assets:** Collect production static files, verify the hashed manifest and confirm the favicon loads over HTTPS.
 - [ ] **6. Production Preflight Passed:** `python manage.py production_preflight --database` exited with status 0.
 - [ ] **7. TLS & Security Headers Active:** HTTPS verified, secure cookies confirmed, HSTS header active, direct media URLs blocked.
-- [ ] **8. Release APK Signed:** `app-release.apk` signed with production keystore and SHA-256 recorded.
-- [ ] **9. Pilot Journey Verified:** Complete login -> video -> assessment -> certificate flow passed on physical test device.
-- [ ] **10. Rollback Prepared:** Previous release directory and pre-deployment backup bundle confirmed accessible.
+- [ ] **8. Signed production APK:** Use company-controlled signing credentials and API origin https://training.gardensneed.com. Record version, signature and SHA-256.
+- [ ] **9. Production smoke tests:** Verify health, authentication, role boundaries, protected playback, assessment, certificates and notifications. Test the signed APK on an authorized device.
+- [ ] **10. Backups and recovery:** Verify automatic backup scheduling, retention, alerts and an actual isolated database/media restore. Record rollback compatibility and the fail-closed writer and timer steps.
+- [ ] **11. Employee onboarding:** Approve access provisioning, pilot ownership, support and phased rollout.
