@@ -85,21 +85,7 @@ Design should support:
 
 # 3. Current Design State
 
-The project currently has two active product surfaces:
-
-```text
-Django Web Application
-        +
-Flutter Android Employee Application
-```
-
-M14 established the Android application's foundation.
-
-M15 established the employee learning flow.
-
-The current mobile UI is therefore functional foundation work, not the final visual design.
-
-The final visual system should not be considered locked until the dedicated polish phase.
+The Django website and Flutter Android app are the V1 product surfaces. The 27 November integration includes role-aware mobile design, Garden's Need branding and responsive web panel corrections. See the [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md). The patterns below guide future changes.
 
 ---
 
@@ -1732,19 +1718,4 @@ The objective is a polished internal product, not visual complexity for its own 
 
 # 83. Current Design Status
 
-```text
-Design direction:              Defined
-Django functional UI:          Existing
-Flutter foundation:            Complete
-Employee learning UI:          Functional
-Secure video UI:               M16
-Assessment UI:                 M17
-Resilience UX:                 M18
-Android release-candidate UI:  M19
-Final visual polish:           M22
-Final acceptance:              M23
-```
-
-The exact visual system is intentionally not frozen yet.
-
-The current priority is to complete the functional product safely, then use M22 as the deliberate visual-design phase for the final Garden's Need experience.
+The V1 visual baseline is integrated, including branding, responsive panel alignment, fullscreen orientation restoration, consistent deadlines and certificate layout. Production acceptance remains open. See the [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md).

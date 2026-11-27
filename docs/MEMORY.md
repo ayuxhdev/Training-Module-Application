@@ -58,7 +58,7 @@ Flutter analyze: 0 issues
 Android debug APK: successful
 ```
 
-Current JavaScript playback baseline:
+Historical M15 JavaScript playback baseline:
 
 ```text
 3 / 3 playback tests passing
@@ -68,36 +68,7 @@ Current JavaScript playback baseline:
 
 ## 3. Current Milestone State
 
-Completed:
-
-```text
-M0-M12: complete
-M13: Mobile API Foundation & Versioning: complete
-M14: Flutter / Android Foundation: complete
-M15: Employee App Core: complete
-```
-
-Next:
-
-```text
-M16: Learning + Secure Video
-```
-
-Planned:
-
-```text
-M17: Assessment + Certificates
-M18: Notifications + Resilience
-M19: Android Release Candidate
-M20: Production + Deployment Hardening
-M21: Final Bug Hunt + Security + Repository Review
-M22: Readability + Refactor + Garden's Need Visual Polish
-M23: Final Acceptance + Android V1 Release
-```
-
-`docs/ROADMAP.md` is the canonical roadmap.
-
-Do not reintroduce the old M11-M18 milestone structure from historical documentation.
+V1 application development and integration completed on 27 November 2026. Production deployment, signing and rollout remain pending. See the [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md) and [canonical roadmap](ROADMAP.md).
 
 ---
 
@@ -684,9 +655,9 @@ High-risk security, playback, authorization, concurrency, and data-integrity cha
 
 ---
 
-## 32. Current Verification Baseline
+## 32. Verification Baseline
 
-Current known passing baseline:
+See the [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md) for current evidence. Historical M15 passing baseline:
 
 ```text
 Django/MySQL: 348 / 348
@@ -705,7 +676,7 @@ git diff --check: clean
 Android debug APK: successful
 ```
 
-Do not replace these current counts with historical counts from old documentation.
+Keep counts scoped to the revision and validation run that produced them.
 
 ---
 
@@ -812,11 +783,8 @@ CodeRabbit is a review system, not an implementation agent.
 
 ## 37. UI and Product Design Timing
 
-The mobile app's current M14-M15 UI is functional foundation work.
-
-The final Garden's Need visual identity is intentionally not locked yet.
-
-The eventual product should be:
+M14-M15 established the functional UI foundation. V1 integrates the M22 branding and design refinements.
+Keep future changes:
 
 - polished
 - animated where useful
@@ -825,7 +793,7 @@ The eventual product should be:
 - professional
 - aligned with Garden's Need branding
 
-Final visual direction belongs primarily to M22.
+See the [design guide](DESIGN.md).
 
 Do not prematurely rebuild functional screens merely to impose final visual styling.
 
@@ -911,44 +879,11 @@ When an old decision is superseded, update or remove it rather than accumulating
 
 ## 42. Current Project State
 
-Current state:
+The active stack is Django web, a versioned Django REST API, Flutter Android,
+MySQL and protected session-based media. Native Android components support the
+Flutter app. Flutter supersedes any historical standalone Kotlin client plan.
 
-```text
-M0-M12: complete
-M13: complete
-M14: complete
-M15: complete
-M16: next
-M17-M23: planned
-```
-
-Current validation:
-
-```text
-Django/MySQL: 348 / 348
-Flutter: 81 / 81
-Flutter analyze: 0 issues
-JavaScript playback: 3 / 3
-```
-
-Current architectural direction:
-
-```text
-Django web
-+
-Django REST API
-+
-Flutter Android
-+
-MySQL
-+
-protected session-based training media
-```
-
-Immediate next development milestone:
-
-```text
-M16 - Learning + Secure Video
-```
-
-M16 must build on the existing M13 API and media architecture rather than introducing duplicate backend rules or parallel media endpoints.
+Keep original development, isolated QA and production databases and media separate.
+Exclude synthetic QA records from production. The next milestone is approved
+production launch and acceptance. Run 5 and Hindi/Devanagari certificate PDF
+shaping remain deferred.

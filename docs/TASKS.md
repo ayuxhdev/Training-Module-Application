@@ -14,6 +14,11 @@ The Excel roadmap may remain the management tracker, but it must not override th
 
 ## 2. Current Status
 
+V1 application development and integration completed on 27 November 2026. Production deployment, signing and rollout remain pending. See the [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md) and [roadmap](ROADMAP.md). Earlier task notes retain their original milestone-specific state.
+
+<details>
+<summary>Historical pre-integration status and test evidence</summary>
+
 ### Approved multi-role Android expansion
 
 Android scope now includes Administrator, Manager and Employee business workflows
@@ -112,19 +117,11 @@ management-certificate changes remains pending.
 
 ---
 
+</details>
+
 # 3. Milestone Overview
 
-```text
-M0–M15 - Core platform and mobile foundation   IMPLEMENTED HISTORICALLY
-M16    - Learning + Secure Video               IMPLEMENTED; ACCEPTANCE OPEN
-M17    - Assessment + Certificates              LOCAL EXTENSION; MYSQL CHECK OPEN
-M18    - Notifications + Resilience              SUBSTANTIAL; CLOSURE OPEN
-M19    - Android Release Candidate              IN PROGRESS
-M20    - Production + Deployment Hardening      IN PROGRESS
-M21    - Final Bug Hunt + Security Review       OPEN
-M22    - Readability + Refactor + Visual Polish IN PROGRESS; NOT CLOSED
-M23    - Final Acceptance + Android V1 Release  OPEN; NOT APPROVED
-```
+M0–M15 are historically implemented. M16–M19 and M21–M22 are integrated in V1. M20 tooling is implemented and awaits production infrastructure and recovery validation. M23 remains open for production acceptance and rollout. See the [status table](ROADMAP.md#roadmap).
 
 ---
 
@@ -1377,20 +1374,4 @@ Do not claim work is complete until its exit criteria have been satisfied.
 
 # 25. Current Checkpoint and Open Gates
 
-M19–M23 remain open; no Android V1 release is approved. The current cross-milestone
-gates are:
-
-```text
-1. Complete final M16 secure-video acceptance.
-2. Verify uncommitted M17 management-certificate changes against disposable MySQL.
-3. Close M18 acceptance and operational evidence.
-4. Verify implemented Android assignment-report/audit APIs and Flutter integration
-   against disposable MySQL, then complete real-device acceptance.
-5. Verify the implemented website certificate-audit atomicity on disposable MySQL.
-6. Integrate the experimental strict-concurrency guard into CI.
-7. Complete final security review and production deployment/approval.
-```
-
-Do not treat implementation, automated tests, integration verification, manual QA
-or release approval as equivalent. Preserve milestone-specific historical results
-as evidence for the scope and date where they were actually obtained.
+Track management approval, company repository setup, infrastructure, preflight, recovery rehearsal, signing, smoke tests and onboarding against the [launch gates](V1_INTEGRATION_CHECKPOINT.md#production-launch-gates). Run 5 and Hindi/Devanagari PDF shaping remain deferred.

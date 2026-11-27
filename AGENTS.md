@@ -24,12 +24,9 @@ The backend is authoritative for security-sensitive state and business rules.
 
 Current major state:
 
-- M0-M15: historically implemented; prior records remain scoped to their original runs
-- M16: secure video implemented; final acceptance is pending
-- M17: management-certificate API and Flutter changes are uncommitted; real MySQL
-  integration verification is pending
-- M18: notification/resilience functionality substantially exists; closure is pending
-- M19-M23: not fully closed; see `docs/ROADMAP.md` for current gates
+- V1 application development and integration completed on 27 November 2026. Production deployment, signing and rollout remain pending.
+- See the [checkpoint](docs/V1_INTEGRATION_CHECKPOINT.md) and [roadmap](docs/ROADMAP.md).
+- Run 5 and Hindi/Devanagari PDF shaping remain deferred.
 
 Historical M15 validation baseline (not a current full-suite total):
 
@@ -38,8 +35,7 @@ Historical M15 validation baseline (not a current full-suite total):
 - JavaScript playback: 3 tests
 
 These counts must not be presented as current validation. Use actual current
-repository output for any new test claim. The experimental strict-concurrency
-guard is not integrated into CI.
+repository output for any new test claim. The required isolated 53-test role-requirement profile is integrated into CI.
 
 ## Agent Operating Rules
 
@@ -531,7 +527,7 @@ Do not introduce local-only completion claims that can later overwrite authorita
 ## UI Direction
 
 The final Garden's Need visual system was intentionally not locked during earlier
-functional milestones. M22 is now in progress, while final M19 acceptance remains open.
+functional milestones. The integrated V1 baseline includes the M22 refinements.
 
 Do not prematurely hard-code a final:
 
@@ -765,9 +761,8 @@ Use:
 
 Do not create abstractions merely to reduce line count.
 
-Deep readability refactoring belongs to M22; the milestone is in progress but not
-closed. Outside M22 scope, make local readability improvements only when they
-directly support the current task.
+The M22 refinements are integrated in V1. Make local readability improvements
+when they directly support the current task. Broader refactoring needs its own scope.
 
 ## Documentation Rules
 
@@ -830,27 +825,7 @@ Future scope must remain clearly separated from implemented V1 functionality.
 
 ## Current Roadmap
 
-Current checkpoint:
-
-```text
-M19 - Android Release Candidate; final acceptance remains open
-```
-
-Open release-readiness gates include:
-
-```text
-M16 - Final secure-video acceptance
-M17 - Management-certificate MySQL integration verification
-M18 - Consolidated notification/resilience closure
-M19 - Android release-candidate validation
-M20 - Production infrastructure and restore verification
-M21 - Final security/repository review; strict-concurrency CI and website
-       certificate-audit atomicity remain unresolved
-M22 - Visual/readability work and milestone closure
-M23 - Final acceptance and release approval
-```
-
-Do not skip milestone scope without an explicit decision.
+V1 integration is complete. See the [roadmap](docs/ROADMAP.md) and the [production launch gates](docs/V1_INTEGRATION_CHECKPOINT.md#production-launch-gates). Production action requires separate operator approval.
 
 ## M16 Rules
 

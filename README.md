@@ -6,11 +6,9 @@ A cross-platform employee training management system developed for **Garden's Ne
 
 The application consists of a Django web portal and a Flutter Android application, both connected to a centralized Django REST API and MySQL database.
 
-**Current status:** Advanced V1 development, integration and release-readiness testing.
+**Current status:** V1 application development and integration complete as of 27 November 2026.
 
-**Last updated:** 3 November 2026
-
-> **Release status:** Not yet production-ready. Core functionality is substantially implemented, but final QA, security checks, UI/UX corrections and deployment validation remain in progress.
+PR #2 merged into main. The ordinary MySQL suite, isolated 53-test profile and required CI aggregate passed on the merge revision. Physical Android QA and authenticated website QA passed. Production deployment, signing and rollout remain pending. See the [V1 integration checkpoint](docs/V1_INTEGRATION_CHECKPOINT.md).
 
 ---
 
@@ -435,21 +433,9 @@ Before V1 release:
 
 ## 8. Current Development Focus
 
-The project has progressed beyond the initial Flutter foundation and into cross-platform integration and V1 stabilization.
+The remaining V1 work is production launch and acceptance. Obtain management approval and the hosting budget, prepare the company GitHub repository, provision the production environment, and rehearse recovery. Sign and verify the Android production APK, perform production smoke tests, and approve onboarding and rollout.
 
-Current areas of work include:
-
-- Completing Android and website functional QA.
-- Improving consistency between Django and Flutter terminology, navigation and user experience.
-- Simplifying Training Management screens.
-- Removing obsolete development placeholders and disabled controls.
-- Correcting Play/Pause control behavior.
-- Improving certificate presentation and print formatting.
-- Strengthening question-authoring validation.
-- Closing remaining web/mobile management capability gaps.
-- Final security, regression and deployment-readiness checks.
-
-The intended V1 feature-completion target is **6 November 2026**, subject to validation results. This is a planning target, not a confirmed production-release date.
+See the [launch gates](docs/V1_INTEGRATION_CHECKPOINT.md#production-launch-gates) and [production runbook](docs/V1_RELEASE_RUNBOOK.md). Run 5 and Hindi/Devanagari certificate PDF shaping remain deferred.
 
 ---
 

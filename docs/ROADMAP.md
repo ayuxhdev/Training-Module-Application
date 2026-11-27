@@ -2,6 +2,15 @@
 
 ## Current Status
 
+V1 application development and integration completed on 27 November 2026. Production deployment, signing and rollout remain pending. See the [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md).
+
+The Flutter Android app covers Administrator, Manager and Employee workflows in the custom portal. Framework administration stays on the web. Backend permissions and reporting scope govern access. iOS remains deferred.
+
+Earlier milestone notes preserve what was known at those checkpoints. Use the status table and [launch gates](V1_INTEGRATION_CHECKPOINT.md#production-launch-gates) for current decisions.
+
+<details>
+<summary>Historical Android expansion and local integration evidence</summary>
+
 ### Approved Android scope expansion: three roles
 
 Android now targets Administrator, Manager and Employee business functionality
@@ -83,6 +92,8 @@ iOS is intentionally outside the current Android V1 completion target. It will b
 
 ---
 
+</details>
+
 ### Evidence status definitions
 
 These are separate evidence dimensions, not interchangeable milestone labels:
@@ -107,14 +118,14 @@ not by itself establish integration verification, manual QA, or release approval
 | M13 | Mobile API Foundation & Versioning | Implemented (historical) | Versioned API foundation and server-side authorization were established; later integration remains subject to current validation. |
 | M14 | Flutter / Android Foundation | Implemented (historical) | Flutter Android foundation was established; this is not current release approval. |
 | M15 | Employee App Core | Implemented (historical) | Employee learning-flow foundation was implemented; historical validation remains in the milestone record. |
-| M16 | Learning + Secure Video | Implemented; final acceptance pending | Protected tracked playback and completed-assignment read-only replay are implemented. Final acceptance is not complete. |
-| M17 | Assessment + Certificates | Historical core implemented; management-certificate extension implemented locally | Current Django and Flutter management-certificate changes are uncommitted. Real MySQL integration verification is pending; no release readiness is claimed. |
-| M18 | Notifications + Resilience | Substantially implemented; closure pending | Prior checkpoint and user-reported CI are historical. Consolidated acceptance and operational closure remain open. |
-| M19 | Android Release Candidate | In progress | Feature freeze and comprehensive security, architecture, data, playback, performance, device, UX, and regression validation, followed by pilot testing and release preparation. |
-| M20 | Production + Deployment Hardening | In progress | Application production profile, preflight/health diagnostics, safe logging, backup verification tooling and persisted reminder cutoff implemented. Infrastructure activation, HTTPS/media serving and isolated restore rehearsal remain pending; see docs/M20_OPERATIONS.md. |
-| M21 | Final Bug Hunt + Security + Repository Review | Open; not closed | Final cross-system defect hunt, security review, permission/IDOR review, dependency review, repository hygiene, documentation verification, and release-blocker elimination remain pending. Strict-concurrency CI integration is unresolved; website certificate-audit atomicity remains an open item. |
-| M22 | Final Readability + Refactor + Garden’s Need Visual Polish | Work in progress; not closed | Some design/readability work has been completed, but the milestone and its acceptance gates remain open. |
-| M23 | Final Acceptance + Android V1 Release | Not closed | Final acceptance, production approval and Android V1 release have not been approved. |
+| M16 | Learning + Secure Video | Integrated | Protected tracking and completed-assignment replay. Physical-device QA passed. |
+| M17 | Assessment + Certificates | Integrated | Assessment and certificate workflows are included. Hindi/Devanagari PDF shaping is deferred. |
+| M18 | Notifications + Resilience | Integrated | Inbox and Android notifications are included. Production reminder scheduling is a launch gate. |
+| M19 | Android Release Candidate | Integration accepted | Physical-device QA passed. Production signing remains pending. |
+| M20 | Production + Deployment Hardening | Application hardening implemented | Infrastructure, production preflight, backup scheduling and isolated recovery verification are pending. |
+| M21 | Final Bug Hunt + Security + Repository Review | Integration verified | The corrected PR and main CI passed, including the isolated 53-test profile. Run 5 is deferred. |
+| M22 | Final Readability + Refactor + Garden’s Need Visual Polish | V1 scope integrated | Branding, orientation, deadline, certificate and panel alignment corrections are included. |
+| M23 | Final Acceptance + Android V1 Release | Production acceptance pending | Production approval, smoke tests and internal rollout remain open. |
 
 ---
 
@@ -716,28 +727,4 @@ Project-agent instructions, coding-agent workflow, model preferences, tool-speci
 
 # Current Checkpoint
 
-M19–M23 remain open; no Android V1 release is approved. Before closing the
-release-readiness work, preserve the following explicit gaps:
-
-- M16 final acceptance is pending.
-- M17 management-certificate changes need real MySQL integration verification.
-- M18 notification/resilience acceptance and operational closure are incomplete.
-- Android assignment-report and audit-log viewing are implemented locally;
-  disposable-MySQL integration and real-device acceptance remain pending.
-- Website certificate-audit atomicity is implemented locally; real MySQL
-  transaction/concurrency verification remains pending.
-- Strict-concurrency CI integration is unresolved.
-- Final security review and production deployment/approval remain pending.
-
-Historical milestone test counts and CI records are not evidence that these current
-gaps or uncommitted changes have passed validation.
-
----
-
-# Post-Android Scope
-
-iOS is not part of the current Android V1 release target.
-
-After Android V1 has been released and stabilized:
-
-**Evaluate iOS → define iOS architecture/workflow → establish iOS roadmap → begin iOS development**
+V1 application development and integration completed on 27 November 2026. Production deployment, signing and rollout remain pending. Follow the [launch gates](V1_INTEGRATION_CHECKPOINT.md#production-launch-gates) and the [production runbook](V1_RELEASE_RUNBOOK.md). Run 5 and Hindi/Devanagari PDF shaping remain deferred.

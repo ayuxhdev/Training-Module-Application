@@ -1,5 +1,7 @@
 # Deployment
 
+V1 application development and integration completed on 27 November 2026. Production deployment, signing and rollout remain pending. Follow the [V1 production runbook](V1_RELEASE_RUNBOOK.md). Keep development, isolated QA and production databases and media separate. Exclude synthetic QA records from production.
+
 ## M20 operational implementation
 
 The current production profile, read-only preflight/health checks, safe logging,
@@ -25,7 +27,7 @@ Current state:
 
 ```text
 Production deployment: not completed
-Production hardening: application implementation in progress; deployment rehearsal pending
+Production hardening: application implementation complete; deployment rehearsal pending
 ```
 
 The current roadmap schedules production and deployment hardening in:

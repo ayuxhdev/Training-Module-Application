@@ -1,6 +1,6 @@
 # M20 production configuration and operations
 
-**Status: application hardening implemented; deployment/restore rehearsal pending.**
+**Status:** V1 integration passed on 27 November 2026. Production deployment and isolated recovery verification remain pending. See the [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md).
 No provider, domain, application server, external monitoring vendor or scheduler
 has been activated by this batch. No backup or restore was run against live data.
 Examples below are operator procedures, not evidence of a deployed environment.
@@ -391,7 +391,9 @@ resuming service. Document the incident and the chosen recovery point.
 
 ## 9. Test-database safety and permission-group incident
 
-### Opt-in reusable integration harness (implementation only; MySQL run pending)
+### Opt-in reusable integration harness
+
+The general guarded Run 5 is deferred for V1. The required isolated 53-test role-requirement CI profile passed on merged main. Earlier validation notes retain their original scope.
 
 `config.integration_test_settings` and `config.integration_test_runner` reuse the
 existing guarded MySQL backend and identity/grant checks. They do not load `.env`,

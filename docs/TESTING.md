@@ -1,5 +1,7 @@
 # Testing
 
+The [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md) records current CI evidence. The ordinary Django MySQL, JavaScript, Flutter analysis/tests and debug build steps passed on merged main. The isolated 53-test role-requirement profile and aggregate passed. Production smoke tests are a separate gate. Run 5 remains deferred.
+
 ## 1. Purpose
 
 This document defines the testing strategy for the Garden's Need Training Module Application.

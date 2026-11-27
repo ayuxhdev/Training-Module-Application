@@ -1,5 +1,7 @@
 # Security
 
+The [V1 integration checkpoint](V1_INTEGRATION_CHECKPOINT.md) records the 27 November 2026 application security integration. Production trust boundaries, credentials, throttling, authorized media delivery and actual recovery remain production checks.
+
 ## 1. Purpose
 
 This document describes the security model, security assumptions, implemented protections, known boundaries, and production requirements for the Garden's Need Training Module Application.
@@ -990,17 +992,9 @@ Flutter analysis/tests and JavaScript playback tests are also part of the reposi
 
 ## 57. Final Security Review
 
-A broader final security review is scheduled after the remaining frontend, Android, and E2E work.
+The operator confirmed a clean final CodeRabbit review and passing authenticated website security QA. Corrected PR and merged main required CI passed. Verify the deployed controls before production acceptance.
 
-This is intentional because:
-
-- frontend routes may introduce new access paths
-- Android workflows may reveal integration defects
-- video playback introduces additional security boundaries
-- deployment configuration introduces new risks
-- security testing is more useful against the completed application
-
-The final review should include:
+Production acceptance covers:
 
 - authentication
 - authorization
@@ -1102,7 +1096,7 @@ For such changes:
 
 ## 62. Current Security Status
 
-The application currently has implemented security controls across the Django web platform, M13 API foundation, and M14-M15 Flutter Android foundation.
+The integrated V1 application enforces security controls across the Django website, versioned API and Flutter Android app.
 
 Implemented controls include:
 
@@ -1125,9 +1119,9 @@ Implemented controls include:
 - API throttling
 - automated backend, Flutter, and playback validation
 
-M16 is the next major learning/video milestone. It must preserve the existing security boundary rather than introduce a parallel media authorization model.
+The integrated M16 video paths retain the existing protected media boundary.
 
-The M16 implementation must:
+Future playback changes must:
 
 - reuse the existing M13 protected session-based media endpoint
 - keep published media immutable

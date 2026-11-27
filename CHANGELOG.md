@@ -8,14 +8,38 @@ The project has not yet reached its first production release.
 
 ## [Unreleased]
 
-### Current Development Status
+Production deployment and rollout remain pending.
+
+## 27 November 2026 — V1 integration checkpoint
+
+PR #2 merged into main with passing required CI. The operator recorded physical
+Android QA, authenticated website functional and security QA (7/7) and a clean
+final CodeRabbit review. See the [checkpoint and CI evidence](docs/V1_INTEGRATION_CHECKPOINT.md).
+
+- Integrated protected web and Android video tracking and read-only replay.
+  Android fullscreen restores the prior orientation policy.
+- Standardized assignment deadlines and corrected long certificate identifier layout.
+- Updated website and Android branding, launcher icon and favicon. Corrected
+  Dashboard, Employee Profile and Notifications panel alignment.
+- Returned controlled HTTP 400 errors for malformed password-change requests.
+  Kept incomplete assessment drafts editable and freeze/publication validation strict.
+- Corrected MySQL race synchronization, duplicate-create savepoint fixtures,
+  transactional audit assertions, notification timestamps and UI regressions.
+  The corrected CI revision addressed all 14 failures and 14 errors.
+- Corrected the backup bundle verification and import instructions. Reserved isolated
+  schema and private-media restoration for the data-recovery path and preserved
+  the application-only rollback path. Failure leaves writers and timers stopped.
+
+Run 5 and Hindi/Devanagari certificate PDF shaping remain deferred.
+
+### Historical M15 development status
 
 - Core backend and web platform implementation completed.
 - Mobile API foundation completed.
 - Flutter/Android foundation completed.
 - Employee App Core completed.
-- Current milestone: **M16 - Learning + Secure Video**.
-- Current verified automated baseline:
+- Next milestone at that checkpoint: **M16 - Learning + Secure Video**.
+- Verified automated baseline at that checkpoint:
   - **348 Django/MySQL tests passing**
   - **81 Flutter tests passing**
   - **3 JavaScript playback tests passing**
@@ -28,7 +52,7 @@ The project has not yet reached its first production release.
 
 The application remains pre-release.
 
-### Upcoming Milestones
+### Milestones planned at the M15 checkpoint
 
 - **M16:** Learning + Secure Video
 - **M17:** Assessment + Certificates
