@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/transparent"
-        android:width="288dp" android:height="288dp" android:gravity="center" />
-    <item android:drawable="@drawable/gardens_need_logo"
-        android:width="168dp" android:height="76.18dp" android:gravity="center" />
-</layer-list>
+<!-- Android supplies square bounds. Keep the 2084:945 artwork inside its
+     two-thirds safe circle, even when rasterized into a smaller square. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="21%"
+    android:insetRight="21%"
+    android:insetTop="36.85%"
+    android:insetBottom="36.85%">
+    <bitmap
+        android:src="@drawable/gardens_need_logo"
+        android:gravity="fill"
+        android:filter="true" />
+</inset>
